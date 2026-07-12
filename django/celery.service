@@ -1,0 +1,27 @@
+[Unit]
+Description=Celery Service for Aarx (High Concurrency Push Notifications)
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+
+# User & Group (Run as current user)
+User=rahulkolhe
+Group=rahulkolhe
+
+# Project Directory Path
+WorkingDirectory=/home/rahulkolhe/workspace/django
+
+# Virtual Environment & Django Paths
+Environment="PATH=/home/rahulkolhe/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="DJANGO_SETTINGS_MODULE=aarx.settings"
+
+# Start Command
+ExecStart=/home/rahulkolhe/.local/bin/celery -A aarx worker -l info -Q notifications,default -P gevent -c 200
+
+# Auto-Restart rules (if crashed)
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

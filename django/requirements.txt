@@ -1,0 +1,39 @@
+Django>=4.2
+djangorestframework
+celery
+redis
+django-redis
+requests
+uvicorn
+gevent
+python-dotenv
+
+# 🚀 Option 2: Production Ready (Recommended 🔥)
+
+# 👉 ये थोड़ा optimized + scalable setup के लिए है
+
+# Django>=4.2
+# djangorestframework
+# celery[redis]
+# redis>=5.0
+# django-redis
+# uvicorn[standard]
+# gunicorn
+# gevent
+# psycopg2-binary
+# python-dotenv
+
+
+# 🧠 कौन सा use करें?
+
+# 👉 अगर:
+
+# अभी सीख रहे हो / local setup
+# 👉 use करो:
+# 👉 Option 1
+
+# 👉 अगर:
+
+# production / deploy / scaling
+# 👉 use करो:
+# 👉 Option 2 🔥

@@ -1,0 +1,27 @@
+[Unit]
+Description=Uvicorn Service for Aarx (High Concurrency ASGI Server)
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+
+# User & Group
+User=rahulkolhe
+Group=rahulkolhe
+
+# Project Directory Path
+WorkingDirectory=/home/rahulkolhe/workspace/django
+
+# Virtual Environment & Django Paths
+Environment="PATH=/home/rahulkolhe/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="DJANGO_SETTINGS_MODULE=aarx.settings"
+
+# Start Command for Uvicorn
+ExecStart=/home/rahulkolhe/.local/bin/uvicorn aarx.asgi:application --host 0.0.0.0 --port 8000 --workers 4
+
+# Auto-Restart rules
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
