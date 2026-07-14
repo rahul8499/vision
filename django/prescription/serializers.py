@@ -979,8 +979,12 @@ class ChatThreadSerializer(serializers.ModelSerializer):
         ]
 
     def get_order_status(self, obj):
-        if not obj.prescription:
+        if not obj.prescription_id:
             return None
+
+        if 'order_status_value' in getattr(obj, '__dict__', {}):
+            return obj.order_status_value
+
         response = (
             obj.prescription.responses
             .filter(store=obj.store, user=obj.user)

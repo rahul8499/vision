@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from prescription.authentication import StoreTokenAuthentication
-from .models import Plan, StoreSubscription
+from .models import Plan, StoreSubscription, PaymentHistory
 from prescription.models import Store
 
 logger = logging.getLogger(__name__)
@@ -21,10 +21,19 @@ class AvailablePlansView(APIView):
     permission_classes = [AllowAny]
     
     def get(self, request):
-        plans = Plan.objects.filter(is_active=True).values(
-            'id', 'name', 'razorpay_plan_id', 'description', 'price'
-        )
-        return Response({'plans': list(plans)}, status=status.HTTP_200_OK)
+        plans_qs = Plan.objects.filter(is_active=True).prefetch_related('features')
+        plans = []
+        for plan in plans_qs:
+            features = list(plan.features.filter(is_active=True).values_list('name', flat=True))
+            plans.append({
+                'id': plan.id,
+                'name': plan.name,
+                'razorpay_plan_id': plan.razorpay_plan_id,
+                'description': plan.description,
+                'price': plan.price,
+                'features': features
+            })
+        return Response({'plans': plans}, status=status.HTTP_200_OK)
 
 class CurrentSubscriptionView(APIView):
     authentication_classes = [StoreTokenAuthentication]
@@ -72,31 +81,39 @@ class CreateSubscriptionView(APIView):
         ).first()
         
         if active_sub:
-            # If a subscription is already active, prevent duplicate
-            if active_sub.status == 'active':
+            # Same plan, same status = already active, no need to do anything
+            if active_sub.plan == plan and active_sub.status == 'active':
                 return Response({
                     'error': 'You already have an active subscription.',
                     'subscription_id': active_sub.razorpay_subscription_id
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # If it's created but for the SAME plan, resume checkout
-            if active_sub.plan == plan:
+            # Same plan, pending checkout = resume
+            if active_sub.plan == plan and active_sub.status in ['created', 'authenticated']:
                 return Response({
                     'subscription_id': active_sub.razorpay_subscription_id,
                     'message': 'Resuming existing checkout.'
                 }, status=status.HTTP_200_OK)
-            else:
-                # User changed their mind to a different plan.
-                # Mark the old one as cancelled locally so it doesn't block them
-                active_sub.status = 'cancelled'
-                active_sub.save()
+            
+            # PLAN UPGRADE or plan change: cancel old subscription and create new one
+            logger.info(f"Plan upgrade requested (store_id: {request.user.id}, old_plan: {active_sub.plan_id}, new_plan: {plan.id})")
+            try:
+                # Cancel old subscription on Razorpay (at end of billing cycle)
+                client.subscription.cancel(active_sub.razorpay_subscription_id, {"cancel_at_cycle_end": 0})
+                logger.info(f"Old subscription cancelled on Razorpay: {active_sub.razorpay_subscription_id}")
+            except Exception as cancel_err:
+                logger.warning(f"Could not cancel old subscription on Razorpay: {cancel_err}")
+            
+            # Mark old as cancelled locally
+            active_sub.status = 'cancelled'
+            active_sub.save()
             
         try:
-            # Create Razorpay subscription
+            # Create new Razorpay subscription
             razorpay_sub = client.subscription.create({
                 "plan_id": plan.razorpay_plan_id,
                 "customer_notify": 1,
-                "total_count": 12 # E.g. 12 billing cycles (1 year)
+                "total_count": 12 # 12 billing cycles (1 year)
             })
             
             sub = StoreSubscription.objects.create(
@@ -148,6 +165,18 @@ class VerifyPaymentView(APIView):
             sub.current_end = r_sub.get('current_end')
             sub.save()
             
+            # Record payment history
+            payment = client.payment.fetch(razorpay_payment_id)
+            PaymentHistory.objects.update_or_create(
+                razorpay_payment_id=razorpay_payment_id,
+                defaults={
+                    'store': request.user,
+                    'subscription': sub,
+                    'amount': payment.get('amount', 0) / 100, # convert from paise
+                    'status': payment.get('status', 'captured')
+                }
+            )
+
             logger.info(f"Payment verified (sub_id: {razorpay_subscription_id})")
             return Response({'message': 'Payment verified successfully'}, status=status.HTTP_200_OK)
             
@@ -231,3 +260,17 @@ class RazorpayWebhookView(APIView):
         except Exception as e:
             logger.error(f"Error processing webhook: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PaymentHistoryView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not getattr(request.user, 'is_store', False):
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+            
+        history = PaymentHistory.objects.filter(store=request.user).order_by('-created_at').values(
+            'id', 'razorpay_payment_id', 'amount', 'status', 'created_at', 'subscription__plan__name'
+        )
+        return Response({'history': list(history)}, status=status.HTTP_200_OK)
+

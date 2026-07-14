@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -6,6 +7,7 @@ from django.utils import timezone
 from asgiref.sync import sync_to_async
 from django.core.cache import cache
 from channels.generic.websocket import AsyncWebsocketConsumer
+from redis.exceptions import RedisError
 from channels.db import database_sync_to_async
 from .models import ChatThread, ChatMessage
 from django.contrib.auth.models import AnonymousUser
@@ -13,7 +15,29 @@ from .tasks import notify_chat_message_task
 from .utils.app_notifications import create_chat_message_app_notification
 from core.services.capability_service import Permission
 from core.services.action_validator import CapabilityBlocked, validate_action_capability
-class ChatConsumer(AsyncWebsocketConsumer):
+logger = logging.getLogger(__name__)
+
+
+class RedisSafeAsyncWebsocketConsumer(AsyncWebsocketConsumer):
+    async def __call__(self, scope, receive, send):
+        try:
+            return await super().__call__(scope, receive, send)
+        except (RedisError, asyncio.TimeoutError):
+            logger.warning(
+                "%s Redis channel layer failed; closing websocket.",
+                self.__class__.__name__,
+                exc_info=True,
+            )
+            release_conn_slot = getattr(self, "_release_conn_slot", None)
+            if release_conn_slot:
+                await release_conn_slot()
+            try:
+                await self.close(code=1011)
+            except Exception:
+                pass
+
+
+class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
     async def connect(self):
         self.thread_id = self.scope['url_route']['kwargs']['thread_id']
         self.user = self.scope['user']
@@ -369,9 +393,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             pass
         return None
 
-class FulfillmentConsumer(AsyncWebsocketConsumer):
+class FulfillmentConsumer(RedisSafeAsyncWebsocketConsumer):
     # 🛡️ Max concurrent WebSocket connections per user
-    MAX_WS_CONNECTIONS = 3
+    MAX_WS_CONNECTIONS = 8
+    CONN_COUNTER_TTL_SECONDS = 300
 
     async def connect(self):
         self.user = self.scope.get('user')
@@ -385,9 +410,17 @@ class FulfillmentConsumer(AsyncWebsocketConsumer):
 
         # 🛡️ Rate Limit: Cap connections per user to prevent abuse / socket storms
         self.conn_key = f"ws_conn:user_{self.user.id}"
-        conn_count = await sync_to_async(self._incr_conn)(self.conn_key)
+        self.conn_slot_acquired = False
+        try:
+            conn_count = await sync_to_async(self._incr_conn)(self.conn_key)
+            self.conn_slot_acquired = True
+        except Exception:
+            logger.exception("Fulfillment WS Redis counter unavailable for user %s.", self.user.id)
+            await self.close(code=1011)
+            return
+
         if conn_count > self.MAX_WS_CONNECTIONS:
-            await sync_to_async(self._decr_conn)(self.conn_key)
+            await self._release_conn_slot()
             print(f"Fulfillment WS Rate Limit: User {self.user.id} exceeded {self.MAX_WS_CONNECTIONS} connections. Rejecting.")
             await self.close(code=4029)  # Custom close code: too many connections
             return
@@ -395,42 +428,71 @@ class FulfillmentConsumer(AsyncWebsocketConsumer):
         self.group_name = f'user_{self.user.id}_fulfillment'
 
         # Join user fulfillment group
-        await self.channel_layer.group_add(
-            self.group_name,
-            self.channel_name
-        )
+        try:
+            await self.channel_layer.group_add(
+                self.group_name,
+                self.channel_name
+            )
+            await self.accept()
+        except (RedisError, asyncio.TimeoutError):
+            await self._release_conn_slot()
+            logger.warning("Fulfillment WS Redis group join failed for user %s.", self.user.id, exc_info=True)
+            await self.close(code=1011)
+            return
+        except Exception:
+            await self._release_conn_slot()
+            raise
 
-        await self.accept()
         print(f"Fulfillment WS Connected: User {self.user.id} joined group {self.group_name} [conn #{conn_count}/{self.MAX_WS_CONNECTIONS}]")
 
     async def disconnect(self, close_code):
         # 🛡️ Rate Limit: Release connection slot on disconnect
-        if hasattr(self, 'conn_key'):
-            await sync_to_async(self._decr_conn)(self.conn_key)
+        await self._release_conn_slot()
 
         if hasattr(self, 'group_name'):
-            await self.channel_layer.group_discard(
-                self.group_name,
-                self.channel_name
-            )
-            print(f"Fulfillment WS Disconnected: User {self.user.id} left group {self.group_name}")
+            try:
+                await self.channel_layer.group_discard(
+                    self.group_name,
+                    self.channel_name
+                )
+            except (RedisError, asyncio.TimeoutError):
+                logger.warning("Fulfillment WS Redis group discard failed for user %s.", self.user.id, exc_info=True)
+            else:
+                print(f"Fulfillment WS Disconnected: User {self.user.id} left group {self.group_name}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 🛡️ Connection Rate Limit Helpers
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    async def _release_conn_slot(self):
+        if not getattr(self, 'conn_slot_acquired', False) or not hasattr(self, 'conn_key'):
+            return
+
+        self.conn_slot_acquired = False
+        try:
+            await sync_to_async(self._decr_conn)(self.conn_key)
+        except Exception:
+            logger.warning("Fulfillment WS Redis counter release failed for user %s.", self.user.id, exc_info=True)
+
     @staticmethod
     def _incr_conn(key: str) -> int:
-        """Atomically increment connection counter. Init to 0 with 2h TTL if missing."""
-        cache.add(key, 0, timeout=7200)  # ensure key exists
-        return cache.incr(key)
+        """Atomically increment connection counter with a short stale-key recovery TTL."""
+        cache.add(key, 0, timeout=FulfillmentConsumer.CONN_COUNTER_TTL_SECONDS)
+        value = cache.incr(key)
+        try:
+            cache.touch(key, timeout=FulfillmentConsumer.CONN_COUNTER_TTL_SECONDS)
+        except Exception:
+            pass
+        return value
 
     @staticmethod
     def _decr_conn(key: str) -> None:
         """Safely decrement connection counter (never below 0)."""
         try:
             val = cache.get(key, 0)
-            if val and val > 0:
+            if val and val > 1:
                 cache.decr(key)
+            else:
+                cache.delete(key)
         except Exception:
             pass
 
@@ -452,9 +514,9 @@ class FulfillmentConsumer(AsyncWebsocketConsumer):
         }))
 
 
-class StoreFulfillmentConsumer(AsyncWebsocketConsumer):
+class StoreFulfillmentConsumer(RedisSafeAsyncWebsocketConsumer):
     # 🛡️ Max concurrent WebSocket connections per store
-    MAX_WS_CONNECTIONS = 3
+    MAX_WS_CONNECTIONS = 8
 
     async def connect(self):
         self.user = self.scope.get('user')
@@ -466,9 +528,17 @@ class StoreFulfillmentConsumer(AsyncWebsocketConsumer):
 
         # 🛡️ Rate Limit: Cap connections per store
         self.conn_key = f"ws_conn:store_{self.user.id}"
-        conn_count = await sync_to_async(FulfillmentConsumer._incr_conn)(self.conn_key)
+        self.conn_slot_acquired = False
+        try:
+            conn_count = await sync_to_async(FulfillmentConsumer._incr_conn)(self.conn_key)
+            self.conn_slot_acquired = True
+        except Exception:
+            logger.exception("Store WS Redis counter unavailable for store %s.", self.user.id)
+            await self.close(code=1011)
+            return
+
         if conn_count > self.MAX_WS_CONNECTIONS:
-            await sync_to_async(FulfillmentConsumer._decr_conn)(self.conn_key)
+            await self._release_conn_slot()
             print(f"Store WS Rate Limit: Store {self.user.id} exceeded {self.MAX_WS_CONNECTIONS} connections. Rejecting.")
             await self.close(code=4029)
             return
@@ -476,24 +546,46 @@ class StoreFulfillmentConsumer(AsyncWebsocketConsumer):
         self.group_name = f'store_{self.user.id}_fulfillment'
 
         # Join store fulfillment group
-        await self.channel_layer.group_add(
-            self.group_name,
-            self.channel_name
-        )
-
-        await self.accept()
-        print(f"Store WS Connected: Store {self.user.id} joined group {self.group_name} [conn #{conn_count}/{self.MAX_WS_CONNECTIONS}]")
-
-    async def disconnect(self, close_code):
-        if hasattr(self, 'conn_key'):
-            await sync_to_async(FulfillmentConsumer._decr_conn)(self.conn_key)
-
-        if hasattr(self, 'group_name'):
-            await self.channel_layer.group_discard(
+        try:
+            await self.channel_layer.group_add(
                 self.group_name,
                 self.channel_name
             )
-            print(f"Store WS Disconnected: Store {self.user.id} left group {self.group_name}")
+            await self.accept()
+        except (RedisError, asyncio.TimeoutError):
+            await self._release_conn_slot()
+            logger.warning("Store WS Redis group join failed for store %s.", self.user.id, exc_info=True)
+            await self.close(code=1011)
+            return
+        except Exception:
+            await self._release_conn_slot()
+            raise
+
+        print(f"Store WS Connected: Store {self.user.id} joined group {self.group_name} [conn #{conn_count}/{self.MAX_WS_CONNECTIONS}]")
+
+    async def disconnect(self, close_code):
+        await self._release_conn_slot()
+
+        if hasattr(self, 'group_name'):
+            try:
+                await self.channel_layer.group_discard(
+                    self.group_name,
+                    self.channel_name
+                )
+            except (RedisError, asyncio.TimeoutError):
+                logger.warning("Store WS Redis group discard failed for store %s.", self.user.id, exc_info=True)
+            else:
+                print(f"Store WS Disconnected: Store {self.user.id} left group {self.group_name}")
+
+    async def _release_conn_slot(self):
+        if not getattr(self, 'conn_slot_acquired', False) or not hasattr(self, 'conn_key'):
+            return
+
+        self.conn_slot_acquired = False
+        try:
+            await sync_to_async(FulfillmentConsumer._decr_conn)(self.conn_key)
+        except Exception:
+            logger.warning("Store WS Redis counter release failed for store %s.", self.user.id, exc_info=True)
 
     async def fulfillment_update(self, event):
         data = event['data']

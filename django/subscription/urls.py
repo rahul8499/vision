@@ -5,7 +5,8 @@ from .views import (
     CreateSubscriptionView,
     VerifyPaymentView,
     SyncSubscriptionView,
-    RazorpayWebhookView
+    RazorpayWebhookView,
+    PaymentHistoryView
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     path('verify/', VerifyPaymentView.as_view(), name='verify_payment'),
     path('sync/', SyncSubscriptionView.as_view(), name='sync_subscription'),
     path('webhook/', RazorpayWebhookView.as_view(), name='razorpay_webhook'),
+    path('history/', PaymentHistoryView.as_view(), name='payment_history'),
 ]

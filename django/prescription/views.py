@@ -3832,11 +3832,17 @@ class ChatInboxView(APIView):
             base_threads = ChatThread.objects.filter(user=user)
             unread_sender_type = 'store'
 
-        # Annotate latest message ID to prefetch precisely what we need
+        # Annotate latest message/status data to avoid serializer N+1 queries.
         latest_msg_id_qs = ChatMessage.objects.filter(thread=OuterRef('pk')).order_by('-created_at').values('id')[:1]
+        order_status_qs = PrescriptionResponse.objects.filter(
+            prescription_id=OuterRef('prescription_id'),
+            store_id=OuterRef('store_id'),
+            user_id=OuterRef('user_id'),
+        ).exclude(user_status__in=['rejected', 'dismissed', 'expired']).order_by('-created_at')
         
         threads = base_threads.annotate(
             latest_msg_id=Subquery(latest_msg_id_qs),
+            order_status_value=Subquery(order_status_qs.values('user_status')[:1]),
             unread_count=Count(
                 'messages',
                 filter=Q(messages__is_read=False, messages__sender_type=unread_sender_type)
@@ -3845,7 +3851,7 @@ class ChatInboxView(APIView):
 
         # Prefetch only the latest messages
         latest_ids = [t.latest_msg_id for t in threads if t.latest_msg_id]
-        latest_msgs = {m.id: m for m in ChatMessage.objects.filter(id__in=latest_ids)}
+        latest_msgs = {m.id: m for m in ChatMessage.objects.filter(id__in=latest_ids).select_related('reply_to')}
         
         # Attach to threads (so serializer can find them without querying)
         for t in threads:
