@@ -14,6 +14,7 @@ def home_view(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('prescription.urls')),
+    path('api/complaints/', include('complaints.urls')),
     path('api/subscriptions/', include('subscription.urls')),
     path('', home_view),  # ✅ Root path points to home_view directly
 ]

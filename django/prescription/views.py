@@ -38,7 +38,7 @@ from .tasks import send_push_task
 from .models import Store,PrescriptionResponseMedicine, Rating
 from .models import PrescriptionTargetStore
 from .models import ReportNote
-from .models import StoreReportNote
+from .models import StoreReportNote, SafetyReport
 from .tasks import send_push_task, enforce_pharmacist_accountability
 
 from .serializers import StoreSerializer, StoreLoginSerializer
@@ -67,7 +67,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from .serializers import PrescriptionSerializer, PrescriptionResponseSerializer, RatingSerializer
 # from .models import Prescription,
-from .models import Prescription, PrescriptionResponse, PasswordResetOTP, DeliveryOTP  # Make sure to import both models
+from .models import Prescription, PrescriptionResponse, PasswordResetOTP, DeliveryOTP, PharmacistConsultation, PharmacistConsultationMessage  # Make sure to import both models
 
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -2482,17 +2482,25 @@ class StoreContactNoteView(APIView):
     authentication_classes = [StoreTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
-    def _get_store_response(self, response_id, store):
-        return PrescriptionResponse.objects.filter(
-            Q(id=response_id) | Q(prescription_id=response_id),
+    def _get_store_context(self, reference_id, store):
+        response = PrescriptionResponse.objects.filter(
+            Q(id=reference_id) | Q(prescription_id=reference_id),
             store=store
-        ).first()
+        ).select_related("prescription__user").first()
+        if response:
+            return response, response.prescription
+        target = PrescriptionTargetStore.objects.filter(
+            prescription_id=reference_id, store=store
+        ).select_related("prescription__user").first()
+        if target:
+            return None, target.prescription
+        return None, None
 
     def post(self, request, response_id):
         try:
-            response = self._get_store_response(response_id, request.user)
-            if not response:
-                return Response({"error": "Response not found"}, status=404)
+            response, prescription = self._get_store_context(response_id, request.user)
+            if not prescription:
+                return Response({"error": "Enquiry not found or not assigned to this store"}, status=404)
 
             note = request.data.get('note')
             if not note:
@@ -2501,12 +2509,14 @@ class StoreContactNoteView(APIView):
             with transaction.atomic():
                 StoreReportNote.objects.create(
                     response=response,
+                    prescription=prescription,
                     store=request.user,
                     note=note
                 )
                 
                 # Reporting is allowed even after lock/completion; only clear accountability flag.
-                PrescriptionResponse.objects.filter(id=response.id).update(is_unresponsive=False)
+                if response:
+                    PrescriptionResponse.objects.filter(id=response.id).update(is_unresponsive=False)
 
                 from django.core.cache import cache
                 try:
@@ -2514,16 +2524,16 @@ class StoreContactNoteView(APIView):
                 except ValueError:
                     cache.set(f"store_{request.user.id}_cache_version", 1, timeout=86400 * 30)
             
-            target_user = response.prescription.user
+            target_user = prescription.user
             if target_user:
                 _safe_on_commit(
                     "store report user notification",
-                    lambda response=response, target_user=target_user, note=note, store=request.user: send_user_app_notification(
+                    lambda response=response, prescription=prescription, target_user=target_user, note=note, store=request.user: send_user_app_notification(
                         target_user,
                         f"Report from {store.name}",
                         f"The pharmacy submitted a report: {note[:60]}...",
-                        {"prescription_id": response.prescription.id, "response_id": response.id, "type": "STORE_REPORT"},
-                        dedupe_key=f"user:{target_user.id}:response:{response.id}:store_report:{StoreReportNote.objects.filter(response=response, store=request.user).count()}",
+                        {"prescription_id": prescription.id, "response_id": response.id if response else None, "type": "STORE_REPORT"},
+                        dedupe_key=f"user:{target_user.id}:prescription:{prescription.id}:store_report:{StoreReportNote.objects.filter(prescription=prescription, store=request.user).count()}",
                     )
                 )
 
@@ -2531,12 +2541,16 @@ class StoreContactNoteView(APIView):
         except Exception as e:
             return Response({"error": "Request could not be completed."}, status=400)
     def get(self, request, response_id):
-        response = self._get_store_response(response_id, request.user)
-        if not response:
-            return Response({"error": "Response not found"}, status=404)
+        response, prescription = self._get_store_context(response_id, request.user)
+        if not prescription:
+            return Response({"error": "Enquiry not found or not assigned to this store"}, status=404)
 
-        # 👇 Get all notes by store on that response
-        notes = StoreReportNote.objects.filter(response=response, store=request.user).order_by('-created_at')
+        context_filter = Q(prescription=prescription)
+        if response:
+            context_filter |= Q(response=response)
+        notes = StoreReportNote.objects.filter(
+            context_filter, store=request.user,
+        ).distinct().order_by("-created_at")
 
         report_data = [
             {
@@ -2550,6 +2564,77 @@ class StoreContactNoteView(APIView):
             "count": notes.count(),
             "reports": report_data
         }, status=200)
+
+class SafetyReportListCreateView(APIView):
+    authentication_classes = [StoreTokenAuthentication, UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def _serialize(self, report):
+        target = report.reported_store or report.reported_user
+        return {
+            'id': report.id,
+            'reporter_type': report.reporter_type,
+            'target_type': report.target_type,
+            'target_name': getattr(target, 'name', 'Account'),
+            'category': report.category,
+            'category_display': report.get_category_display(),
+            'description': report.description,
+            'status': report.status,
+            'status_display': report.get_status_display(),
+            'resolution_note': report.resolution_note,
+            'context_type': 'order' if report.response_id else 'enquiry',
+            'context_id': report.response_id or report.prescription_id,
+            'prescription_id': report.prescription_id,
+            'response_id': report.response_id,
+            'created_at': report.created_at.isoformat(),
+            'updated_at': report.updated_at.isoformat(),
+        }
+
+    def get(self, request):
+        if isinstance(request.user, Store):
+            reports = SafetyReport.objects.filter(reporter_store=request.user)
+        else:
+            reports = SafetyReport.objects.filter(reporter_user=request.user)
+        reference_id = request.query_params.get('reference_id')
+        if reference_id:
+            reports = reports.filter(Q(response_id=reference_id) | Q(prescription_id=reference_id))
+        reports = reports.select_related('reported_user', 'reported_store')
+        return Response({'count': reports.count(), 'reports': [self._serialize(item) for item in reports[:100]]})
+
+    def post(self, request):
+        reference_id = request.data.get('reference_id')
+        category = request.data.get('category', 'other')
+        description = str(request.data.get('description', '')).strip()
+        valid_categories = {value for value, _ in SafetyReport.CATEGORY_CHOICES}
+        if not reference_id:
+            return Response({'error': 'Enquiry or order reference is required.'}, status=400)
+        if category not in valid_categories:
+            return Response({'error': 'Invalid report category.'}, status=400)
+        if len(description) < 3:
+            return Response({'error': 'Please add report details.'}, status=400)
+
+        if isinstance(request.user, Store):
+            response, prescription = StoreContactNoteView()._get_store_context(reference_id, request.user)
+            if not prescription:
+                return Response({'error': 'Enquiry not found or not assigned to this store.'}, status=404)
+            report = SafetyReport.objects.create(
+                reporter_type='store', reporter_store=request.user,
+                target_type='user', reported_user=prescription.user,
+                prescription=prescription, response=response,
+                category=category, description=description,
+            )
+        else:
+            response = PrescriptionResponse.objects.filter(id=reference_id, user=request.user).select_related('prescription', 'store').first()
+            if not response:
+                return Response({'error': 'Order not found.'}, status=404)
+            report = SafetyReport.objects.create(
+                reporter_type='user', reporter_user=request.user,
+                target_type='store', reported_store=response.store,
+                prescription=response.prescription, response=response,
+                category=category, description=description,
+            )
+        return Response(self._serialize(report), status=201)
+
 
 class GetResponseByIdViewForUserPrescription(APIView):
     authentication_classes = [UserTokenAuthentication]
@@ -4555,3 +4640,234 @@ class StoreRejectEnquiryView(APIView):
             "message": "Enquiry rejected successfully.",
             "response_id": response.id
         }, status=201)
+
+
+# ---------------------------------------------------------------------------
+# Order-bound Ask a Pharmacist
+# ---------------------------------------------------------------------------
+def _consultation_actor(request):
+    if isinstance(request.user, Store):
+        return 'store', request.user
+    if isinstance(request.user, User):
+        return 'user', request.user
+    return None, None
+
+
+def _consultation_file_url(request, field):
+    return request.build_absolute_uri(field.url) if field else None
+
+
+def _serialize_consultation(request, consultation):
+    actor_type, _ = _consultation_actor(request)
+    store = consultation.store
+    return {
+        'id': consultation.id, 'order_id': consultation.order_id,
+        'category': consultation.category, 'category_display': consultation.get_category_display(),
+        'medicine_name': consultation.medicine_name, 'question': consultation.question,
+        'status': consultation.status, 'status_display': consultation.get_status_display(),
+        'callback_requested': consultation.callback_requested,
+        'callback_phone': consultation.callback_phone if actor_type == 'store' else '',
+        'callback_preferred_time': consultation.callback_preferred_time,
+        'pharmacy_name': store.name, 'pharmacy_phone': store.mobile,
+        'pharmacist_name': store.pharmacist_name if store.is_pharmacist_verified else '',
+        'pharmacist_verified': store.is_pharmacist_verified,
+        'pharmacist_available': bool(store.is_pharmacist_verified and store.pharmacist_available),
+        'created_at': consultation.created_at, 'updated_at': consultation.updated_at,
+        'messages': [{
+            'id': message.id, 'sender_type': message.sender_type, 'text': message.text,
+            'attachment': _consultation_file_url(request, message.attachment),
+            'pharmacist_name': message.pharmacist_name_snapshot,
+            'created_at': message.created_at,
+        } for message in consultation.messages.all()],
+    }
+
+
+def _consultation_for_actor(pk, actor_type, actor):
+    filters = {'id': pk}
+    filters['store' if actor_type == 'store' else 'user'] = actor
+    return PharmacistConsultation.objects.select_related('store', 'user', 'order').prefetch_related('messages').filter(**filters).first()
+
+
+class PharmacistConsultationOrderView(APIView):
+    authentication_classes = [StoreTokenAuthentication, UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _order(self, request, order_id):
+        actor_type, actor = _consultation_actor(request)
+        if actor_type != 'user':
+            return None
+        return PrescriptionResponse.objects.select_related('store', 'user').filter(id=order_id, user=actor).first()
+
+    def get(self, request, order_id):
+        order = self._order(request, order_id)
+        if not order:
+            return Response({'error': 'Order not found.'}, status=404)
+        consultation = PharmacistConsultation.objects.filter(order=order).first()
+        store = order.store
+        return Response({
+            'eligible': order.user_status == 'completed' and bool(store and store.is_active and store.is_verified),
+            'reason': '' if order.user_status == 'completed' else 'Ask a Pharmacist is available after the order is completed.',
+            'pharmacy_name': store.name if store else order.store_name,
+            'pharmacy_phone': store.mobile if store else order.store_contact,
+            'pharmacist_verified': bool(store and store.is_pharmacist_verified),
+            'pharmacist_available': bool(store and store.is_pharmacist_verified and store.pharmacist_available),
+            'consultation': _serialize_consultation(request, consultation) if consultation else None,
+        })
+
+    @transaction.atomic
+    def post(self, request, order_id):
+        order = self._order(request, order_id)
+        if not order:
+            return Response({'error': 'Order not found.'}, status=404)
+        if order.user_status != 'completed':
+            return Response({'error': 'Consultation is available only for a completed order.'}, status=400)
+        if not order.store or not order.store.is_active or not order.store.is_verified:
+            return Response({'error': 'This pharmacy is not currently eligible for consultations.'}, status=400)
+        existing = PharmacistConsultation.objects.filter(order=order).first()
+        if existing:
+            return Response(_serialize_consultation(request, existing), status=200)
+        category = str(request.data.get('category', '')).strip()
+        medicine_name = str(request.data.get('medicine_name', '')).strip()
+        question = str(request.data.get('question', '')).strip()
+        consent = str(request.data.get('consent', '')).lower() in ('1', 'true', 'yes')
+        if category not in dict(PharmacistConsultation.CATEGORY_CHOICES):
+            return Response({'category': ['Select a valid question type.']}, status=400)
+        if len(medicine_name) < 2:
+            return Response({'medicine_name': ['Enter the medicine name.']}, status=400)
+        if len(question) < 10:
+            return Response({'question': ['Describe your question in at least 10 characters.']}, status=400)
+        if not consent:
+            return Response({'consent': ['Consent is required before starting a consultation.']}, status=400)
+        consultation = PharmacistConsultation.objects.create(
+            order=order, user=order.user, store=order.store, category=category,
+            medicine_name=medicine_name, question=question, user_consent_at=timezone.now(),
+            status='active' if order.store.is_pharmacist_verified and order.store.pharmacist_available else 'waiting',
+        )
+        PharmacistConsultationMessage.objects.create(consultation=consultation, sender_type='user', text=question)
+        send_store_app_notification(
+            order.store, 'New pharmacist question',
+            f'{order.user.name} asked about {medicine_name}.',
+            {'type': 'PHARMACIST_CONSULTATION', 'consultation_id': consultation.id},
+            notification_type='PHARMACIST_CONSULTATION',
+            dedupe_key=f'pharmacist-consultation:{consultation.id}:new',
+        )
+        return Response(_serialize_consultation(request, consultation), status=201)
+
+
+class PharmacistConsultationDetailView(APIView):
+    authentication_classes = [StoreTokenAuthentication, UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request, consultation_id):
+        actor_type, actor = _consultation_actor(request)
+        consultation = _consultation_for_actor(consultation_id, actor_type, actor)
+        if not consultation:
+            return Response({'error': 'Consultation not found.'}, status=404)
+        return Response(_serialize_consultation(request, consultation))
+
+    @transaction.atomic
+    def post(self, request, consultation_id):
+        actor_type, actor = _consultation_actor(request)
+        consultation = _consultation_for_actor(consultation_id, actor_type, actor)
+        if not consultation:
+            return Response({'error': 'Consultation not found.'}, status=404)
+        if consultation.status == 'closed':
+            return Response({'error': 'This consultation is closed.'}, status=400)
+        text = str(request.data.get('text', '')).strip()
+        if len(text) < 2:
+            return Response({'text': ['Write a message.']}, status=400)
+        kwargs = {'consultation': consultation, 'text': text}
+        if actor_type == 'store':
+            if not actor.is_active or not actor.is_verified or not actor.is_pharmacist_verified:
+                return Response({'error': 'Only an admin-verified pharmacist can provide medicine guidance.'}, status=403)
+            if not actor.pharmacist_available:
+                return Response({'error': 'Set pharmacist availability to available before replying.'}, status=400)
+            kwargs.update(sender_type='pharmacist', pharmacist_name_snapshot=actor.pharmacist_name, pharmacist_license_snapshot=actor.pharmacist_license_number)
+            consultation.status = 'answered'
+            send_user_app_notification(
+                consultation.user, 'Your pharmacist replied',
+                f'{actor.pharmacist_name or actor.name} replied to your medicine question.',
+                {'type': 'PHARMACIST_CONSULTATION', 'consultation_id': consultation.id},
+                notification_type='PHARMACIST_CONSULTATION',
+                dedupe_key=f'pharmacist-consultation:{consultation.id}:reply:{consultation.messages.count()+1}',
+            )
+        else:
+            kwargs['sender_type'] = 'user'
+            consultation.status = 'active' if consultation.store.pharmacist_available and consultation.store.is_pharmacist_verified else 'waiting'
+        PharmacistConsultationMessage.objects.create(**kwargs)
+        consultation.save(update_fields=['status', 'updated_at'])
+        return Response(_serialize_consultation(request, consultation), status=201)
+
+
+class PharmacistCallbackView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, consultation_id):
+        consultation = PharmacistConsultation.objects.select_related('store').filter(id=consultation_id, user=request.user).first()
+        if not consultation:
+            return Response({'error': 'Consultation not found.'}, status=404)
+        phone = str(request.data.get('phone') or request.user.mobile or '').strip()
+        preferred_time = str(request.data.get('preferred_time', '')).strip()
+        if len(phone) < 10:
+            return Response({'phone': ['Enter a valid callback number.']}, status=400)
+        consultation.callback_requested = True
+        consultation.callback_phone = phone
+        consultation.callback_preferred_time = preferred_time
+        consultation.status = 'callback_requested'
+        consultation.save(update_fields=['callback_requested', 'callback_phone', 'callback_preferred_time', 'status', 'updated_at'])
+        send_store_app_notification(
+            consultation.store, 'Pharmacist callback requested',
+            f'A customer requested a callback about {consultation.medicine_name}.',
+            {'type': 'PHARMACIST_CALLBACK', 'consultation_id': consultation.id},
+            notification_type='PHARMACIST_CONSULTATION',
+            dedupe_key=f'pharmacist-consultation:{consultation.id}:callback',
+        )
+        return Response(_serialize_consultation(request, consultation))
+
+
+class StorePharmacistConsultationListView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        consultations = PharmacistConsultation.objects.select_related('store', 'user', 'order').prefetch_related('messages').filter(store=request.user)
+        return Response([_serialize_consultation(request, item) for item in consultations])
+
+
+class StorePharmacistAvailabilityView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        store = request.user
+        return Response({'pharmacist_name': store.pharmacist_name, 'license_number': store.pharmacist_license_number, 'verified': store.is_pharmacist_verified, 'available': store.pharmacist_available if store.is_pharmacist_verified else False})
+
+    def patch(self, request):
+        store = request.user
+        if 'pharmacist_name' in request.data or 'license_number' in request.data:
+            name = str(request.data.get('pharmacist_name', '')).strip()
+            license_number = str(request.data.get('license_number', '')).strip()
+            if len(name) < 3:
+                return Response({'pharmacist_name': ['Enter the pharmacist full name.']}, status=400)
+            if len(license_number) < 5:
+                return Response({'license_number': ['Enter a valid pharmacist registration number.']}, status=400)
+            changed = name != store.pharmacist_name or license_number != store.pharmacist_license_number
+            store.pharmacist_name = name
+            store.pharmacist_license_number = license_number
+            if changed:
+                store.is_pharmacist_verified = False
+                store.pharmacist_available = False
+                store.pharmacist_verified_at = None
+            store.save(update_fields=['pharmacist_name', 'pharmacist_license_number', 'is_pharmacist_verified', 'pharmacist_available', 'pharmacist_verified_at'])
+            return Response({'pharmacist_name': store.pharmacist_name, 'license_number': store.pharmacist_license_number, 'verified': store.is_pharmacist_verified, 'available': False, 'message': 'Details submitted for AARX verification.'})
+        if not store.is_pharmacist_verified:
+            return Response({'error': 'Pharmacist verification by AARX is required.'}, status=403)
+        available = request.data.get('available')
+        if not isinstance(available, bool):
+            return Response({'available': ['Use true or false.']}, status=400)
+        store.pharmacist_available = available
+        store.save(update_fields=['pharmacist_available'])
+        return Response({'verified': True, 'available': store.pharmacist_available, 'pharmacist_name': store.pharmacist_name})

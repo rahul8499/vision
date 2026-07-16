@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_celery_results',
     'subscription',
+    'complaints',
 
 
 

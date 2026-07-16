@@ -3,7 +3,8 @@ from .models import (
     Store, User, ChatMessage, ChatThread,
     Prescription, PrescriptionResponse,
     PrescriptionResponseMedicine, PrescriptionTargetStore,
-    WSEventLog, Rating, PrescriptionResponseStatusHistory, AppNotification
+    WSEventLog, Rating, PrescriptionResponseStatusHistory, AppNotification,
+    ReportNote, StoreReportNote, SafetyReport, PharmacistConsultation, PharmacistConsultationMessage
 )
 from rest_framework.authtoken.models import Token
 from core.services.capability_service import (
@@ -83,8 +84,8 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(Store)
 class StoreAdmin(GISModelAdmin):
-    list_display = ('id', 'name', 'mobile', 'is_active', 'is_verified', 'is_deleted', 'lifecycle_status', 'created_at')
-    list_filter = ('is_active', 'is_verified', 'is_deleted')
+    list_display = ('id', 'name', 'mobile', 'is_active', 'is_verified', 'is_pharmacist_verified', 'pharmacist_available', 'is_deleted', 'lifecycle_status', 'created_at')
+    list_filter = ('is_active', 'is_verified', 'is_pharmacist_verified', 'pharmacist_available', 'is_deleted')
     search_fields = ('name', 'owner_name', 'mobile', 'email', 'drug_license_number', 'gst_number')
     readonly_fields = ('created_at', 'last_seen')
     actions = ('activate_selected', 'deactivate_selected', 'verify_selected', 'unverify_selected')
@@ -184,3 +185,105 @@ class WSEventLogAdmin(admin.ModelAdmin):
     def event_id_short(self, obj):
         return obj.event_id[:8] + '…'
     event_id_short.short_description = 'Event ID'
+
+
+class LegacyUserReportAdmin(admin.ModelAdmin):
+    list_display = ('id', 'response_id', 'user', 'reported_store', 'note_preview', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('id', 'response__id', 'user__name', 'user__mobile', 'response__store__name', 'note')
+    readonly_fields = ('response', 'user', 'note', 'created_at')
+    ordering = ('-created_at',)
+    list_select_related = ('response', 'response__store', 'user')
+
+    @admin.display(description='Store')
+    def reported_store(self, obj):
+        return obj.response.store.name if obj.response and obj.response.store else '—'
+
+    @admin.display(description='Report')
+    def note_preview(self, obj):
+        return obj.note[:80] + ('…' if len(obj.note) > 80 else '')
+
+    def has_add_permission(self, request):
+        return False
+
+
+class LegacyStoreReportAdmin(admin.ModelAdmin):
+    list_display = ('id', 'context_type', 'context_id', 'store', 'reported_user', 'note_preview', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('id', 'response__id', 'prescription__id', 'store__name', 'store__mobile', 'response__user__name', 'prescription__user__name', 'note')
+    readonly_fields = ('response', 'prescription', 'store', 'note', 'created_at')
+    ordering = ('-created_at',)
+    list_select_related = ('response', 'response__user', 'prescription', 'prescription__user', 'store')
+
+    @admin.display(description='Context')
+    def context_type(self, obj):
+        return 'Order' if obj.response_id else 'Enquiry'
+
+    @admin.display(description='Context ID')
+    def context_id(self, obj):
+        return obj.response_id or obj.prescription_id
+
+    @admin.display(description='Reported user')
+    def reported_user(self, obj):
+        prescription = obj.prescription or (obj.response.prescription if obj.response else None)
+        return prescription.user if prescription else '—'
+
+    @admin.display(description='Report')
+    def note_preview(self, obj):
+        return obj.note[:80] + ('…' if len(obj.note) > 80 else '')
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(SafetyReport)
+class SafetyReportAdmin(admin.ModelAdmin):
+    list_display = ("id", "reporter_type", "reporter_name", "target_type", "target_name", "category", "status", "context_id", "created_at")
+    list_filter = ("reporter_type", "target_type", "category", "status", "created_at")
+    search_fields = ("id", "description", "reporter_user__name", "reporter_store__name", "reported_user__name", "reported_store__name", "prescription__id", "response__id")
+    readonly_fields = ("reporter_type", "reporter_user", "reporter_store", "target_type", "reported_user", "reported_store", "prescription", "response", "category", "description", "created_at", "updated_at")
+    ordering = ("-created_at",)
+    list_select_related = ("reporter_user", "reporter_store", "reported_user", "reported_store")
+
+    @admin.display(description="Reporter")
+    def reporter_name(self, obj):
+        return obj.reporter_store or obj.reporter_user or "—"
+
+    @admin.display(description="Reported account")
+    def target_name(self, obj):
+        return obj.reported_store or obj.reported_user or "—"
+
+    @admin.display(description="Context ID")
+    def context_id(self, obj):
+        return obj.response_id or obj.prescription_id or "—"
+
+    def has_add_permission(self, request):
+        return False
+
+
+class PharmacistConsultationMessageInline(admin.TabularInline):
+    model = PharmacistConsultationMessage
+    extra = 0
+    readonly_fields = ('sender_type', 'text', 'attachment', 'pharmacist_name_snapshot', 'pharmacist_license_snapshot', 'is_read', 'created_at')
+    can_delete = False
+
+
+@admin.register(PharmacistConsultation)
+class PharmacistConsultationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'store', 'user', 'medicine_name', 'category', 'status', 'callback_requested', 'updated_at')
+    list_filter = ('status', 'category', 'callback_requested', 'store', 'created_at')
+    search_fields = ('medicine_name', 'question', 'store__name', 'user__name', 'order__id')
+    readonly_fields = ('order', 'store', 'user', 'category', 'medicine_name', 'question', 'callback_phone', 'callback_preferred_time', 'user_consent_at', 'created_at', 'updated_at')
+    inlines = (PharmacistConsultationMessageInline,)
+    ordering = ('-updated_at',)
+
+
+@admin.register(PharmacistConsultationMessage)
+class PharmacistConsultationMessageAdmin(admin.ModelAdmin):
+    list_display = ('id', 'consultation', 'sender_type', 'pharmacist_name_snapshot', 'created_at')
+    list_filter = ('sender_type', 'created_at')
+    search_fields = ('text', 'consultation__medicine_name')
+    readonly_fields = ('consultation', 'sender_type', 'text', 'attachment', 'pharmacist_name_snapshot', 'pharmacist_license_snapshot', 'is_read', 'created_at')
+
+    def has_add_permission(self, request):
+        return False

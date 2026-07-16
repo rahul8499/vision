@@ -15,7 +15,9 @@ from .views import (
     UserCancelOrderView, StoreCancelOrderView, StoreUpdateProgressView, VerifyCompletionOTPView, OrderAgainView,
     SubmitRatingView, PendingRatingsView, StoreReviewsView, SubmitAppRatingView,
     RequestPasswordResetOTPView, VerifyPasswordResetOTPView, ConfirmPasswordResetView, AccountDeleteView, AppNotificationListView, AppNotificationMarkReadView,
-    StoreRejectEnquiryView
+    StoreRejectEnquiryView, SafetyReportListCreateView,
+    PharmacistConsultationOrderView, PharmacistConsultationDetailView, PharmacistCallbackView,
+    StorePharmacistConsultationListView, StorePharmacistAvailabilityView
 )
 urlpatterns = [
     path('upload/', PrescriptionUploadView.as_view(), name='upload'),
@@ -56,6 +58,13 @@ urlpatterns = [
     path('responses/<int:response_id>/user-contact-note/', UserContactNoteUpdateView.as_view(), name='user_contact_note'),
     path('responses/<int:response_id>/store-contact-note/', StoreContactNoteView.as_view(), name='store-contact-note'),
     path('responses/<int:response_id>/report/', StoreContactNoteView.as_view(), name='store-report'),
+    path('store-reports/<int:response_id>/', StoreContactNoteView.as_view(), name='store-report-stable'),
+    path('safety-reports/', SafetyReportListCreateView.as_view(), name='safety-report-list-create'),
+    path('pharmacist/order/<int:order_id>/', PharmacistConsultationOrderView.as_view(), name='pharmacist-order'),
+    path('pharmacist/consultations/<int:consultation_id>/', PharmacistConsultationDetailView.as_view(), name='pharmacist-consultation-detail'),
+    path('pharmacist/consultations/<int:consultation_id>/callback/', PharmacistCallbackView.as_view(), name='pharmacist-callback'),
+    path('pharmacist/store/inbox/', StorePharmacistConsultationListView.as_view(), name='pharmacist-store-inbox'),
+    path('pharmacist/store/availability/', StorePharmacistAvailabilityView.as_view(), name='pharmacist-store-availability'),
     path('responses/<int:response_id>/refresh-request/', RequestStockRefreshView.as_view(), name='request_stock_refresh'),
     path('responses/<int:response_id>/verify-stock/', VerifyStockAPIView.as_view(), name='verify_stock'),
     path('responses/<int:response_id>/cancel/', UserCancelOrderView.as_view(), name='user_cancel_order'),

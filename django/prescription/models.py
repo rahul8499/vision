@@ -15,6 +15,7 @@ import uuid
 import geohash
 from datetime import timedelta
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 from rest_framework.authtoken.models import Token
 
@@ -53,6 +54,11 @@ class Store(models.Model):
     store_image = models.ImageField(upload_to='store_images/', blank=True, null=True)
     document = models.FileField(upload_to='store_documents/', blank=True, null=True)
     is_verified = models.BooleanField(default=False)
+    pharmacist_name = models.CharField(max_length=120, blank=True)
+    pharmacist_license_number = models.CharField(max_length=100, blank=True)
+    is_pharmacist_verified = models.BooleanField(default=False, db_index=True)
+    pharmacist_available = models.BooleanField(default=False, db_index=True)
+    pharmacist_verified_at = models.DateTimeField(null=True, blank=True)
     is_deleted = models.BooleanField(default=False)
     auto_accept_prescription = models.BooleanField(default=False)  # 👈 Added for emergency mode
     latitude = models.FloatField(null=True, blank=True)  # ⭐ Keep for migration
@@ -119,6 +125,13 @@ class Store(models.Model):
         return True
 
     def save(self, *args, **kwargs):
+        if self.is_pharmacist_verified:
+            if not self.pharmacist_name or not self.pharmacist_license_number:
+                raise ValidationError('Pharmacist name and registration number are required for verification.')
+            self.pharmacist_verified_at = self.pharmacist_verified_at or timezone.now()
+        else:
+            self.pharmacist_available = False
+            self.pharmacist_verified_at = None
         if self.latitude and self.longitude:
             self.location = Point(float(self.longitude), float(self.latitude), srid=4326)
             self.geohash = geohash.encode(float(self.latitude), float(self.longitude), precision=12)
@@ -495,13 +508,62 @@ class ReportNote(models.Model):
     def __str__(self):
         return f"{self.user} - {self.response.id} - {self.created_at}"
 class StoreReportNote(models.Model):
-    response = models.ForeignKey('PrescriptionResponse', on_delete=models.CASCADE, related_name='store_reports')
+    response = models.ForeignKey(
+        'PrescriptionResponse', on_delete=models.CASCADE, related_name='store_reports',
+        null=True, blank=True,
+    )
+    prescription = models.ForeignKey(
+        'Prescription', on_delete=models.CASCADE, related_name='store_reports',
+        null=True, blank=True,
+    )
     store = models.ForeignKey('Store', on_delete=models.CASCADE)
     note = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.store.name} - {self.note[:20]}"
+
+class SafetyReport(models.Model):
+    REPORTER_CHOICES = [('user', 'User'), ('store', 'Pharmacy')]
+    TARGET_CHOICES = [('user', 'User'), ('store', 'Pharmacy')]
+    CATEGORY_CHOICES = [
+        ('fake_or_spam', 'Fake or spam request'),
+        ('invalid_contact', 'Invalid contact information'),
+        ('wrong_information', 'Wrong information'),
+        ('suspicious_behavior', 'Suspicious behavior'),
+        ('medicine_safety', 'Medicine safety concern'),
+        ('abusive_behavior', 'Abusive behavior'),
+        ('other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('submitted', 'Submitted'),
+        ('under_review', 'Under Review'),
+        ('action_taken', 'Action Taken'),
+        ('closed', 'Closed'),
+    ]
+
+    reporter_type = models.CharField(max_length=10, choices=REPORTER_CHOICES, db_index=True)
+    reporter_user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports_filed')
+    reporter_store = models.ForeignKey(Store, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports_filed')
+    target_type = models.CharField(max_length=10, choices=TARGET_CHOICES, db_index=True)
+    reported_user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports_received')
+    reported_store = models.ForeignKey(Store, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports_received')
+    prescription = models.ForeignKey(Prescription, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports')
+    response = models.ForeignKey(PrescriptionResponse, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports')
+    category = models.CharField(max_length=40, choices=CATEGORY_CHOICES, default='other', db_index=True)
+    description = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted', db_index=True)
+    resolution_note = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['reporter_type', 'status', 'created_at'])]
+
+    def __str__(self):
+        return f'Safety Report #{self.pk} ({self.reporter_type} → {self.target_type})'
+
 
 class PrescriptionResponseStatusHistory(models.Model):
     """
@@ -797,3 +859,54 @@ class PasswordResetOTP(models.Model):
 
     def __str__(self):
         return f"OTP {self.otp_code} for {self.email} ({self.user_type})"
+
+
+class PharmacistConsultation(models.Model):
+    STATUS_CHOICES = [
+        ('waiting', 'Waiting for pharmacist'), ('active', 'Active'),
+        ('callback_requested', 'Callback requested'), ('answered', 'Answered'), ('closed', 'Closed'),
+    ]
+    CATEGORY_CHOICES = [
+        ('how_to_take', 'How and when to take'), ('food_timing', 'Before or after food'),
+        ('missed_dose', 'Missed dose'), ('side_effects', 'Common side effects'),
+        ('storage', 'Storage'), ('prescription_help', 'Understand prescription'), ('other', 'Other'),
+    ]
+    order = models.OneToOneField(PrescriptionResponse, on_delete=models.CASCADE, related_name='pharmacist_consultation')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pharmacist_consultations')
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='pharmacist_consultations')
+    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
+    medicine_name = models.CharField(max_length=200)
+    question = models.TextField()
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='waiting', db_index=True)
+    callback_requested = models.BooleanField(default=False)
+    callback_phone = models.CharField(max_length=15, blank=True)
+    callback_preferred_time = models.CharField(max_length=100, blank=True)
+    user_consent_at = models.DateTimeField()
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [models.Index(fields=['store', 'status', 'updated_at']), models.Index(fields=['user', 'updated_at'])]
+
+    def __str__(self):
+        return f"Pharmacist consultation #{self.id} for order {self.order_id}"
+
+
+class PharmacistConsultationMessage(models.Model):
+    SENDER_CHOICES = [('user', 'User'), ('pharmacist', 'Verified pharmacist')]
+    consultation = models.ForeignKey(PharmacistConsultation, on_delete=models.CASCADE, related_name='messages')
+    sender_type = models.CharField(max_length=20, choices=SENDER_CHOICES)
+    text = models.TextField()
+    attachment = models.FileField(upload_to='pharmacist_consultations/', null=True, blank=True)
+    pharmacist_name_snapshot = models.CharField(max_length=120, blank=True)
+    pharmacist_license_snapshot = models.CharField(max_length=100, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Consultation message #{self.id}"
