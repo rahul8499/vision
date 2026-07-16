@@ -149,7 +149,20 @@ class ComplaintCreateView(APIView):
 
         complaint.save()
 
-        # Attachments
+        # Presigned S3 attachments (new clients)
+        attachment_keys = request.data.getlist('attachment_keys') if hasattr(request.data, 'getlist') else []
+        for key in attachment_keys:
+            try:
+                from core.services.s3_service import validate_uploaded_object_key
+                verified_key = validate_uploaded_object_key(key, 'complaints')
+            except (ValueError, RuntimeError) as exc:
+                transaction.set_rollback(True)
+                return Response({'attachment_keys': str(exc)}, status=400)
+            attachment = ComplaintAttachment(complaint=complaint)
+            attachment.file.name = verified_key
+            attachment.save()
+
+        # Multipart attachments (backward compatibility)
         for f in request.FILES.getlist('attachments'):
             ComplaintAttachment.objects.create(complaint=complaint, file=f)
 
@@ -283,7 +296,15 @@ class ComplaintMessageView(APIView):
 
         text = (request.data.get('text') or '').strip()
         attachment = request.FILES.get('attachment')
-        if not text and not attachment:
+        attachment_key = request.data.get('attachment_key')
+        verified_attachment_key = None
+        if attachment_key:
+            try:
+                from core.services.s3_service import validate_uploaded_object_key
+                verified_attachment_key = validate_uploaded_object_key(attachment_key, 'complaints')
+            except (ValueError, RuntimeError) as exc:
+                return Response({'attachment_key': str(exc)}, status=400)
+        if not text and not attachment and not verified_attachment_key:
             return Response({"error": "Message text or attachment is required."}, status=400)
 
         message = ComplaintMessage.objects.create(
@@ -293,6 +314,8 @@ class ComplaintMessageView(APIView):
             attachment=attachment,
             is_read=False,
         )
+        if verified_attachment_key:
+            message.attachment.name = verified_attachment_key
         if actor_type == 'user':
             message.sender_user = actor
         else:
@@ -531,10 +554,22 @@ class PlatformSupportTicketListCreateView(APIView):
         }
         ticket = PlatformSupportTicket.objects.create(**kwargs)
         attachment = request.FILES.get('attachment')
-        if attachment:
+        attachment_key = request.data.get('attachment_key')
+        verified_attachment_key = None
+        if attachment_key:
+            try:
+                from core.services.s3_service import validate_uploaded_object_key
+                verified_attachment_key = validate_uploaded_object_key(attachment_key, 'platform_support')
+            except (ValueError, RuntimeError) as exc:
+                transaction.set_rollback(True)
+                return Response({'attachment_key': str(exc)}, status=400)
+        if attachment or verified_attachment_key:
             message_kwargs = {'ticket': ticket, 'sender_type': actor_type, 'attachment': attachment}
             message_kwargs['sender_user' if actor_type == 'user' else 'sender_store'] = actor
-            PlatformSupportMessage.objects.create(**message_kwargs)
+            message = PlatformSupportMessage.objects.create(**message_kwargs)
+            if verified_attachment_key:
+                message.attachment.name = verified_attachment_key
+                message.save(update_fields=['attachment'])
         return Response(_serialize_support_ticket(request, ticket, detail=True), status=201)
 
 
@@ -566,11 +601,22 @@ class PlatformSupportMessageView(APIView):
             return Response({'error': 'This support request is closed.'}, status=400)
         text = str(request.data.get('text', '')).strip()
         attachment = request.FILES.get('attachment')
-        if not text and not attachment:
+        attachment_key = request.data.get('attachment_key')
+        verified_attachment_key = None
+        if attachment_key:
+            try:
+                from core.services.s3_service import validate_uploaded_object_key
+                verified_attachment_key = validate_uploaded_object_key(attachment_key, 'platform_support')
+            except (ValueError, RuntimeError) as exc:
+                return Response({'attachment_key': str(exc)}, status=400)
+        if not text and not attachment and not verified_attachment_key:
             return Response({'error': 'Write a message or attach a file.'}, status=400)
         kwargs = {'ticket': ticket, 'sender_type': actor_type, 'text': text, 'attachment': attachment}
         kwargs['sender_user' if actor_type == 'user' else 'sender_store'] = actor
-        PlatformSupportMessage.objects.create(**kwargs)
+        message = PlatformSupportMessage.objects.create(**kwargs)
+        if verified_attachment_key:
+            message.attachment.name = verified_attachment_key
+            message.save(update_fields=['attachment'])
         if ticket.status == 'resolved':
             ticket.status = 'open'
             ticket.resolved_at = None

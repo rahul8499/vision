@@ -78,7 +78,8 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         medicine_name = attrs.get('medicine_name')
         # If this is an update, we might not have them in attrs but on the instance, but for creation attrs has them
         # if image is None and not medicine_name:
-        if not image and not medicine_name and not self.instance:
+        verified_image_key = self.context.get('verified_image_key')
+        if not image and not verified_image_key and not medicine_name and not self.instance:
             raise serializers.ValidationError({"error": "Either prescription image or medicine name must be provided."})
         return super().validate(attrs)
 

@@ -204,6 +204,34 @@ def copy_s3_object(source_key, dest_folder, dest_filename=None):
     except Exception as e:
         logger.exception("Failed to copy S3 object from %s to %s", source_key, dest_key)
         return None
+
+
+def validate_uploaded_object_key(object_key, expected_folder):
+    """
+    Validate a client-submitted key before assigning it to a model FileField.
+
+    Presigned uploads bypass Django's multipart parser, so the API receiving the
+    model data must verify that the key is in the expected folder and that the
+    object actually exists in our bucket.
+    """
+    if not is_s3_enabled():
+        raise RuntimeError("S3 storage is not configured.")
+
+    object_key = (object_key or '').strip().lstrip('/')
+    expected_prefix = validate_upload_folder(expected_folder).rstrip('/') + '/'
+    if not object_key or not object_key.startswith(expected_prefix):
+        raise ValueError(f"Invalid upload key. Expected folder: {expected_prefix}")
+
+    try:
+        _get_s3_client().head_object(
+            Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+            Key=object_key,
+        )
+    except Exception as exc:
+        logger.warning("Uploaded S3 object could not be verified: %s", object_key)
+        raise ValueError("Uploaded file was not found in S3.") from exc
+
+    return object_key
 """
 MIME type mapping for common file types used in the app.
 """

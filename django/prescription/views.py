@@ -452,11 +452,28 @@ class PrescriptionUploadView(APIView):
         # Instead, read upload_type separately and pass it into serializer.save().
         user_upload_type = request.data.get('upload_type', 'text_only')
 
-        serializer = PrescriptionSerializer(data=request.data, context={'request': request})
+        upload_data = request.data.copy()
+        image_key = request.data.get('image_key')
+        verified_image_key = None
+        if image_key:
+            try:
+                from core.services.s3_service import validate_uploaded_object_key
+                verified_image_key = validate_uploaded_object_key(image_key, 'prescriptions')
+                upload_data.pop('image_key', None)
+            except (ValueError, RuntimeError) as exc:
+                return Response({'image_key': str(exc)}, status=400)
+
+        serializer = PrescriptionSerializer(
+            data=upload_data,
+            context={'request': request, 'verified_image_key': verified_image_key},
+        )
 
         if serializer.is_valid():
             status_val = 'emergency' if emergency else 'normal'
             prescription = serializer.save(user=user, status=status_val, user_upload_type=user_upload_type)
+            if verified_image_key:
+                prescription.image.name = verified_image_key
+                prescription.save(update_fields=['image'])
 
             response_data = {
                 "prescription": serializer.data,
@@ -4019,9 +4036,20 @@ class ChatMessageMediaUploadView(APIView):
 
         image = request.FILES.get('image')
         video = request.FILES.get('video')
+        image_key = request.data.get('image_key')
+        video_key = request.data.get('video_key')
+        verified_image_key = verified_video_key = None
+        try:
+            from core.services.s3_service import validate_uploaded_object_key
+            if image_key:
+                verified_image_key = validate_uploaded_object_key(image_key, 'chat_images')
+            if video_key:
+                verified_video_key = validate_uploaded_object_key(video_key, 'chat_videos')
+        except (ValueError, RuntimeError) as exc:
+            return Response({'error': str(exc)}, status=400)
         reply_to_id = request.data.get('reply_to_id')
 
-        if not image and not video:
+        if not image and not video and not verified_image_key and not verified_video_key:
             return Response({"error": "No media provided"}, status=400)
 
         msg = ChatMessage.objects.create(
@@ -4032,9 +4060,15 @@ class ChatMessageMediaUploadView(APIView):
             reply_to_id=reply_to_id,
             is_read=False
         )
+        if verified_image_key:
+            msg.image.name = verified_image_key
+        if verified_video_key:
+            msg.video.name = verified_video_key
+        if verified_image_key or verified_video_key:
+            msg.save(update_fields=['image', 'video'])
         ChatThread.objects.filter(id=thread.id).update(updated_at=timezone.now())
 
-        preview_text = 'Sent you a photo' if image else 'Sent you a video'
+        preview_text = 'Sent you a photo' if (image or verified_image_key) else 'Sent you a video'
         _run_safe_side_effect(
             'create chat media bell',
             lambda: create_chat_message_app_notification(
@@ -4217,7 +4251,15 @@ class ChatAudioUploadView(APIView):
         sender_type = 'store' if hasattr(user, 'owner_name') else 'user'
         
         audio_file = request.FILES.get('audio')
-        if not audio_file:
+        audio_key = request.data.get('audio_key')
+        verified_audio_key = None
+        if audio_key:
+            try:
+                from core.services.s3_service import validate_uploaded_object_key
+                verified_audio_key = validate_uploaded_object_key(audio_key, 'chat_audio')
+            except (ValueError, RuntimeError) as exc:
+                return Response({'error': str(exc)}, status=400)
+        if not audio_file and not verified_audio_key:
             return Response({"error": "No audio file provided"}, status=400)
 
         # Create message
@@ -4227,6 +4269,9 @@ class ChatAudioUploadView(APIView):
             audio=audio_file,
             text=""
         )
+        if verified_audio_key:
+            msg.audio.name = verified_audio_key
+            msg.save(update_fields=['audio'])
         _run_safe_side_effect(
             'create chat audio bell',
             lambda: create_chat_message_app_notification(
