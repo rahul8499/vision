@@ -8,6 +8,8 @@ uvicorn
 gevent
 python-dotenv
 Pillow
+boto3
+django-storages
 
 # 🚀 Option 2: Production Ready (Recommended 🔥)
 

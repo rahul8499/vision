@@ -10,6 +10,7 @@ from rest_framework import serializers
 from .models import Prescription, Store,User,PrescriptionResponse,PrescriptionResponseMedicine,StoreReportNote, ReportNote, PrescriptionTargetStore, Rating, UserStoreRelationship
 from core.services.safe_get import safe_get
 from core.services.capability_service import get_cached_capability_flags, get_store_lifecycle_status, get_user_lifecycle_status
+from core.services.s3_service import get_file_url
 
 
 class PrescriptionSerializer(serializers.ModelSerializer):
@@ -129,11 +130,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         if not self._is_verified_store():
             return None
         request = self.context.get('request')
-        if obj.image and hasattr(obj.image, 'url'):
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+        return get_file_url(obj.image, request)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -382,12 +379,8 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
         image = obj.image or getattr(obj.prescription, 'image', None)
         if not image:
             return None
-        try:
-            url = image.url
-        except (ValueError, AttributeError):
-            return None
         request = self.context.get('request')
-        return request.build_absolute_uri(url) if request else url
+        return get_file_url(image, request)
 
     class Meta:
         model = PrescriptionResponse
@@ -857,9 +850,7 @@ class StoreMeSerializer(serializers.ModelSerializer):
     def _abs_url(self, obj, field_name):
         file_field = getattr(obj, field_name)
         request    = self.context.get("request")
-        if file_field and file_field.name and request:
-            return request.build_absolute_uri(file_field.url)
-        return None
+        return get_file_url(file_field, request)
 
     def get_store_license_document(self, obj):
         return self._abs_url(obj, "store_license_document")
@@ -1012,12 +1003,8 @@ class ChatThreadSerializer(serializers.ModelSerializer):
         return getattr(obj, 'unread_count', 0) or 0
 
     def get_prescription_image(self, obj):
-        if obj.prescription and obj.prescription.image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.prescription.image.url)
-            return obj.prescription.image.url
-        return None
+        request = self.context.get('request')
+        return get_file_url(getattr(obj, 'prescription', None) and obj.prescription.image, request)
 
     def _get_other_participant(self, obj):
         request = self.context.get('request')

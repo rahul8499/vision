@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.services.s3_service import get_file_url
+
 from .models import (
     Complaint,
     ComplaintAttachment,
@@ -17,12 +19,7 @@ class ComplaintAttachmentSerializer(serializers.ModelSerializer):
 
     def _abs_url(self, obj):
         request = self.context.get('request')
-        if obj.file and obj.file.name and request:
-            try:
-                return request.build_absolute_uri(obj.file.url)
-            except Exception:
-                return obj.file.url
-        return None
+        return get_file_url(obj.file, request)
 
     def get_url(self, obj):
         return self._abs_url(obj)
@@ -41,12 +38,7 @@ class ComplaintMessageSerializer(serializers.ModelSerializer):
 
     def _abs_url(self, obj):
         request = self.context.get('request')
-        if obj.attachment and obj.attachment.name and request:
-            try:
-                return request.build_absolute_uri(obj.attachment.url)
-            except Exception:
-                return obj.attachment.url
-        return None
+        return get_file_url(obj.attachment, request)
 
     def get_attachment_url(self, obj):
         return self._abs_url(obj)

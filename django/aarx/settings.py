@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     'django_celery_results',
     'subscription',
     'complaints',
+    'storages',
 
 
 
@@ -319,3 +320,42 @@ WHATSAPP_OTP_COPY_CODE_BUTTON = os.getenv(
 RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
 RAZORPAY_WEBHOOK_SECRET = os.getenv('RAZORPAY_WEBHOOK_SECRET', '')
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# AWS S3 Storage — Production File Storage
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', 'aarx-media')
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'eu-north-1')
+AWS_S3_ADDRESSING_STYLE = os.getenv('AWS_S3_ADDRESSING_STYLE', 'virtual')
+AWS_S3_PRESIGNED_URL_EXPIRY = int(os.getenv('AWS_S3_PRESIGNED_URL_EXPIRY', 3600))
+
+# Enable S3 storage only when AWS credentials are configured
+_s3_enabled = bool(AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
+
+if _s3_enabled:
+    # Use S3 as default file storage for all ImageField/FileField
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
+
+    # S3 Bucket Settings
+    AWS_S3_FILE_OVERWRITE = False          # Don't overwrite files with same name
+    AWS_DEFAULT_ACL = None                 # Private by default (presigned URLs for access)
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',   # 1 day cache
+    }
+    AWS_QUERYSTRING_AUTH = True             # Use presigned URLs (private bucket)
+    AWS_QUERYSTRING_EXPIRE = AWS_S3_PRESIGNED_URL_EXPIRY
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_CUSTOM_DOMAIN = None            # No custom domain, use presigned URLs
+    AWS_S3_ADDRESSING_STYLE = 'virtual'    # Virtual-hosted style URLs
+

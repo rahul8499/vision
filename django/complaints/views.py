@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from core.services.s3_service import get_file_url
+
 from prescription.authentication import StoreTokenAuthentication, UserTokenAuthentication
 from prescription.models import Store, User, PrescriptionResponse
 from prescription.utils.app_notifications import (
@@ -448,7 +450,7 @@ def _support_ticket_for_actor(ticket_id, actor_type, actor):
 
 
 def _file_url(request, field):
-    return request.build_absolute_uri(field.url) if field else None
+    return get_file_url(field, request)
 
 
 def _serialize_support_ticket(request, ticket, detail=False):

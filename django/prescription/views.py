@@ -54,6 +54,7 @@ from .utils.app_notifications import (
     send_user_app_notification,
     serialize_app_notification,
 )
+from core.services.s3_service import get_file_url
 
 from rest_framework import status
 from rest_framework.generics import RetrieveAPIView
@@ -716,11 +717,27 @@ class SubmitResponseToUserPrescription(APIView):
             quotation_scenario=quotation_scenario
             # distance_km=distance_display
         )
-        if prescription.image and prescription.image.name and os.path.isfile(prescription.image.path):
-          with open(prescription.image.path, 'rb') as f:
-            response.image.save(os.path.basename(prescription.image.name), File(f), save=False)
-
-          response.save()
+        # 🗄️ Copy prescription image to response (S3-compatible)
+        if prescription.image and prescription.image.name:
+            try:
+                from core.services.s3_service import is_s3_enabled, copy_s3_object
+                if is_s3_enabled():
+                    # S3 mode: server-side copy (fast, no download/re-upload)
+                    new_key = copy_s3_object(
+                        source_key=prescription.image.name,
+                        dest_folder='response_images',
+                    )
+                    if new_key:
+                        response.image.name = new_key
+                        response.save()
+                else:
+                    # Local mode: read file and save copy
+                    if os.path.isfile(prescription.image.path):
+                        with open(prescription.image.path, 'rb') as f:
+                            response.image.save(os.path.basename(prescription.image.name), File(f), save=False)
+                        response.save()
+            except Exception as e:
+                logger.warning(f"Image copy failed for response {response.id}: {e}")
 
 
         medicines_data = request.data.get('medicines', [])
@@ -1729,10 +1746,7 @@ class StoreDashboardSummaryView(APIView):
             image = item.image or getattr(item.prescription, 'image', None)
             if not image:
                 return None
-            try:
-                return request.build_absolute_uri(image.url)
-            except (ValueError, AttributeError):
-                return None
+            return get_file_url(image, request)
 
         def add_attention(qs, reason, stage, since_field, threshold, icon):
             nonlocal attention, seen_ids
@@ -4032,8 +4046,8 @@ class ChatMessageMediaUploadView(APIView):
             lambda: notify_chat_message_task.delay(thread.id, user_type, preview_text),
         )
 
-        image_url = request.build_absolute_uri(msg.image.url) if msg.image else None
-        video_url = request.build_absolute_uri(msg.video.url) if msg.video else None
+        image_url = get_file_url(msg.image, request) if msg.image else None
+        video_url = get_file_url(msg.video, request) if msg.video else None
 
         # 🔥 WebSocket Broadcast
         channel_layer = get_channel_layer()
@@ -4095,8 +4109,8 @@ class ChatMessageMediaUploadView(APIView):
 #                 'sender_type': sender_type,
 #                 'sender_id': request.user.id,
 #                 'created_at': msg.created_at.isoformat(),
-#                 'image': request.build_absolute_uri(msg.image.url) if msg.image else None,
-#                 'video': request.build_absolute_uri(msg.video.url) if msg.video else None,
+#                 'image': get_file_url(msg.image, request) if msg.image else None,
+#                 'video': get_file_url(msg.video, request) if msg.video else None,
 #                 'is_read': False,
 #                 'reply_to': msg.reply_to_id,
 #                 'reply_to_text': msg.reply_to.text[:50] if msg.reply_to else None
@@ -4228,7 +4242,7 @@ class ChatAudioUploadView(APIView):
         thread.save()
 
         # Build absolute URI for audio properly
-        audio_url = request.build_absolute_uri(msg.audio.url) if msg.audio else None
+        audio_url = get_file_url(msg.audio, request) if msg.audio else None
 
         # Broadcast via Channels
         channel_layer = get_channel_layer()
@@ -4654,7 +4668,7 @@ def _consultation_actor(request):
 
 
 def _consultation_file_url(request, field):
-    return request.build_absolute_uri(field.url) if field else None
+    return get_file_url(field, request)
 
 
 def _serialize_consultation(request, consultation):
