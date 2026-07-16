@@ -14,6 +14,7 @@ from django.contrib.auth.hashers import make_password, check_password
 import uuid
 import geohash
 from datetime import timedelta
+from decimal import Decimal
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
@@ -144,6 +145,85 @@ class Store(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class StoreDeliverySettings(models.Model):
+    store = models.OneToOneField(Store, on_delete=models.CASCADE, related_name='delivery_settings')
+    pickup_enabled = models.BooleanField(default=True)
+    home_delivery_enabled = models.BooleanField(default=False)
+    maximum_delivery_radius_km = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal('5.00'))
+    free_delivery_distance_km = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal('0.00'))
+    base_delivery_charge = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'))
+    per_km_charge = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'))
+    minimum_delivery_charge = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'))
+    maximum_delivery_charge = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    default_estimated_delivery_minutes = models.PositiveIntegerField(default=45)
+    delivery_time_per_km_minutes = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
+    delivery_message_template = models.CharField(max_length=240, default='We can deliver to your location in approximately {eta} minutes.')
+    delivery_unavailable_message = models.CharField(max_length=240, default='Home delivery is currently unavailable. You can pick up your order from the store.')
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        errors = {}
+        for field in ('maximum_delivery_radius_km', 'free_delivery_distance_km', 'base_delivery_charge', 'per_km_charge', 'minimum_delivery_charge', 'delivery_time_per_km_minutes'):
+            if getattr(self, field) is not None and getattr(self, field) < 0:
+                errors[field] = 'Value cannot be negative.'
+        if self.maximum_delivery_charge is not None and self.maximum_delivery_charge < 0:
+            errors['maximum_delivery_charge'] = 'Value cannot be negative.'
+        if self.home_delivery_enabled and self.maximum_delivery_radius_km <= 0:
+            errors['maximum_delivery_radius_km'] = 'A positive radius is required for home delivery.'
+        if self.free_delivery_distance_km > self.maximum_delivery_radius_km:
+            errors['free_delivery_distance_km'] = 'Free distance cannot exceed maximum radius.'
+        if self.maximum_delivery_charge is not None and self.maximum_delivery_charge < self.minimum_delivery_charge:
+            errors['maximum_delivery_charge'] = 'Maximum charge cannot be lower than minimum charge.'
+        if not 5 <= self.default_estimated_delivery_minutes <= 240:
+            errors['default_estimated_delivery_minutes'] = 'Estimated time must be between 5 and 240 minutes.'
+        if not self.pickup_enabled and not self.home_delivery_enabled:
+            errors['pickup_enabled'] = 'At least one fulfillment method must remain enabled.'
+        if self.home_delivery_enabled and not self.store.location:
+            errors['home_delivery_enabled'] = 'Add the store location before enabling home delivery.'
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class StoreDeliveryPerson(models.Model):
+    VEHICLE_CHOICES = [('walk', 'On Foot'), ('bicycle', 'Bicycle'), ('bike', 'Motorbike'), ('scooter', 'Scooter'), ('car', 'Car'), ('other', 'Other')]
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='delivery_people')
+    name = models.CharField(max_length=120)
+    mobile = models.CharField(max_length=15)
+    vehicle_type = models.CharField(max_length=20, choices=VEHICLE_CHOICES, default='bike')
+    vehicle_number = models.CharField(max_length=30, blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    is_available = models.BooleanField(default=True, db_index=True)
+    current_order_count = models.PositiveIntegerField(default=0)
+    max_concurrent_orders = models.PositiveIntegerField(default=1)
+    last_assigned_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_available', 'current_order_count', 'name']
+        constraints = [models.UniqueConstraint(fields=['store', 'mobile'], name='unique_delivery_person_mobile_per_store')]
+
+    def clean(self):
+        errors = {}
+        if not self.name.strip():
+            errors['name'] = 'Name is required.'
+        if len(''.join(character for character in self.mobile if character.isdigit())) < 10:
+            errors['mobile'] = 'Enter a valid mobile number.'
+        if self.max_concurrent_orders < 1:
+            errors['max_concurrent_orders'] = 'Must be at least 1.'
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 # class Prescription(models.Model):
@@ -582,6 +662,62 @@ class PrescriptionResponseStatusHistory(models.Model):
 
     def __str__(self):
         return f"Order {self.response_id}: {self.from_status} -> {self.to_status} at {self.created_at}"
+
+class QuoteDeliveryOffer(models.Model):
+    ELIGIBILITY_CHOICES = [
+        ('eligible', 'Eligible'),
+        ('delivery_disabled', 'Delivery Disabled'),
+        ('outside_radius', 'Outside Delivery Radius'),
+        ('user_location_missing', 'User Location Missing'),
+        ('store_location_missing', 'Store Location Missing'),
+        ('delivery_person_unavailable', 'Delivery Person Unavailable'),
+        ('temporarily_unavailable', 'Temporarily Unavailable'),
+        ('store_closed', 'Store Closed'),
+        ('manual_override', 'Manual Override'),
+    ]
+    response = models.OneToOneField(PrescriptionResponse, on_delete=models.CASCADE, related_name='delivery_offer')
+    distance_km = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    pickup_available = models.BooleanField(default=True)
+    home_delivery_available = models.BooleanField(default=False)
+    eligibility_code = models.CharField(max_length=40, choices=ELIGIBILITY_CHOICES, default='delivery_disabled')
+    unavailable_reason = models.CharField(max_length=240, blank=True)
+    delivery_charge = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'))
+    estimated_delivery_minutes = models.PositiveIntegerField(null=True, blank=True)
+    delivery_message = models.CharField(max_length=240, blank=True)
+    settings_snapshot = models.JSONField(default=dict, blank=True)
+    assigned_delivery_person = models.ForeignKey(
+        StoreDeliveryPerson,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_offers',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        errors = {}
+        if self.delivery_charge < 0:
+            errors['delivery_charge'] = 'Delivery charge cannot be negative.'
+        if self.home_delivery_available and self.eligibility_code not in ('eligible', 'manual_override'):
+            errors['eligibility_code'] = 'Available delivery must use an eligible status.'
+        if self.assigned_delivery_person_id:
+            if self.assigned_delivery_person.store_id != self.response.store_id:
+                errors['assigned_delivery_person'] = 'Delivery person must belong to the quoting store.'
+            elif not self.assigned_delivery_person.is_active:
+                errors['assigned_delivery_person'] = 'Inactive delivery person cannot be assigned.'
+        if errors:
+            raise ValidationError(errors)
+
+    @property
+    def payable_amount(self):
+        medicine_total = self.response.total_amount or Decimal('0.00')
+        return medicine_total + self.delivery_charge if self.response.delivery_option == 'online' else medicine_total
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
 
 class PrescriptionTargetStore(models.Model):
     STATUS_CHOICES = [

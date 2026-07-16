@@ -16,6 +16,7 @@
 from collections import defaultdict
 from django.conf import settings
 from django.core.mail import send_mail
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import F, Count, Sum
 from decimal import Decimal, InvalidOperation
@@ -58,7 +59,10 @@ from core.services.s3_service import get_file_url
 
 from rest_framework import status
 from rest_framework.generics import RetrieveAPIView
-from .serializers import StoreMeSerializer,StoreMeUpdateSerializer
+from .serializers import (
+    StoreMeSerializer, StoreMeUpdateSerializer, StoreDeliverySettingsSerializer,
+    StoreDeliveryPersonSerializer,
+)
 from rest_framework.parsers import JSONParser
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -68,7 +72,15 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from .serializers import PrescriptionSerializer, PrescriptionResponseSerializer, RatingSerializer
 # from .models import Prescription,
-from .models import Prescription, PrescriptionResponse, PasswordResetOTP, DeliveryOTP, PharmacistConsultation, PharmacistConsultationMessage  # Make sure to import both models
+from .models import (
+    Prescription, PrescriptionResponse, PasswordResetOTP, DeliveryOTP,
+    PharmacistConsultation, PharmacistConsultationMessage, StoreDeliveryPerson,
+    QuoteDeliveryOffer,
+)
+from .services.delivery import (
+    get_or_create_delivery_settings, evaluate_delivery_eligibility,
+    apply_quote_delivery_override, release_assigned_delivery_person,
+)
 
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -679,6 +691,21 @@ class SubmitResponseToUserPrescription(APIView):
         if PrescriptionResponse.objects.filter(prescription=prescription, store=store).exists():
             return Response({"error": "You have already submitted a quote for this prescription."}, status=400)
 
+        delivery_override = request.data.get('delivery_offer')
+        if isinstance(delivery_override, str):
+            try:
+                delivery_override = json.loads(delivery_override)
+            except json.JSONDecodeError:
+                return Response({"error": "Invalid delivery_offer format."}, status=400)
+        try:
+            delivery_result = apply_quote_delivery_override(
+                evaluate_delivery_eligibility(store, prescription),
+                delivery_override,
+            )
+        except (ValueError, TypeError) as exc:
+            return Response({"error": str(exc)}, status=400)
+        if not delivery_result['pickup_available'] and not delivery_result['home_delivery_available']:
+            return Response({"error": "At least one fulfillment method must be available for this quote."}, status=400)
 
         total_amount = None
         if 'total_amount' in request.data:
@@ -773,6 +800,7 @@ class SubmitResponseToUserPrescription(APIView):
             response.delete()
             return Response({"error": "Stockout: At least one medicine must be available to send a quote."}, status=400)
 
+        QuoteDeliveryOffer.objects.create(response=response, **delivery_result)
         response.stock_verified_at = timezone.now()
         response.save()
 
@@ -827,6 +855,7 @@ class SubmitResponseToUserPrescription(APIView):
         # ⚡ Real-Time WebSocket Broadcast
         
         serializer = PrescriptionResponseSerializer(response, context={'request': request})
+        channel_safe_response = json.loads(json.dumps(serializer.data, cls=DjangoJSONEncoder))
         _eid = str(uuid.uuid4())
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
@@ -836,7 +865,7 @@ class SubmitResponseToUserPrescription(APIView):
                 "event_id": _eid,
                 "seq": response.response_version,
                 "action": "new_offer",
-                "data": serializer.data
+                "data": channel_safe_response
             }
         )
         try:
@@ -1057,6 +1086,8 @@ class UserCancelOrderView(APIView):
                 # ❌ COMPLETED
                 if status == 'completed':
                     return Response({"error": "Completed orders cannot be cancelled."}, status=400)
+                if status == 'cancelled':
+                    return Response({"message": "Order is already cancelled."}, status=200)
 
                 # ⚠️ PROCESSING — reason mandatory
                 if status == 'processing' and not reason:
@@ -1077,6 +1108,7 @@ class UserCancelOrderView(APIView):
                 response.cancelled_by = 'user'
                 response.cancel_reason = reason or ('Cancelled during grace period' if not grace_expired else reason)
                 response.save(user_context=request.user)
+                release_assigned_delivery_person(response)
 
                 # ⚡ Real-Time WebSocket Broadcast
                 _eid = str(uuid.uuid4())
@@ -1174,12 +1206,15 @@ class StoreCancelOrderView(APIView):
                 # ❌ COMPLETED
                 if status == 'completed':
                     return Response({"error": "Completed orders cannot be cancelled."}, status=400)
+                if status == 'cancelled':
+                    return Response({"message": "Order is already cancelled."}, status=200)
 
                 # ✅ Cancel
                 response.user_status = 'cancelled'
                 response.cancelled_by = 'store'
                 response.cancel_reason = reason
                 response.save(user_context=request.user)
+                release_assigned_delivery_person(response)
 
                 # ⚡ Real-Time WebSocket Broadcast
                 _eid = str(uuid.uuid4())
@@ -1353,6 +1388,7 @@ class StoreUpdateProgressView(APIView):
 
     def post(self, request, response_id):
         action = request.data.get('action')
+        delivery_person_id = request.data.get('delivery_person_id')
         VALID_ACTIONS = ['start_processing', 'mark_packed', 'mark_locked', 'mark_completed']
 
         if action not in VALID_ACTIONS:
@@ -1390,6 +1426,47 @@ class StoreUpdateProgressView(APIView):
 
                 elif action == 'mark_locked':
                     if response.delivery_option == 'online':
+                        if not delivery_person_id:
+                            delivery_person_id = StoreDeliveryPerson.objects.filter(
+                                store=request.user,
+                                is_active=True,
+                                is_available=True,
+                                current_order_count__lt=F('max_concurrent_orders'),
+                            ).order_by('current_order_count', 'last_assigned_at', 'id').values_list('id', flat=True).first()
+                        if delivery_person_id:
+                            try:
+                                person = StoreDeliveryPerson.objects.select_for_update().get(
+                                    id=delivery_person_id,
+                                    store=request.user,
+                                    is_active=True,
+                                    is_available=True,
+                                )
+                            except StoreDeliveryPerson.DoesNotExist:
+                                return Response({"error": "Selected delivery person is not available."}, status=400)
+                            if person.current_order_count >= person.max_concurrent_orders:
+                                return Response({"error": "Selected delivery person has reached the order limit."}, status=409)
+                            try:
+                                offer = response.delivery_offer
+                            except QuoteDeliveryOffer.DoesNotExist:
+                                offer = None
+                            if offer:
+                                if offer.assigned_delivery_person_id:
+                                    if offer.assigned_delivery_person_id == person.id:
+                                        response.user_status = 'out_for_delivery'
+                                        response.is_locked = True
+                                        response.locked_at = response.locked_at or timezone.now()
+                                        response.save()
+                                        return Response({
+                                            "message": "Order is already assigned to this delivery person.",
+                                            "user_status": response.user_status,
+                                            "is_locked": response.is_locked,
+                                        }, status=200)
+                                    return Response({"error": "A delivery person is already assigned to this order."}, status=409)
+                                offer.assigned_delivery_person = person
+                                offer.save(update_fields=['assigned_delivery_person', 'updated_at'])
+                                person.current_order_count += 1
+                                person.last_assigned_at = timezone.now()
+                                person.save(update_fields=['current_order_count', 'last_assigned_at', 'updated_at'])
                         response.user_status = 'out_for_delivery'
                     else:
                         response.user_status = 'locked'
@@ -1634,6 +1711,7 @@ class VerifyCompletionOTPView(APIView):
                 response.user_status = 'completed'
                 response.completed_by_store = request.user
                 response.save(user_context=request.user)
+                release_assigned_delivery_person(response)
 
                 try:
                     cache.incr(f"store_{request.user.id}_cache_version")
@@ -2229,6 +2307,28 @@ class UpdateResponseStatusAPIView(APIView):
                 previous_status = response_obj.user_status
                 previous_delivery_option = response_obj.delivery_option
                 notification_events = []
+
+                if delivery_option and delivery_option not in ('walk_in', 'online'):
+                    return Response({"error": "Invalid delivery option."}, status=400)
+                if (
+                    delivery_option
+                    and previous_delivery_option
+                    and previous_delivery_option != delivery_option
+                    and previous_status not in ('pending', 'quoted')
+                ):
+                    return Response({"error": "Fulfillment method cannot be changed after order acceptance."}, status=409)
+                selected_delivery_option = delivery_option or response_obj.delivery_option
+                if status == 'accepted' and not selected_delivery_option:
+                    return Response({"error": "Choose pickup or home delivery before accepting the quote."}, status=400)
+                try:
+                    delivery_offer = response_obj.delivery_offer
+                except QuoteDeliveryOffer.DoesNotExist:
+                    delivery_offer = None
+                if selected_delivery_option == 'online':
+                    if not delivery_offer or not delivery_offer.home_delivery_available:
+                        return Response({"error": "Home delivery is not available for this quote."}, status=400)
+                if selected_delivery_option == 'walk_in' and delivery_offer and not delivery_offer.pickup_available:
+                    return Response({"error": "Store pickup is not available for this quote."}, status=400)
                 
                 if status == 'accepted':
                     validate_action_capability(Permission.ACCEPT_QUOTE, actor=request.user, resource=response_obj)
@@ -3689,6 +3789,85 @@ class StoreLoginView(APIView):
 #             serializer.save()
 #             return Response(serializer.data)
 #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class StoreDeliverySettingsView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        settings_obj = get_or_create_delivery_settings(request.user)
+        return Response(StoreDeliverySettingsSerializer(settings_obj, context={'store': request.user}).data)
+
+    def patch(self, request):
+        settings_obj = get_or_create_delivery_settings(request.user)
+        serializer = StoreDeliverySettingsSerializer(
+            settings_obj,
+            data=request.data,
+            partial=True,
+            context={'store': request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class StoreDeliveryPersonListCreateView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        people = StoreDeliveryPerson.objects.filter(store=request.user)
+        return Response(StoreDeliveryPersonSerializer(people, many=True).data)
+
+    def post(self, request):
+        serializer = StoreDeliveryPersonSerializer(data=request.data, context={'store': request.user})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=201)
+
+
+class StoreDeliveryPersonDetailView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def _get_person(self, request, person_id):
+        try:
+            return StoreDeliveryPerson.objects.get(id=person_id, store=request.user)
+        except StoreDeliveryPerson.DoesNotExist:
+            raise NotFound('Delivery person not found.')
+
+    def patch(self, request, person_id):
+        person = self._get_person(request, person_id)
+        serializer = StoreDeliveryPersonSerializer(person, data=request.data, partial=True, context={'store': request.user})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, person_id):
+        person = self._get_person(request, person_id)
+        if person.assigned_offers.filter(response__user_status__in=['accepted', 'processing', 'out_for_delivery']).exists():
+            return Response({'error': 'Deactivate this delivery person after active deliveries are completed.'}, status=409)
+        person.is_active = False
+        person.is_available = False
+        person.save(update_fields=['is_active', 'is_available', 'updated_at'])
+        return Response(status=204)
+
+
+class PrescriptionDeliveryPreviewView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, prescription_id):
+        try:
+            prescription = Prescription.objects.get(
+                id=prescription_id,
+                target_stores__store=request.user,
+            )
+        except Prescription.DoesNotExist:
+            raise NotFound('Prescription is not assigned to this store.')
+        result = evaluate_delivery_eligibility(request.user, prescription)
+        return Response(result)
+
+
 class StoreMeView(APIView):
     authentication_classes = [StoreTokenAuthentication]
     permission_classes     = [IsAuthenticated]

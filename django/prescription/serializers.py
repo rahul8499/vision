@@ -7,7 +7,11 @@
 #         fields = ['id', 'image', 'uploaded_at']
 
 from rest_framework import serializers
-from .models import Prescription, Store,User,PrescriptionResponse,PrescriptionResponseMedicine,StoreReportNote, ReportNote, PrescriptionTargetStore, Rating, UserStoreRelationship
+from .models import (
+    Prescription, Store, User, PrescriptionResponse, PrescriptionResponseMedicine,
+    StoreReportNote, ReportNote, PrescriptionTargetStore, Rating, UserStoreRelationship,
+    StoreDeliverySettings, StoreDeliveryPerson, QuoteDeliveryOffer,
+)
 from core.services.safe_get import safe_get
 from core.services.capability_service import get_cached_capability_flags, get_store_lifecycle_status, get_user_lifecycle_status
 from core.services.s3_service import get_file_url
@@ -336,6 +340,64 @@ class PrescriptionResponseMedicineSerializer(serializers.ModelSerializer):
         fields = ['medicine_name', 'price', 'is_available', 'medicine_brand', 'medicine_type']
 
 
+class StoreDeliverySettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoreDeliverySettings
+        exclude = ['store']
+
+    def validate(self, attrs):
+        instance = self.instance or StoreDeliverySettings(store=self.context['store'])
+        for field, value in attrs.items():
+            setattr(instance, field, value)
+        try:
+            instance.clean()
+        except Exception as exc:
+            detail = getattr(exc, 'message_dict', None) or {'non_field_errors': getattr(exc, 'messages', [str(exc)])}
+            raise serializers.ValidationError(detail)
+        return attrs
+
+
+class StoreDeliveryPersonSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoreDeliveryPerson
+        fields = ['id', 'name', 'mobile', 'vehicle_type', 'vehicle_number', 'is_active', 'is_available', 'current_order_count', 'max_concurrent_orders', 'last_assigned_at', 'created_at', 'updated_at']
+        read_only_fields = ['current_order_count', 'last_assigned_at', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        return StoreDeliveryPerson.objects.create(store=self.context['store'], **validated_data)
+
+    def validate(self, attrs):
+        instance = self.instance or StoreDeliveryPerson(store=self.context['store'], **attrs)
+        if self.instance:
+            for field, value in attrs.items():
+                setattr(instance, field, value)
+        try:
+            instance.clean()
+        except Exception as exc:
+            detail = getattr(exc, 'message_dict', None) or {'non_field_errors': getattr(exc, 'messages', [str(exc)])}
+            raise serializers.ValidationError(detail)
+        return attrs
+
+
+class QuoteDeliveryOfferSerializer(serializers.ModelSerializer):
+    assigned_delivery_person = serializers.SerializerMethodField()
+
+    class Meta:
+        model = QuoteDeliveryOffer
+        fields = ['distance_km', 'pickup_available', 'home_delivery_available', 'eligibility_code', 'unavailable_reason', 'delivery_charge', 'estimated_delivery_minutes', 'delivery_message', 'assigned_delivery_person']
+
+    def get_assigned_delivery_person(self, obj):
+        if not obj.assigned_delivery_person_id:
+            return None
+        person = obj.assigned_delivery_person
+        return {
+            'id': person.id,
+            'name': person.name,
+            'vehicle_type': person.vehicle_type,
+            'vehicle_number': person.vehicle_number,
+        }
+
+
 class PrescriptionResponseSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     store_contact_note = serializers.SerializerMethodField()  # ✅ use this instead of CharField
@@ -375,6 +437,8 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     repeat_customer = serializers.SerializerMethodField()
     repeat_order_count = serializers.SerializerMethodField()
     last_order_at = serializers.SerializerMethodField()
+    delivery_offer = QuoteDeliveryOfferSerializer(read_only=True)
+    payable_amount = serializers.SerializerMethodField()
 
     def get_image(self, obj):
         image = obj.image or getattr(obj.prescription, 'image', None)
@@ -400,8 +464,19 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
             'medicine_breakdown', 'best_deal',
             'completion_otp', 'completion_otp_requested', 'completion_otp_expires_at',
             'completed_by_store', 'capabilities',
-            'can_order_again', 'repeat_customer', 'repeat_order_count', 'last_order_at'
+            'can_order_again', 'repeat_customer', 'repeat_order_count', 'last_order_at',
+            'delivery_offer', 'payable_amount'
         ]
+
+    def get_payable_amount(self, obj):
+        try:
+            offer = obj.delivery_offer
+        except Exception:
+            offer = None
+        medicine_total = obj.total_amount or 0
+        if offer and obj.delivery_option == 'online':
+            return str(medicine_total + offer.delivery_charge)
+        return str(medicine_total)
 
     def _relationship_for_response(self, obj):
         if not obj.user_id or not obj.store_id:

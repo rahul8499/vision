@@ -17,7 +17,9 @@ from .views import (
     RequestPasswordResetOTPView, VerifyPasswordResetOTPView, ConfirmPasswordResetView, AccountDeleteView, AppNotificationListView, AppNotificationMarkReadView,
     StoreRejectEnquiryView, SafetyReportListCreateView,
     PharmacistConsultationOrderView, PharmacistConsultationDetailView, PharmacistCallbackView,
-    StorePharmacistConsultationListView, StorePharmacistAvailabilityView
+    StorePharmacistConsultationListView, StorePharmacistAvailabilityView,
+    StoreDeliverySettingsView, StoreDeliveryPersonListCreateView,
+    StoreDeliveryPersonDetailView, PrescriptionDeliveryPreviewView,
 )
 urlpatterns = [
     path('upload/', PrescriptionUploadView.as_view(), name='upload'),
@@ -34,6 +36,9 @@ urlpatterns = [
     path('api-token-auth/', views.obtain_auth_token),
     path('me/', LoggedInUserView.as_view(), name='logged-in-user'),
     path("store-me/", StoreMeView.as_view(), name="store-me"),
+    path("store/delivery-settings/", StoreDeliverySettingsView.as_view(), name="store-delivery-settings"),
+    path("store/delivery-persons/", StoreDeliveryPersonListCreateView.as_view(), name="store-delivery-person-list"),
+    path("store/delivery-persons/<int:person_id>/", StoreDeliveryPersonDetailView.as_view(), name="store-delivery-person-detail"),
     path("account/delete/", AccountDeleteView.as_view(), name="account-delete"),
 
     path('store/register/', StoreRegisterView.as_view(), name='store_register'),
@@ -50,6 +55,7 @@ urlpatterns = [
     path('user/<int:pk>/', UserDetailUpdateDeleteView.as_view(), name='user_detail'),
     path('prescriptions/', PublicPrescriptionListView.as_view(), name='public_prescriptions'),
     path('prescription/<int:id>/', GetPrescriptionByIdView.as_view(), name='get-prescription-by-id'),
+    path('prescriptions/<int:prescription_id>/delivery-preview/', PrescriptionDeliveryPreviewView.as_view(), name='prescription-delivery-preview'),
     path('user/<int:user_id>/send-response/', SubmitResponseToUserPrescription.as_view(), name='submit-response-to-user'),
 
     # ✅ Specific sub-paths MUST come before generic responses/<int>/
