@@ -12,6 +12,15 @@ python-dotenv
 Pillow
 boto3
 django-storages
+whitenoise
+django-cors-headers
+django-filter
+django-celery-results
+psycopg2-binary
+geopy
+python-geohash
+razorpay
+httpx
 
 # 🚀 Option 2: Production Ready (Recommended 🔥)
 
