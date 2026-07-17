@@ -24,7 +24,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-zm9yafvetr+snvf+*1*0!04)60$sbk-dz3f(kvvlwad1hnh(10'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-local-development-only-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes', 'on')
@@ -75,7 +75,7 @@ INSTALLED_APPS = [
 # ============================================================
 # Celery — Production Scale Configuration
 # ============================================================
-CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
+CELERY_BROKER_URL = os.getenv('REDIS_BROKER_URL', 'redis://127.0.0.1:6379/0')
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
@@ -274,11 +274,11 @@ WSGI_APPLICATION = 'aarx.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': 'aarxdb',
-        'USER': 'aarxuser',
-        'PASSWORD': 'aarxpass',
-        'HOST': '127.0.0.1',
-        'PORT': '6432',
+        'NAME': os.getenv('DB_NAME', 'aarxdb'),
+        'USER': os.getenv('DB_USER', 'aarxuser'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'aarxpass'),
+        'HOST': os.getenv('DB_HOST', '127.0.0.1'),
+        'PORT': os.getenv('DB_PORT', '6432'),
         # ✅ Must be 0 with PgBouncer transaction pool mode.
         'CONN_MAX_AGE': 0,
         # ✅ FIXED: Correct Django setting to disable server-side cursors
@@ -292,7 +292,7 @@ DATABASES = {
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'LOCATION': os.getenv('REDIS_CACHE_URL', 'redis://127.0.0.1:6379/1'),
         'OPTIONS': {
             'max_connections': 100,
             'retry_on_timeout': True,
@@ -353,8 +353,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Location Service API Keys
 # Set GOOGLE_PLACES_API_KEY once billing is enabled in Google Cloud Console.
 # Mapbox key is always used as fallback.
-GOOGLE_PLACES_API_KEY = None  # Enable billing on Google Cloud to activate
-MAPBOX_API_KEY = 'pk.eyJ1IjoicmFodWw4NDk5IiwiYSI6ImNreWZoaGZ5aDE1YWUydXVydmRqYXRidDUifQ.t5UNUnDH9pGxp91_sTMD-A'
+GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY') or None
+MAPBOX_API_KEY = os.getenv('MAPBOX_API_KEY') or None
 
 # Channels Layer configuration (Redis)
 CHANNEL_LAYERS = {
@@ -362,7 +362,7 @@ CHANNEL_LAYERS = {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
             "hosts": [{
-                "address": "redis://127.0.0.1:6379/0",
+                "address": os.getenv('REDIS_CHANNEL_URL', os.getenv('REDIS_BROKER_URL', 'redis://127.0.0.1:6379/0')),
                 "socket_connect_timeout": 5,
                 "socket_timeout": 15,
                 "retry_on_timeout": True,
