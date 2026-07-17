@@ -330,6 +330,8 @@ class Prescription(models.Model):
     dispatch_min_quotes = models.IntegerField(default=3)
     dispatch_next_check_at = models.DateTimeField(null=True, blank=True)
     dispatch_completed_at = models.DateTimeField(null=True, blank=True)
+    emergency_cancelled_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    emergency_cancel_reason = models.TextField(blank=True, default='')
     source_response = models.ForeignKey(
         'PrescriptionResponse',
         on_delete=models.SET_NULL,

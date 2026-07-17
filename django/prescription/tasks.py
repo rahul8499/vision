@@ -457,7 +457,13 @@ def notify_nearby_stores_task(self, prescription_id):
         with transaction.atomic():
             prescription = Prescription.objects.select_for_update().get(id=prescription_id)
 
-            quotes_count = PrescriptionResponse.objects.filter(prescription=prescription).count()
+            if prescription.emergency_cancelled_at:
+                metrics["status"] = "cancelled"
+                return metrics
+
+            quotes_count = PrescriptionResponse.objects.filter(prescription=prescription).exclude(
+                user_status__in=['rejected', 'dismissed', 'expired', 'cancelled']
+            ).count()
             metrics["quotes_count"] = quotes_count
             if quotes_count >= prescription.dispatch_min_quotes:
                 prescription.dispatch_status = 'completed'
@@ -571,6 +577,22 @@ def notify_nearby_stores_task(self, prescription_id):
 
         _bump_store_prescription_cache(store_ids)
         _broadcast_prescription_batch(prescription_id, store_ids)
+        if prescription.status == 'emergency' and prescription.user_id:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            async_to_sync(get_channel_layer().group_send)(f'user_{prescription.user_id}_fulfillment', {
+                'type': 'fulfillment_update',
+                'event_id': str(uuid.uuid4()),
+                'seq': prescription.id,
+                'action': 'emergency_dispatch_update',
+                'data': {
+                    'prescription_id': prescription.id,
+                    'status': 'stores_notified',
+                    'stores_notified': len(store_ids),
+                    'batch_number': prescription.dispatch_current_batch,
+                    'next_check_at': prescription.dispatch_next_check_at.isoformat() if prescription.dispatch_next_check_at else None,
+                },
+            })
         notify_nearby_stores_task.apply_async((prescription_id,), countdown=early_seconds)
         return metrics
     finally:

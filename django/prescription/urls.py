@@ -22,7 +22,8 @@ from .views import (
     StoreDeliveryPersonDetailView, PrescriptionDeliveryPreviewView,
     OrderReplacementCreateView, UserReplacementListView, UserReplacementCancelView,
     StoreReplacementListView, StoreReplacementApproveView, StoreReplacementRejectView,
-    StoreReplacementInTransitView, StoreReplacementCompleteView, LanguagePreferenceView
+    StoreReplacementInTransitView, StoreReplacementCompleteView, LanguagePreferenceView,
+    UserEmergencyRequestListView, UserEmergencyRequestDetailView, UserEmergencyRequestCancelView
 )
 urlpatterns = [
     path('upload/', PrescriptionUploadView.as_view(), name='upload'),
@@ -58,6 +59,9 @@ urlpatterns = [
     path('users/', UserListView.as_view(), name='user_list'),
     path('user/<int:pk>/', UserDetailUpdateDeleteView.as_view(), name='user_detail'),
     path('prescriptions/', PublicPrescriptionListView.as_view(), name='public_prescriptions'),
+    path('emergency-requests/', UserEmergencyRequestListView.as_view(), name='user-emergency-requests'),
+    path('emergency-requests/<int:prescription_id>/', UserEmergencyRequestDetailView.as_view(), name='user-emergency-request-detail'),
+    path('emergency-requests/<int:prescription_id>/cancel/', UserEmergencyRequestCancelView.as_view(), name='user-emergency-request-cancel'),
     path('prescription/<int:id>/', GetPrescriptionByIdView.as_view(), name='get-prescription-by-id'),
     path('prescriptions/<int:prescription_id>/delivery-preview/', PrescriptionDeliveryPreviewView.as_view(), name='prescription-delivery-preview'),
     path('user/<int:user_id>/send-response/', SubmitResponseToUserPrescription.as_view(), name='submit-response-to-user'),

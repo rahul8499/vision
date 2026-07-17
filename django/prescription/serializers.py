@@ -414,6 +414,7 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     prescription_ai_score = serializers.SerializerMethodField()
     prescription_ai_status = serializers.SerializerMethodField()
     prescription_ai_reason = serializers.SerializerMethodField()
+    prescription_is_emergency = serializers.SerializerMethodField()
 
     distance_km = serializers.SerializerMethodField()
     medicines = PrescriptionResponseMedicineSerializer(many=True, read_only=True)
@@ -472,7 +473,7 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrescriptionResponse
         fields = [
-            'id', 'total_amount', 'prescription', 'prescription_medicine_name', 'prescription_description', 'prescription_upload_type', 'prescription_ai_classification', 'prescription_ai_score', 'prescription_ai_status', 'prescription_ai_reason', 'user', 'response_text', 'image',
+            'id', 'total_amount', 'prescription', 'prescription_medicine_name', 'prescription_description', 'prescription_upload_type', 'prescription_ai_classification', 'prescription_ai_score', 'prescription_ai_status', 'prescription_ai_reason', 'prescription_is_emergency', 'user', 'response_text', 'image',
             'store', 'store_name', 'store_contact', 'created_at', 'updated_at',
             'store_latitude', 'store_longitude', 'store_address', 'distance_km','user_name', 'user_address', 'user_contact',
             'medicines', 'is_store_verified', 'is_store_active',  'user_status', 'store_contact_note', 'store_report_count', 'user_report_note', 'user_report_count',
@@ -558,6 +559,9 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
         if not self._request_store_is_verified():
             return "Patient"
         return safe_get(obj, "prescription.user.name", safe_get(obj, "user.name", None))
+
+    def get_prescription_is_emergency(self, obj):
+        return bool(obj.prescription_id and obj.prescription.status == 'emergency')
 
     def get_prescription_medicine_name(self, obj):
         return getattr(obj.prescription, 'medicine_name', None)

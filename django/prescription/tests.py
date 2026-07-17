@@ -1,5 +1,8 @@
 from django.core import mail
 from django.test import SimpleTestCase, override_settings
+from rest_framework.test import APITestCase
+
+from .models import Prescription, User
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -261,3 +264,44 @@ class SafeSideEffectTests(SimpleTestCase):
         self.assertIsNone(result)
         self.assertTrue(any('test notification failed after commit.' in line for line in logs.output))
 
+
+
+class EmergencyRequestApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create(
+            name='Emergency User', mobile='9000000001', email='emergency-user@example.com',
+            password='secret', address='Test address', pincode='411001', token='emergency-user-token',
+        )
+        self.other_user = User.objects.create(
+            name='Other User', mobile='9000000002', email='other-user@example.com',
+            password='secret', address='Other address', pincode='411002', token='other-user-token',
+        )
+        self.request = Prescription.objects.create(
+            user=self.user, status='emergency', latitude=18.5204, longitude=73.8567,
+            user_address='Confirmed test location', medicine_name='Test medicine', dispatch_status='active',
+        )
+        self.other_request = Prescription.objects.create(
+            user=self.other_user, status='emergency', latitude=19.0760, longitude=72.8777,
+            user_address='Private other location', dispatch_status='active',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer emergency-user-token')
+
+    def test_list_is_scoped_to_authenticated_user_even_with_user_id_query(self):
+        response = self.client.get(f'/api/emergency-requests/?user_id={self.other_user.id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['id'] for item in response.data['results']], [self.request.id])
+
+    def test_detail_rejects_another_users_request(self):
+        response = self.client.get(f'/api/emergency-requests/{self.other_request.id}/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_cancel_is_atomic_and_terminal(self):
+        response = self.client.post(
+            f'/api/emergency-requests/{self.request.id}/cancel/',
+            {'reason': 'Medicine arranged elsewhere'}, format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.request.refresh_from_db()
+        self.assertIsNotNone(self.request.emergency_cancelled_at)
+        self.assertEqual(self.request.dispatch_status, 'exhausted')
+        self.assertEqual(self.request.emergency_cancel_reason, 'Medicine arranged elsewhere')

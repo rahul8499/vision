@@ -460,6 +460,10 @@ class PrescriptionUploadView(APIView):
         # Get emergency flag from request
         emergency = request.data.get('emergency', 'false').lower() == 'true'
 
+        if emergency:
+            if request.data.get('latitude') in (None, '') or request.data.get('longitude') in (None, ''):
+                return Response({'error': 'Confirm your location before starting an emergency pharmacy request.', 'code': 'emergency_location_required'}, status=400)
+
         # Validate and save prescription
         # NOTE: Do NOT copy request.data — it contains an open file object that can't be deep-copied.
         # Instead, read upload_type separately and pass it into serializer.save().
@@ -2811,8 +2815,7 @@ class DeletePrescriptionResponse(APIView):
 #     authentication_classes = [UserTokenAuthentication]
 #     permission_classes = [IsAuthenticated]
 #     def get(self, request, *args, **kwargs):
-#         user_id = request.query_params.get('user_id')
-#         start_date = request.query_params.get('start_date')
+# #         start_date = request.query_params.get('start_date')
 #         end_date = request.query_params.get('end_date')
 
 #         prescriptions = Prescription.objects.all()
@@ -2889,14 +2892,7 @@ class PublicPrescriptionListView(APIView):
         start_date_str = request.query_params.get('start_date')
         end_date_str = request.query_params.get('end_date')
 
-        prescriptions = Prescription.objects.all().prefetch_related('target_stores__store')
-
-        if user_id:
-            try:
-                user = User.objects.get(id=user_id)
-                prescriptions = prescriptions.filter(user=user)
-            except User.DoesNotExist:
-                raise NotFound({'error': 'User not found'})
+        prescriptions = Prescription.objects.filter(user=request.user).prefetch_related('target_stores__store')
 
         if start_date_str and end_date_str:
             start = parse_datetime(start_date_str)
@@ -5387,3 +5383,143 @@ class StoreReplacementInTransitView(_StoreReplacementTransitionView):
 
 class StoreReplacementCompleteView(_StoreReplacementTransitionView):
     target_status = 'completed'
+
+
+# User-owned emergency pharmacy request tracking.
+def _emergency_state(prescription, quote_statuses):
+    if prescription.emergency_cancelled_at:
+        return 'cancelled'
+    if any(value in {'completed', 'delivered'} for value in quote_statuses):
+        return 'fulfilled'
+    if any(value in {'accepted', 'processing', 'locked', 'out_for_delivery'} for value in quote_statuses):
+        return 'order_confirmed'
+    if quote_statuses:
+        return 'quote_received'
+    if prescription.dispatch_status == 'exhausted':
+        return 'no_store_available'
+    if prescription.dispatch_status == 'completed':
+        return 'quotes_ready'
+    if prescription.dispatch_current_batch > 0:
+        return 'stores_notified'
+    return 'dispatching'
+
+
+def _serialize_emergency_request(prescription):
+    targets = list(prescription.target_stores.all())
+    responses = list(prescription.responses.all())
+    response_statuses = [str(item.user_status or '').lower() for item in responses]
+    quote_statuses = [value for value in response_statuses if value not in {'rejected', 'dismissed', 'expired', 'cancelled'}]
+    stores = []
+    for target in targets:
+        store = target.store
+        stores.append({
+            'id': store.id,
+            'name': store.name,
+            'address': store.address,
+            'image': get_file_url(store.store_image) if store.store_image else None,
+            'distance_km': float(target.distance_km) if target.distance_km is not None else None,
+            'rank_score': float(target.rank_score),
+            'average_rating': float(store.average_rating or 0),
+            'ratings_count': int(store.total_ratings or 0),
+            'typical_response_minutes': int(store.avg_response_time_mins or 30),
+            'batch_number': target.batch_number,
+            'dispatch_status': target.status,
+            'notified_at': target.notified_at,
+            'opened_at': target.opened_at,
+            'responded_at': target.responded_at,
+        })
+    return {
+        'id': prescription.id,
+        'status': _emergency_state(prescription, quote_statuses),
+        'dispatch_status': prescription.dispatch_status,
+        'dispatch_current_batch': prescription.dispatch_current_batch,
+        'dispatch_next_check_at': prescription.dispatch_next_check_at,
+        'dispatch_completed_at': prescription.dispatch_completed_at,
+        'created_at': prescription.uploaded_at,
+        'cancelled_at': prescription.emergency_cancelled_at,
+        'cancel_reason': prescription.emergency_cancel_reason,
+        'medicine_name': prescription.medicine_name,
+        'description': prescription.description,
+        'image': get_file_url(prescription.image) if prescription.image else None,
+        'address': prescription.user_address,
+        'latitude': prescription.latitude,
+        'longitude': prescription.longitude,
+        'stores_notified': len(targets),
+        'stores_opened': sum(1 for target in targets if target.opened_at),
+        'stores_responded': sum(1 for target in targets if target.responded_at or target.status == 'responded'),
+        'quotes_received': len(quote_statuses),
+        'can_cancel': not prescription.emergency_cancelled_at and not any(
+            value in {'accepted', 'processing', 'locked', 'out_for_delivery', 'completed', 'delivered'}
+            for value in response_statuses
+        ),
+        'stores': stores,
+    }
+
+
+class UserEmergencyRequestListView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        queryset = Prescription.objects.filter(user=request.user, status='emergency').prefetch_related(
+            'target_stores__store', 'responses'
+        ).order_by('-uploaded_at')[:100]
+        data = [_serialize_emergency_request(item) for item in queryset]
+        if request.query_params.get('active') == 'true':
+            data = [item for item in data if item['status'] not in {'cancelled', 'fulfilled', 'no_store_available'}]
+        return Response({'results': data, 'count': len(data)})
+
+
+class UserEmergencyRequestDetailView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, prescription_id):
+        try:
+            prescription = Prescription.objects.prefetch_related('target_stores__store', 'responses').get(
+                id=prescription_id, user=request.user, status='emergency'
+            )
+        except Prescription.DoesNotExist:
+            return Response({'error': 'Emergency request not found.'}, status=404)
+        return Response(_serialize_emergency_request(prescription))
+
+
+class UserEmergencyRequestCancelView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, prescription_id):
+        reason = str(request.data.get('reason') or '').strip()
+        with transaction.atomic():
+            try:
+                prescription = Prescription.objects.select_for_update().get(
+                    id=prescription_id, user=request.user, status='emergency'
+                )
+            except Prescription.DoesNotExist:
+                return Response({'error': 'Emergency request not found.'}, status=404)
+            if prescription.emergency_cancelled_at:
+                return Response({'error': 'Emergency request is already cancelled.'}, status=409)
+            if prescription.responses.filter(user_status__in=['accepted', 'processing', 'locked', 'out_for_delivery', 'completed', 'delivered']).exists():
+                return Response({'error': 'An accepted order must be cancelled from the Orders screen.'}, status=409)
+            now = timezone.now()
+            prescription.emergency_cancelled_at = now
+            prescription.emergency_cancel_reason = reason
+            prescription.dispatch_status = 'exhausted'
+            prescription.dispatch_next_check_at = None
+            prescription.dispatch_completed_at = now
+            prescription.save(update_fields=['emergency_cancelled_at', 'emergency_cancel_reason', 'dispatch_status', 'dispatch_next_check_at', 'dispatch_completed_at'])
+            store_ids = list(prescription.target_stores.values_list('store_id', flat=True))
+            prescription.target_stores.exclude(status='responded').update(status='skipped')
+
+        event_data = {'prescription_id': prescription.id, 'status': 'cancelled', 'updated_at': now.isoformat()}
+        channel_layer = get_channel_layer()
+        for store_id in store_ids:
+            async_to_sync(channel_layer.group_send)(f'store_{store_id}_fulfillment', {
+                'type': 'fulfillment_update', 'event_id': str(uuid.uuid4()), 'seq': prescription.id,
+                'action': 'emergency_cancelled', 'data': event_data,
+            })
+        async_to_sync(channel_layer.group_send)(f'user_{request.user.id}_fulfillment', {
+            'type': 'fulfillment_update', 'event_id': str(uuid.uuid4()), 'seq': prescription.id,
+            'action': 'emergency_cancelled', 'data': event_data,
+        })
+        return Response({'message': 'Emergency pharmacy request cancelled.', 'status': 'cancelled'})
