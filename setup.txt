@@ -1,0 +1,118 @@
+Iska matlab:
+
+1. SETUP.md
+
+Ek guide file banayi gayi hai jisme likha hai:
+
+Kaunse software install karne hain
+Python version
+Node version
+PostgreSQL
+Redis
+Firebase
+Razorpay
+AWS S3
+Production security settings
+2. bootstrap-local.sh
+
+Ek script hai jo automatically:
+
+Python dependencies install karegi
+Node dependencies install karegi
+Django migrations run karegi
+Project check karegi
+
+Matlab baar-baar commands manually nahi chalani padengi.
+
+3. .env.example
+
+Ye template files hain.
+
+Backend:
+
+django/.env.example
+
+Frontend:
+
+AARXUI/.env.example
+
+Inko copy karke .env banana hai:
+
+cp django/.env.example django/.env
+cp AARXUI/.env.example AARXUI/.env
+
+Phir .env me apne secrets bharne hain.
+
+Example:
+
+DB_NAME=vision
+DB_USER=postgres
+DB_PASSWORD=yourpassword
+SECRET_KEY=xxxxxxxx
+4. EXPO_PUBLIC_BASE_URL
+
+Frontend ko batana hota hai backend kahan chal raha hai.
+
+Example:
+
+EXPO_PUBLIC_BASE_URL=http://192.168.1.100:8000
+
+Yahan 192.168.1.100 tumhare computer ka LAN IP hoga.
+
+5. Firebase
+
+Firebase Console se
+
+google-services.json
+
+download karke
+
+AARXUI/google-services.json
+
+me rakhna hai.
+
+Ye Git me upload nahi hota.
+
+6. Bootstrap
+
+Sab setup ke baad
+
+./bootstrap-local.sh
+
+chalana hai.
+
+Ye dependencies install karega.
+
+Uske baad
+
+./start.sh
+
+project start karega.
+
+7. Android
+
+Razorpay use karna hai to:
+
+cd AARXUI
+
+npx expo run:android
+
+npx expo start --dev-client
+8. Expo Go
+
+Ye line important hai:
+
+Expo Go mein Razorpay checkout work nahi karega.
+
+Matlab agar tum sirf
+
+Expo Go
+
+use karoge to payment screen nahi chalegi.
+
+Tumhe
+
+expo run:android
+
+ya Android Dev Build/APK use karna padega.
+
