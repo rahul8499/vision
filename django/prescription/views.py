@@ -104,6 +104,7 @@ from core.services.repeat_customer_service import create_order_again_request
 from rest_framework.pagination import PageNumberPagination
 from django.core.cache import cache
 from rest_framework.throttling import UserRateThrottle
+from core.throttling import GlobalProjectRateThrottle, EndpointProjectRateThrottle
 import requests
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
@@ -518,37 +519,27 @@ class PrescriptionUploadView(APIView):
                     prescription.save(update_fields=['ai_status', 'ai_reason'])
 
             if lat is not None and lon is not None:
-                from .tasks import get_ranked_dispatch_candidates, notify_nearby_stores_task
+                from .tasks import notify_nearby_stores_task
 
-                dispatch_result = None
                 try:
-                    # Create the first target-store batch immediately so the
-                    # seller list is correct even before the next Celery tick.
-                    dispatch_result = notify_nearby_stores_task.run(prescription.id)
-                except Exception as exc:
-                    logger.error(f"Immediate dispatch failed for Rx {prescription.id}: {exc}")
+                    # Ranking, WebSocket broadcasts and push notifications run
+                    # in Celery so the upload response is not held for seconds.
+                    notify_nearby_stores_task.delay(prescription.id)
+                except Exception:
+                    logger.exception("Could not queue store dispatch for Rx %s", prescription.id)
+                    return Response(
+                        {'error': 'Prescription saved, but dispatch could not be started. Please retry.'},
+                        status=503,
+                    )
 
-                prescription.refresh_from_db()
-                target_batch = PrescriptionTargetStore.objects.filter(
-                    prescription=prescription,
-                    batch_number=prescription.dispatch_current_batch,
-                ).select_related('store')
-                dispatched_stores = [target.store for target in target_batch]
-                stores_data = StoreSerializer(dispatched_stores, many=True).data
-                ranked_candidates = get_ranked_dispatch_candidates(
-                    prescription,
-                    radius_km=30,
-                    min_radius_km=0,
-                    max_radius_km=30,
-                )
-                response_data["nearby_stores"] = stores_data
+                response_data["nearby_stores"] = []
                 response_data["dispatch"] = {
-                    "current_batch": prescription.dispatch_current_batch,
-                    "stores_notified": len(dispatched_stores),
-                    "total_eligible_stores": len(ranked_candidates),
+                    "current_batch": 0,
+                    "stores_notified": 0,
+                    "total_eligible_stores": None,
                     "min_quotes_needed": prescription.dispatch_min_quotes,
                     "next_expansion_in_seconds": 120 if prescription.status == 'emergency' else 300,
-                    "status": dispatch_result.get("status") if isinstance(dispatch_result, dict) else prescription.dispatch_status,
+                    "status": "queued",
                 }
 
             return Response(response_data, status=201)
@@ -4032,7 +4023,7 @@ _inflight_location_searches = {}
 
 class LocationSearchView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [LocationSearchThrottle]
+    throttle_classes = [GlobalProjectRateThrottle, EndpointProjectRateThrottle, LocationSearchThrottle]
 
     def get(self, request):
         return async_to_sync(self._async_get)(request)

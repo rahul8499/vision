@@ -1105,24 +1105,6 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {true && (
-            <View className="mt-3 overflow-hidden rounded-[26px] border border-rose-200 bg-white p-5">
-              <View className="flex-row items-center">
-                <View className="h-11 w-11 items-center justify-center rounded-2xl bg-rose-600"><MaterialCommunityIcons name="broadcast" size={22} color="white" /></View>
-                <View className="ml-3 flex-1"><RNText className="text-sm font-black text-slate-950">Emergency Broadcast Benefits</RNText><RNText className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600">First broadcast free · then ₹5</RNText></View>
-              </View>
-              {[
-                ['bell-ring-outline', 'High-priority pharmacy notifications'],
-                ['radar', 'Instant nearby verified-pharmacy dispatch'],
-                ['timer-sand', 'Faster quotation collection'],
-                ['cash-refund', 'Automatic refund if no valid quote arrives'],
-              ].map(([icon, label]) => (
-                <View key={label} className="mt-3 flex-row items-center"><MaterialCommunityIcons name={icon as any} size={17} color="#e11d48" /><RNText className="ml-3 flex-1 text-xs font-semibold text-slate-700">{label}</RNText><MaterialCommunityIcons name="check-circle" size={16} color="#10b981" /></View>
-              ))}
-              <View className="mt-4 flex-row rounded-2xl bg-amber-50 p-3"><MaterialCommunityIcons name="alert-outline" size={17} color="#b45309" /><RNText className="ml-2 flex-1 text-[9px] font-semibold leading-4 text-amber-800">Pharmacy availability service only—not emergency medical treatment.</RNText></View>
-            </View>
-          )}
-
           {address && uploadMode && (
             <TouchableOpacity
               disabled={submitting}
@@ -1143,6 +1125,25 @@ export default function HomeScreen() {
 
               {submitting && <ActivityIndicator color="#FFF" className="ml-3" />}
             </TouchableOpacity>
+          )}
+
+
+          {true && (
+            <View className="mt-3 overflow-hidden rounded-[26px] border border-rose-200 bg-white p-5">
+              <View className="flex-row items-center">
+                <View className="h-11 w-11 items-center justify-center rounded-2xl bg-rose-600"><MaterialCommunityIcons name="broadcast" size={22} color="white" /></View>
+                <View className="ml-3 flex-1"><RNText className="text-sm font-black text-slate-950">Emergency Broadcast Benefits</RNText><RNText className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600">First broadcast free · then ₹5</RNText></View>
+              </View>
+              {[
+                ['bell-ring-outline', 'High-priority pharmacy notifications'],
+                ['radar', 'Instant nearby verified-pharmacy dispatch'],
+                ['timer-sand', 'Faster quotation collection'],
+                ['cash-refund', 'Automatic refund if no valid quote arrives'],
+              ].map(([icon, label]) => (
+                <View key={label} className="mt-3 flex-row items-center"><MaterialCommunityIcons name={icon as any} size={17} color="#e11d48" /><RNText className="ml-3 flex-1 text-xs font-semibold text-slate-700">{label}</RNText><MaterialCommunityIcons name="check-circle" size={16} color="#10b981" /></View>
+              ))}
+              <View className="mt-4 flex-row rounded-2xl bg-amber-50 p-3"><MaterialCommunityIcons name="alert-outline" size={17} color="#b45309" /><RNText className="ml-2 flex-1 text-[9px] font-semibold leading-4 text-amber-800">Pharmacy availability service only—not emergency medical treatment.</RNText></View>
+            </View>
           )}
         </View>
         {/* 💎 Professional Service Grid */}

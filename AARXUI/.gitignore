@@ -78,3 +78,6 @@ dist-i18n-validation/
 # local Android credentials and Firebase configuration
 android/app/debug.keystore
 android/app/google-services.json
+/google-services.json
+google-services.json
+android/app/google-services.json

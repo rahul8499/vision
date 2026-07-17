@@ -27,7 +27,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = 'django-insecure-zm9yafvetr+snvf+*1*0!04)60$sbk-dz3f(kvvlwad1hnh(10'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes', 'on')
 
 # ALLOWED_HOSTS = [
 #     'localhost',
@@ -36,7 +36,7 @@ DEBUG = True
 #     '192.168.5.166'
 #     '0.0.0.0',
 # ]
-ALLOWED_HOSTS = ['*']  # Not recommended for production
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', '*').split(',') if host.strip()]
 
 # for production
 # ALLOWED_HOSTS = [
@@ -137,14 +137,67 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 10,
     'TOKEN_EXPIRATION_TIME': None,  # Disable token expiration
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+        'core.throttling.GlobalProjectRateThrottle',
+        'core.throttling.EndpointProjectRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '1000/day',
-        'user': '5000/hour',
         'location_search': '3/second',
     }
+}
+
+# ============================================================
+# Central API Rate Limiting
+# Change only these counts/windows to tune the whole app.
+# limit = allowed requests during window (seconds)
+# ============================================================
+API_RATE_LIMITING_ENABLED = os.getenv('API_RATE_LIMITING_ENABLED', 'True').lower() in ('1', 'true', 'yes', 'on')
+API_RATE_LIMITS = {
+    'global_authenticated_read': {'limit': 600, 'window': 60},
+    'global_authenticated_write': {'limit': 120, 'window': 60},
+    'global_anonymous_read': {'limit': 120, 'window': 60},
+    'global_anonymous_write': {'limit': 30, 'window': 60},
+    'login': {'limit': 10, 'window': 300},
+    'registration': {'limit': 5, 'window': 3600},
+    'otp_request': {'limit': 5, 'window': 600},
+    'otp_verify': {'limit': 10, 'window': 600},
+    'account_delete': {'limit': 3, 'window': 3600},
+    'prescription_upload': {'limit': 12, 'window': 900},
+    'media_upload': {'limit': 20, 'window': 600},
+    's3_presign': {'limit': 30, 'window': 600},
+    'payment_create': {'limit': 10, 'window': 600},
+    'payment_verify': {'limit': 15, 'window': 600},
+    'provider_webhook': {'limit': 300, 'window': 60},
+    'chat_write': {'limit': 60, 'window': 60},
+    'report_write': {'limit': 10, 'window': 600},
+    'order_action': {'limit': 60, 'window': 60},
+    'location_lookup': {'limit': 30, 'window': 60},
+    'language_change': {'limit': 20, 'window': 60},
+}
+API_RATE_LIMIT_RULES = [
+    {'pattern': r'^/api/(?:user|store)/login/?$', 'methods': {'POST'}, 'scope': 'login'},
+    {'pattern': r'^/api/(?:user|store)/register/?$', 'methods': {'POST'}, 'scope': 'registration'},
+    {'pattern': r'^/api/password-reset/request-otp/?$', 'methods': {'POST'}, 'scope': 'otp_request'},
+    {'pattern': r'^/api/password-reset/(?:verify-otp|confirm)/?$', 'methods': {'POST'}, 'scope': 'otp_verify'},
+    {'pattern': r'^/api/account/delete/?$', 'methods': {'DELETE', 'POST'}, 'scope': 'account_delete'},
+    {'pattern': r'^/api/upload/?$', 'methods': {'POST'}, 'scope': 'prescription_upload'},
+    {'pattern': r'^/api/chat/.+/(?:upload-audio|upload-media)/?$', 'methods': {'POST'}, 'scope': 'media_upload'},
+    {'pattern': r'^/api/s3/(?:presigned-upload|presigned-download)/?$', 'scope': 's3_presign'},
+    {'pattern': r'^/api/emergency-service/charges/?$', 'methods': {'POST'}, 'scope': 'payment_create'},
+    {'pattern': r'^/api/(?:subscriptions/verify|emergency-service/charges/.+/verify)/?$', 'methods': {'POST'}, 'scope': 'payment_verify'},
+    {'pattern': r'^/api/subscriptions/create/?$', 'methods': {'POST'}, 'scope': 'payment_create'},
+    {'pattern': r'^/api/(?:subscriptions/webhook|emergency-service/webhooks/razorpay)/?$', 'methods': {'POST'}, 'scope': 'provider_webhook'},
+    {'pattern': r'^/api/chat/', 'methods': {'POST', 'PUT', 'PATCH', 'DELETE'}, 'scope': 'chat_write'},
+    {'pattern': r'^/api/(?:complaints|safety-reports|store-reports|responses/.+/report)', 'methods': {'POST', 'PUT', 'PATCH'}, 'scope': 'report_write'},
+    {'pattern': r'^/api/(?:responses|orders|replacements|store/replacements)/', 'methods': {'POST', 'PUT', 'PATCH', 'DELETE'}, 'scope': 'order_action'},
+    {'pattern': r'^/api/(?:search-location|location-details)/?$', 'scope': 'location_lookup'},
+    {'pattern': r'^/api/language/?$', 'methods': {'POST', 'PUT', 'PATCH'}, 'scope': 'language_change'},
+]
+API_RATE_LIMIT_FAIL_CLOSED_SCOPES = {'login', 'registration', 'otp_request', 'otp_verify', 'account_delete', 'payment_create', 'payment_verify'}
+NUM_PROXIES = int(os.getenv('API_NUM_PROXIES', '0'))
+WEBSOCKET_RATE_LIMITS = {
+    'max_connections_per_account': 8,
+    'connection_attempts_per_minute': 30,
+    'chat_messages_per_minute': 60,
 }
 
 MIDDLEWARE = [
@@ -152,15 +205,14 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'core.middleware.RateLimitHeadersMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',
     'aarx.middleware.ApiResponseTranslationMiddleware',
-    'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
 ]
 
 STATIC_URL = '/static/'
@@ -169,7 +221,31 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-CORS_ALLOW_ALL_ORIGINS = True  # or CORS_ALLOWED_ORIGINS = ['http://192.168.1.5:19006']
+CORS_ALLOW_ALL_ORIGINS = os.getenv(
+    'CORS_ALLOW_ALL_ORIGINS', 'true' if DEBUG else 'false'
+).lower() == 'true'
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+
+# Production security defaults; configure trusted proxy handling explicitly.
+SECURE_SSL_REDIRECT = os.getenv(
+    'DJANGO_SECURE_SSL_REDIRECT', 'true' if not DEBUG else 'false'
+).lower() == 'true'
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_REFERRER_POLICY = 'same-origin'
+SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', '31536000' if not DEBUG else '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+if os.getenv('TRUST_X_FORWARDED_PROTO', 'false').lower() == 'true':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 ROOT_URLCONF = 'aarx.urls'
 

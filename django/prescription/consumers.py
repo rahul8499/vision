@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.utils import timezone
 from asgiref.sync import sync_to_async
 from django.core.cache import cache
+from django.conf import settings
 from channels.generic.websocket import AsyncWebsocketConsumer
 from redis.exceptions import RedisError
 from channels.db import database_sync_to_async
@@ -19,6 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 class RedisSafeAsyncWebsocketConsumer(AsyncWebsocketConsumer):
+
+    def _consume_fixed_window(key: str, limit: int, window: int) -> bool:
+        bucket = int(timezone.now().timestamp()) / window
+        cache_key = f"{key}:{bucket}"
+        if cache.add(cache_key, 1, timeout=window + 5):
+            return True
+        return cache.incr(cache_key) <= limit
+
     async def __call__(self, scope, receive, send):
         try:
             return await super().__call__(scope, receive, send)
@@ -46,7 +55,7 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
         if isinstance(self.user, AnonymousUser):
             await self.close()
             return
-            
+
         # Verify user or store is part of this exact thread
         has_access = await self.verify_access()
         if not has_access:
@@ -60,7 +69,7 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
         )
 
         await self.accept()
-        
+
         # Mark online and notify group
         await self.update_user_status(True)
         await self.broadcast_user_status(True)
@@ -77,6 +86,18 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
 
     # Receive message from WebSocket client
     async def receive(self, text_data):
+        limit = int(settings.WEBSOCKET_RATE_LIMITS["chat_messages_per_minute"])
+        identity = f"store:{self.user.id}" if getattr(self.user, "is_store", False) else f"user:{self.user.id}"
+        allowed = await sync_to_async(self._consume_fixed_window)(
+            f"ws:chat:{identity}", limit, 60
+        )
+        if not allowed:
+            await self.send(text_data=json.dumps({
+                "type": "rate_limit",
+                "detail": "Too many chat actions. Please try again shortly.",
+                "retry_after": 60,
+            }))
+            return
         text_data_json = json.loads(text_data)
         action = text_data_json.get('action')
 
@@ -151,10 +172,10 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
         message = text_data_json.get('message')
         audio_name = text_data_json.get('audio_name')  # just in case front-end sends audio name
         reply_to_id = text_data_json.get('reply_to_id')
-        
+
         if not message and not audio_name:
             return
-        
+
         # Save message to DB asynchronously
         saved_msg = await self.save_message(message, sender_type, reply_to_id=reply_to_id)
 
@@ -180,9 +201,9 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
             if thread_details:
                 target_group = f"store_{thread_details['store_id']}_fulfillment" if sender_type == 'user' else f"user_{thread_details['user_id']}_fulfillment"
                 preview_text = message[:40] + "..." if len(message) > 40 else message
-                
+
                 print(f"[DEBUG] Sending new_chat_message to target_group: {target_group} | sender_type={sender_type}")
-                
+
                 await self.channel_layer.group_send(
                     target_group,
                     {
@@ -288,7 +309,7 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
         )
         # ✅ High-performance shortcut to update thread timestamp without triggering full save() signals
         ChatThread.objects.filter(id=self.thread_id).update(updated_at=timezone.now())
-        
+
         # Persist the bell item immediately; Expo delivery remains asynchronous.
         try:
             create_chat_message_app_notification(
@@ -369,7 +390,7 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
     def delete_message_logic(self, msg_id, delete_type, sender_type):
         try:
             msg = ChatMessage.objects.get(id=msg_id, thread_id=self.thread_id)
-            
+
             if delete_type == 'everyone':
                 # Check 30m window
                 if msg.sender_type == sender_type and (timezone.now() - msg.created_at < timedelta(minutes=30)):
@@ -395,7 +416,7 @@ class ChatConsumer(RedisSafeAsyncWebsocketConsumer):
 
 class FulfillmentConsumer(RedisSafeAsyncWebsocketConsumer):
     # 🛡️ Max concurrent WebSocket connections per user
-    MAX_WS_CONNECTIONS = 8
+    MAX_WS_CONNECTIONS = settings.WEBSOCKET_RATE_LIMITS["max_connections_per_account"]
     CONN_COUNTER_TTL_SECONDS = 300
 
     async def connect(self):
@@ -516,7 +537,7 @@ class FulfillmentConsumer(RedisSafeAsyncWebsocketConsumer):
 
 class StoreFulfillmentConsumer(RedisSafeAsyncWebsocketConsumer):
     # 🛡️ Max concurrent WebSocket connections per store
-    MAX_WS_CONNECTIONS = 8
+    MAX_WS_CONNECTIONS = settings.WEBSOCKET_RATE_LIMITS["max_connections_per_account"]
 
     async def connect(self):
         self.user = self.scope.get('user')

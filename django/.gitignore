@@ -12,6 +12,9 @@ env/
 # Environment Variables
 .env
 
+google-services.json
+android/app/google-services.json
+
 # Django
 db.sqlite3
 media/
