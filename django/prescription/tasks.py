@@ -1023,17 +1023,25 @@ def analyze_prescription_image_task(self, prescription_id):
         prescription.ai_status = 'processing'
         prescription.save(update_fields=['ai_status'])
 
-        image_path = prescription.image.path
         ai_url = os.environ.get('AI_CLASSIFIER_URL', 'http://127.0.0.1:8010/classify-prescription-image')
 
         try:
-            if os.path.exists(image_path):
-                with open(image_path, 'rb') as f:
-                    response = requests.post(ai_url, files={"file": f}, data={"user_upload_type": prescription.user_upload_type}, timeout=60)
-            else:
-                # Fallback for cloud storage
-                payload = {"image_url": prescription.image.url, "user_upload_type": prescription.user_upload_type}
-                response = requests.post(ai_url, json=payload, timeout=60)
+            # Storage-agnostic: FieldFile.open() works for local disk, S3 and
+            # other remote Django storage backends. Never access .path because
+            # cloud storage intentionally has no absolute local filesystem path.
+            import mimetypes
+            filename = os.path.basename(prescription.image.name) or f'prescription-{prescription.id}.jpg'
+            content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+            prescription.image.open('rb')
+            try:
+                response = requests.post(
+                    ai_url,
+                    files={'file': (filename, prescription.image.file, content_type)},
+                    data={'user_upload_type': prescription.user_upload_type},
+                    timeout=60,
+                )
+            finally:
+                prescription.image.close()
         except requests.RequestException as exc:
             prescription.ai_classification = 'unknown'
             prescription.ai_score = 0.0
@@ -1054,7 +1062,15 @@ def analyze_prescription_image_task(self, prescription_id):
 
         if response.status_code == 200:
             prescription.ai_classification = data.get("classification") or "unknown"
-            prescription.ai_score = data.get("score", 0.0)
+            try:
+                score = float(data.get('score', 0.0) or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            # Persist a stable 0..1 score. This also tolerates a service that
+            # returns percentage-style values such as 85 instead of 0.85.
+            if score > 1.0 and score <= 100.0:
+                score /= 100.0
+            prescription.ai_score = max(0.0, min(1.0, score))
             prescription.ai_reason = data.get("reason", "")
             prescription.ocr_text = data.get("ocr_text", "")
             prescription.ai_status = 'completed'

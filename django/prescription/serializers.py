@@ -1,4 +1,6 @@
 # from rest_framework import serializers
+from datetime import timedelta
+from django.utils import timezone
 # from .models import Prescription
 
 # class PrescriptionSerializer(serializers.ModelSerializer):
@@ -10,7 +12,7 @@ from rest_framework import serializers
 from .models import (
     Prescription, Store, User, PrescriptionResponse, PrescriptionResponseMedicine,
     StoreReportNote, ReportNote, PrescriptionTargetStore, Rating, UserStoreRelationship,
-    StoreDeliverySettings, StoreDeliveryPerson, QuoteDeliveryOffer,
+    StoreDeliverySettings, StoreDeliveryPerson, QuoteDeliveryOffer, OrderReplacementRequest
 )
 from core.services.safe_get import safe_get
 from core.services.capability_service import get_cached_capability_flags, get_store_lifecycle_status, get_user_lifecycle_status
@@ -439,6 +441,26 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     last_order_at = serializers.SerializerMethodField()
     delivery_offer = QuoteDeliveryOfferSerializer(read_only=True)
     payable_amount = serializers.SerializerMethodField()
+    can_request_replacement = serializers.SerializerMethodField()
+    replacement_status = serializers.SerializerMethodField()
+    replacement_id = serializers.SerializerMethodField()
+
+    def _replacement_for_order(self, obj):
+        try:
+            return obj.replacement_request
+        except OrderReplacementRequest.DoesNotExist:
+            return None
+
+    def get_can_request_replacement(self, obj):
+        return bool(obj.user_status == 'completed' and obj.completed_at and timezone.now() <= obj.completed_at + timedelta(hours=48) and self._replacement_for_order(obj) is None)
+
+    def get_replacement_status(self, obj):
+        replacement = self._replacement_for_order(obj)
+        return replacement.status if replacement else None
+
+    def get_replacement_id(self, obj):
+        replacement = self._replacement_for_order(obj)
+        return replacement.id if replacement else None
 
     def get_image(self, obj):
         image = obj.image or getattr(obj.prescription, 'image', None)
@@ -465,7 +487,8 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
             'completion_otp', 'completion_otp_requested', 'completion_otp_expires_at',
             'completed_by_store', 'capabilities',
             'can_order_again', 'repeat_customer', 'repeat_order_count', 'last_order_at',
-            'delivery_offer', 'payable_amount'
+            'delivery_offer', 'payable_amount', 'completed_at',
+            'can_request_replacement', 'replacement_status', 'replacement_id'
         ]
 
     def get_payable_amount(self, obj):
@@ -1101,3 +1124,92 @@ class ChatThreadSerializer(serializers.ModelSerializer):
     def get_other_last_seen(self, obj):
         other = self._get_other_participant(obj)
         return other.last_seen.isoformat() if other else None
+
+
+class OrderReplacementRequestSerializer(serializers.ModelSerializer):
+    proof_image_url = serializers.SerializerMethodField()
+    store_name = serializers.CharField(source='store.name', read_only=True)
+    store_contact = serializers.CharField(source='store.mobile', read_only=True)
+    user_name = serializers.CharField(source='user.name', read_only=True)
+    user_mobile = serializers.CharField(source='user.mobile', read_only=True)
+    reason_display = serializers.CharField(source='get_reason_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    delivery_option = serializers.CharField(source='order.delivery_option', read_only=True)
+    delivery_person = serializers.SerializerMethodField()
+    original_order = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderReplacementRequest
+        fields = [
+            'id', 'order', 'user', 'store', 'reason', 'description',
+            'proof_image_url', 'status', 'store_note', 'is_walk_in',
+            'created_at', 'updated_at', 'store_name', 'store_contact',
+            'user_name', 'user_mobile', 'reason_display', 'status_display',
+            'delivery_option', 'approved_at', 'rejected_at', 'in_transit_at',
+            'completed_at', 'cancelled_at', 'delivery_person',
+            'estimated_delivery_minutes', 'estimated_arrival_at', 'original_order'
+        ]
+        read_only_fields = ['id', 'user', 'store', 'status', 'store_note', 'is_walk_in', 'created_at', 'updated_at']
+
+    def get_proof_image_url(self, obj):
+        request = self.context.get('request')
+        return get_file_url(obj.proof_image, request) if obj.proof_image else None
+
+    def get_delivery_person(self, obj):
+        person = obj.assigned_delivery_person
+        if not person:
+            return None
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None) if request else None
+        is_store_view = bool(actor and getattr(actor, 'is_store', False))
+        contact_visible = bool(
+            is_store_view
+            or obj.status != 'completed'
+            or not obj.completed_at
+            or timezone.now() <= obj.completed_at + timedelta(hours=2)
+        )
+        data = {'id': person.id, 'name': person.name, 'contact_visible': contact_visible}
+        if contact_visible:
+            data.update({
+                'mobile': person.mobile,
+                'vehicle_type': person.get_vehicle_type_display(),
+                'vehicle_number': person.vehicle_number,
+            })
+        return data
+
+    def get_original_order(self, obj):
+        order = obj.order
+        prescription = order.prescription
+        request = self.context.get('request')
+        image = order.image or (prescription.image if prescription else None)
+        try:
+            offer_distance = order.delivery_offer.distance_km
+        except QuoteDeliveryOffer.DoesNotExist:
+            offer_distance = None
+        distance = offer_distance if offer_distance is not None else order.distance_km
+        medicines = [{
+            'name': medicine.medicine_name,
+            'brand': medicine.medicine_brand,
+            'type': medicine.get_medicine_type_display(),
+            'price': str(medicine.price) if medicine.price is not None else None,
+            'is_available': medicine.is_available,
+        } for medicine in order.medicines.all()]
+        timeline = [{
+            'from_status': entry.from_status, 'to_status': entry.to_status,
+            'reason': entry.reason, 'changed_by': entry.changed_by_name,
+            'created_at': entry.created_at.isoformat(),
+        } for entry in reversed(list(order.status_history.all()))]
+        return {
+            'id': order.id, 'status': order.user_status,
+            'delivery_option': order.delivery_option,
+            'distance_km': str(distance) if distance is not None else None,
+            'customer_address': (prescription.user_address if prescription and prescription.user_address else order.user.address),
+            'prescription_image_url': get_file_url(image, request) if image else None,
+            'prescription_medicine_name': getattr(prescription, 'medicine_name', None),
+            'prescription_description': getattr(prescription, 'description', None),
+            'response_text': order.response_text,
+            'total_amount': str(order.total_amount) if order.total_amount is not None else None,
+            'created_at': order.created_at.isoformat() if order.created_at else None,
+            'completed_at': order.completed_at.isoformat() if order.completed_at else None,
+            'medicines': medicines, 'timeline': timeline,
+        }

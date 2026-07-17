@@ -3,6 +3,8 @@ djangorestframework
 celery
 redis
 django-redis
+channels
+channels-redis
 requests
 uvicorn
 gevent

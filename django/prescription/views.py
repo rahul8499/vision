@@ -3837,6 +3837,9 @@ class StoreDeliveryPersonDetailView(APIView):
 
     def patch(self, request, person_id):
         person = self._get_person(request, person_id)
+        deactivating = request.data.get('is_active') is False or request.data.get('is_available') is False
+        if deactivating and person.replacement_assignments.filter(status='in_transit').exists():
+            return Response({'error': 'This delivery person has an active replacement delivery.'}, status=409)
         serializer = StoreDeliveryPersonSerializer(person, data=request.data, partial=True, context={'store': request.user})
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -3844,7 +3847,9 @@ class StoreDeliveryPersonDetailView(APIView):
 
     def delete(self, request, person_id):
         person = self._get_person(request, person_id)
-        if person.assigned_offers.filter(response__user_status__in=['accepted', 'processing', 'out_for_delivery']).exists():
+        has_active_order = person.assigned_offers.filter(response__user_status__in=['accepted', 'processing', 'out_for_delivery']).exists()
+        has_active_replacement = person.replacement_assignments.filter(status='in_transit').exists()
+        if has_active_order or has_active_replacement:
             return Response({'error': 'Deactivate this delivery person after active deliveries are completed.'}, status=409)
         person.is_active = False
         person.is_available = False
@@ -4895,6 +4900,41 @@ def _consultation_file_url(request, field):
     return get_file_url(field, request)
 
 
+def _consultation_order_context(request, consultation):
+    order = consultation.order
+    prescription = order.prescription
+    image = order.image or (prescription.image if prescription else None)
+    try:
+        offer_distance = order.delivery_offer.distance_km
+    except QuoteDeliveryOffer.DoesNotExist:
+        offer_distance = None
+    distance = offer_distance if offer_distance is not None else order.distance_km
+    return {
+        'id': order.id, 'status': order.user_status,
+        'delivery_option': order.delivery_option,
+        'distance_km': str(distance) if distance is not None else None,
+        'customer_name': order.user.name, 'customer_mobile': order.user.mobile,
+        'customer_address': (prescription.user_address if prescription and prescription.user_address else order.user.address),
+        'prescription_image_url': _consultation_file_url(request, image) if image else None,
+        'prescription_medicine_name': getattr(prescription, 'medicine_name', None),
+        'prescription_description': getattr(prescription, 'description', None),
+        'response_text': order.response_text,
+        'total_amount': str(order.total_amount) if order.total_amount is not None else None,
+        'created_at': order.created_at, 'completed_at': order.completed_at,
+        'medicines': [{
+            'name': medicine.medicine_name, 'brand': medicine.medicine_brand,
+            'type': medicine.get_medicine_type_display(),
+            'price': str(medicine.price) if medicine.price is not None else None,
+            'is_available': medicine.is_available,
+        } for medicine in order.medicines.all()],
+        'timeline': [{
+            'from_status': entry.from_status, 'to_status': entry.to_status,
+            'reason': entry.reason, 'changed_by': entry.changed_by_name,
+            'created_at': entry.created_at,
+        } for entry in reversed(list(order.status_history.all()))],
+    }
+
+
 def _serialize_consultation(request, consultation):
     actor_type, _ = _consultation_actor(request)
     store = consultation.store
@@ -4911,6 +4951,7 @@ def _serialize_consultation(request, consultation):
         'pharmacist_verified': store.is_pharmacist_verified,
         'pharmacist_available': bool(store.is_pharmacist_verified and store.pharmacist_available),
         'created_at': consultation.created_at, 'updated_at': consultation.updated_at,
+        'order_context': _consultation_order_context(request, consultation),
         'messages': [{
             'id': message.id, 'sender_type': message.sender_type, 'text': message.text,
             'attachment': _consultation_file_url(request, message.attachment),
@@ -4923,7 +4964,7 @@ def _serialize_consultation(request, consultation):
 def _consultation_for_actor(pk, actor_type, actor):
     filters = {'id': pk}
     filters['store' if actor_type == 'store' else 'user'] = actor
-    return PharmacistConsultation.objects.select_related('store', 'user', 'order').prefetch_related('messages').filter(**filters).first()
+    return PharmacistConsultation.objects.select_related('store', 'user', 'order', 'order__user', 'order__prescription', 'order__delivery_offer').prefetch_related('messages', 'order__medicines', 'order__status_history').filter(**filters).first()
 
 
 class PharmacistConsultationOrderView(APIView):
@@ -5071,7 +5112,7 @@ class StorePharmacistConsultationListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        consultations = PharmacistConsultation.objects.select_related('store', 'user', 'order').prefetch_related('messages').filter(store=request.user)
+        consultations = PharmacistConsultation.objects.select_related('store', 'user', 'order', 'order__user', 'order__prescription', 'order__delivery_offer').prefetch_related('messages', 'order__medicines', 'order__status_history').filter(store=request.user)
         return Response([_serialize_consultation(request, item) for item in consultations])
 
 
@@ -5109,3 +5150,199 @@ class StorePharmacistAvailabilityView(APIView):
         store.pharmacist_available = available
         store.save(update_fields=['pharmacist_available'])
         return Response({'verified': True, 'available': store.pharmacist_available, 'pharmacist_name': store.pharmacist_name})
+
+from .models import OrderReplacementRequest
+from .serializers import OrderReplacementRequestSerializer
+from django.utils import timezone
+
+REPLACEMENT_WINDOW_HOURS = 48
+REPLACEMENT_MAX_PROOF_BYTES = 5 * 1024 * 1024
+REPLACEMENT_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+
+
+def _replacement_actor(request, kind):
+    actor = getattr(request, 'user', None)
+    return actor if actor and actor.is_authenticated and getattr(actor, f'is_{kind}', False) else None
+
+
+def _replacement_error(message, http_status=400):
+    return Response({'error': message}, status=http_status)
+
+
+def _notify_replacement(replacement, recipient, title, body):
+    payload = {'type': f'replacement_{replacement.status}', 'replacement_id': replacement.id,
+               'order_id': replacement.order_id, 'status': replacement.status}
+    kwargs = {'notification_type': payload['type'], 'dedupe_key': f'replacement:{replacement.id}:{replacement.status}:{recipient}'}
+    if recipient == 'store':
+        send_store_app_notification(replacement.store, title, body, payload, **kwargs)
+    else:
+        send_user_app_notification(replacement.user, title, body, payload, **kwargs)
+
+
+def _serialized_replacement(replacement, request, http_status=200):
+    return Response(OrderReplacementRequestSerializer(replacement, context={'request': request}).data, status=http_status)
+
+
+class OrderReplacementCreateView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request, id):
+        user = _replacement_actor(request, 'user')
+        if not user:
+            return _replacement_error('Unauthorized', 401)
+        reason = request.data.get('reason')
+        if reason not in dict(OrderReplacementRequest.REASON_CHOICES):
+            return _replacement_error('Invalid reason')
+        description = str(request.data.get('description', '')).strip()
+        if reason == 'other' and not description:
+            return _replacement_error('Description is required for Other reason')
+        proof = request.FILES.get('proof_image')
+        if proof and proof.size > REPLACEMENT_MAX_PROOF_BYTES:
+            return _replacement_error('Proof image must be 5 MB or smaller')
+        if proof and getattr(proof, 'content_type', '') not in REPLACEMENT_IMAGE_TYPES:
+            return _replacement_error('Proof must be a JPEG, PNG, or WebP image')
+        with transaction.atomic():
+            try:
+                order = PrescriptionResponse.objects.select_for_update().get(id=id, user=user)
+            except PrescriptionResponse.DoesNotExist:
+                return _replacement_error('Order not found', 404)
+            if order.user_status != 'completed' or not order.completed_at:
+                return _replacement_error('Order must be completed to request replacement')
+            if timezone.now() > order.completed_at + timedelta(hours=REPLACEMENT_WINDOW_HOURS):
+                return _replacement_error('The 48-hour replacement window has expired')
+            if not order.store_id:
+                return _replacement_error('This order has no assigned store')
+            if OrderReplacementRequest.objects.filter(order=order).exists():
+                return _replacement_error('Replacement already requested', 409)
+            replacement = OrderReplacementRequest.objects.create(
+                order=order, user=user, store=order.store, reason=reason, description=description,
+                proof_image=proof, is_walk_in=order.delivery_option == 'walk_in')
+            transaction.on_commit(lambda: _notify_replacement(replacement, 'store', 'New replacement request', f'Order #{replacement.order_id} has a replacement request.'))
+        return _serialized_replacement(replacement, request, 201)
+
+
+class UserReplacementListView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    def get(self, request):
+        user = _replacement_actor(request, 'user')
+        if not user:
+            return _replacement_error('Unauthorized', 401)
+        items = OrderReplacementRequest.objects.filter(user=user).select_related('order', 'order__prescription', 'order__delivery_offer', 'store', 'assigned_delivery_person').prefetch_related('order__medicines', 'order__status_history')
+        return Response(OrderReplacementRequestSerializer(items, many=True, context={'request': request}).data)
+
+
+class UserReplacementCancelView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    def post(self, request, id):
+        user = _replacement_actor(request, 'user')
+        if not user:
+            return _replacement_error('Unauthorized', 401)
+        with transaction.atomic():
+            try:
+                replacement = OrderReplacementRequest.objects.select_for_update().get(id=id, user=user)
+            except OrderReplacementRequest.DoesNotExist:
+                return _replacement_error('Replacement request not found', 404)
+            if replacement.status != 'requested':
+                return _replacement_error('Only requested replacements can be cancelled', 409)
+            replacement.status, replacement.cancelled_at = 'cancelled', timezone.now()
+            replacement.save(update_fields=['status', 'cancelled_at', 'updated_at'])
+            transaction.on_commit(lambda: _notify_replacement(replacement, 'store', 'Replacement request cancelled', f'The customer cancelled replacement for order #{replacement.order_id}.'))
+        return _serialized_replacement(replacement, request)
+
+
+class StoreReplacementListView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    def get(self, request):
+        store = _replacement_actor(request, 'store')
+        if not store:
+            return _replacement_error('Unauthorized', 401)
+        items = OrderReplacementRequest.objects.filter(store=store).select_related('order', 'order__prescription', 'order__delivery_offer', 'user', 'assigned_delivery_person').prefetch_related('order__medicines', 'order__status_history')
+        return Response(OrderReplacementRequestSerializer(items, many=True, context={'request': request}).data)
+
+
+class _StoreReplacementTransitionView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    target_status = None
+
+    def post(self, request, id):
+        store = _replacement_actor(request, 'store')
+        if not store:
+            return _replacement_error('Unauthorized', 401)
+        note = str(request.data.get('store_note', '')).strip()
+        delivery_person_id = request.data.get('delivery_person_id')
+        eta_raw = request.data.get('estimated_delivery_minutes')
+        if self.target_status in {'approved', 'rejected', 'completed'} and not note:
+            return _replacement_error('Store note is mandatory')
+        if self.target_status == 'in_transit':
+            if not delivery_person_id:
+                return _replacement_error('Select a delivery person before dispatch')
+            try:
+                eta_minutes = int(eta_raw)
+            except (TypeError, ValueError):
+                return _replacement_error('Enter estimated delivery time in minutes')
+            if not 5 <= eta_minutes <= 240:
+                return _replacement_error('Estimated delivery time must be between 5 and 240 minutes')
+        else:
+            eta_minutes = None
+        with transaction.atomic():
+            try:
+                replacement = OrderReplacementRequest.objects.select_for_update().get(id=id, store=store)
+            except OrderReplacementRequest.DoesNotExist:
+                return _replacement_error('Not found', 404)
+            expected = {'approved': 'requested', 'rejected': 'requested', 'in_transit': 'approved',
+                        'completed': 'approved' if replacement.is_walk_in else 'in_transit'}[self.target_status]
+            if self.target_status == 'in_transit' and replacement.is_walk_in:
+                return _replacement_error('Walk-in replacements do not use in-transit status')
+            if replacement.status != expected:
+                return _replacement_error(f"Replacement must be {expected.replace('_', ' ')} before this action", 409)
+            update_fields = ['status', 'store_note', 'updated_at']
+            if self.target_status == 'in_transit':
+                try:
+                    person = StoreDeliveryPerson.objects.select_for_update().get(
+                        id=delivery_person_id, store=store, is_active=True, is_available=True)
+                except StoreDeliveryPerson.DoesNotExist:
+                    return _replacement_error('Selected delivery person is not available', 409)
+                if person.current_order_count >= person.max_concurrent_orders:
+                    return _replacement_error('Selected delivery person has reached the order limit', 409)
+                replacement.assigned_delivery_person = person
+                replacement.estimated_delivery_minutes = eta_minutes
+                replacement.estimated_arrival_at = timezone.now() + timedelta(minutes=eta_minutes)
+                StoreDeliveryPerson.objects.filter(id=person.id).update(
+                    current_order_count=F('current_order_count') + 1,
+                    last_assigned_at=timezone.now(), updated_at=timezone.now(),
+                )
+                update_fields += ['assigned_delivery_person', 'estimated_delivery_minutes', 'estimated_arrival_at']
+            replacement.status = self.target_status
+            if note:
+                replacement.store_note = note
+            timestamp_field = {'approved': 'approved_at', 'rejected': 'rejected_at', 'in_transit': 'in_transit_at', 'completed': 'completed_at'}[self.target_status]
+            setattr(replacement, timestamp_field, timezone.now())
+            update_fields.append(timestamp_field)
+            replacement.save(update_fields=update_fields)
+            if self.target_status == 'completed' and replacement.assigned_delivery_person_id:
+                StoreDeliveryPerson.objects.filter(
+                    id=replacement.assigned_delivery_person_id, current_order_count__gt=0,
+                ).update(current_order_count=F('current_order_count') - 1)
+            titles = {'approved': 'Replacement approved', 'rejected': 'Replacement rejected', 'in_transit': 'Replacement on the way', 'completed': 'Replacement completed'}
+            transit_body = (f'{replacement.assigned_delivery_person.name} is delivering your replacement. '
+                            f'Expected in about {replacement.estimated_delivery_minutes} minutes.') if replacement.assigned_delivery_person_id else 'Your replacement is in transit.'
+            bodies = {'approved': 'Please visit the store for replacement.' if replacement.is_walk_in else 'Your replacement has been approved.', 'rejected': 'Your replacement request was rejected.', 'in_transit': transit_body, 'completed': 'Your replacement has been completed.'}
+            transaction.on_commit(lambda: _notify_replacement(replacement, 'user', titles[self.target_status], note or bodies[self.target_status]))
+        return _serialized_replacement(replacement, request)
+
+
+class StoreReplacementApproveView(_StoreReplacementTransitionView):
+    target_status = 'approved'
+
+
+class StoreReplacementRejectView(_StoreReplacementTransitionView):
+    target_status = 'rejected'
+
+
+class StoreReplacementInTransitView(_StoreReplacementTransitionView):
+    target_status = 'in_transit'
+
+
+class StoreReplacementCompleteView(_StoreReplacementTransitionView):
+    target_status = 'completed'

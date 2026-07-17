@@ -1046,3 +1046,39 @@ class PharmacistConsultationMessage(models.Model):
 
     def __str__(self):
         return f"Consultation message #{self.id}"
+
+
+class OrderReplacementRequest(models.Model):
+    REASON_CHOICES = [("wrong_medicine", "Wrong Medicine Delivered"), ("expired_medicine", "Expired Medicine"), ("damaged", "Damaged Packaging/Product"), ("other", "Other")]
+    STATUS_CHOICES = [("requested", "Replacement Requested"), ("approved", "Approved by Store"), ("rejected", "Rejected by Store"), ("in_transit", "Replacement in Transit"), ("completed", "Replacement Completed"), ("cancelled", "Cancelled by User")]
+    order = models.OneToOneField(PrescriptionResponse, on_delete=models.CASCADE, related_name="replacement_request")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="replacement_requests")
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="replacement_requests")
+    reason = models.CharField(max_length=50, choices=REASON_CHOICES)
+    description = models.TextField(blank=True, null=True)
+    proof_image = models.ImageField(upload_to="replacements/proofs/", blank=True, null=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="requested", db_index=True)
+    store_note = models.TextField(blank=True, null=True, help_text="Reason for rejection or instructions for replacement")
+    is_walk_in = models.BooleanField(default=False)
+    assigned_delivery_person = models.ForeignKey(
+        StoreDeliveryPerson, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='replacement_assignments',
+    )
+    estimated_delivery_minutes = models.PositiveIntegerField(null=True, blank=True)
+    estimated_arrival_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    in_transit_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['store', 'status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Replacement for Order #{self.order.id} - {self.status}"

@@ -1,10 +1,14 @@
+from core.services.capability_service import delete_store_account
 from django.contrib import admin, messages
 from .models import (
     Store, User, ChatMessage, ChatThread,
     Prescription, PrescriptionResponse,
     PrescriptionResponseMedicine, PrescriptionTargetStore,
     WSEventLog, Rating, PrescriptionResponseStatusHistory, AppNotification,
-    ReportNote, StoreReportNote, SafetyReport, PharmacistConsultation, PharmacistConsultationMessage
+    ReportNote, StoreReportNote, SafetyReport, PharmacistConsultation, PharmacistConsultationMessage,
+    StoreDeliveryPerson, StoreDeliverySettings,
+    QuoteDeliveryOffer, DeliveryOTP, UserStoreRelationship, SavedMedicine,
+    AppRating, PasswordResetOTP, OrderReplacementRequest
 )
 from rest_framework.authtoken.models import Token
 from core.services.capability_service import (
@@ -25,6 +29,30 @@ from django.contrib.gis.admin import GISModelAdmin
 
 admin.site.register(Rating)
 admin.site.register(Token)
+
+
+@admin.register(StoreDeliverySettings)
+class StoreDeliverySettingsAdmin(admin.ModelAdmin):
+    list_display = ('id', 'store', 'pickup_enabled', 'home_delivery_enabled', 'is_active', 'updated_at')
+    list_filter = ('pickup_enabled', 'home_delivery_enabled', 'is_active')
+    search_fields = ('store__name', 'store__mobile')
+
+@admin.register(StoreDeliveryPerson)
+class StoreDeliveryPersonAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'store', 'mobile', 'is_active', 'is_available')
+    list_filter = ('is_active', 'is_available', 'vehicle_type')
+    search_fields = ('name', 'mobile', 'store__name')
+    actions = ('activate_selected', 'deactivate_selected')
+
+    @admin.action(description='Activate selected delivery persons')
+    def activate_selected(self, request, queryset):
+        changed = queryset.update(is_active=True)
+        self.message_user(request, f'{changed} delivery person(s) activated.', messages.SUCCESS)
+
+    @admin.action(description='Deactivate selected delivery persons')
+    def deactivate_selected(self, request, queryset):
+        changed = queryset.update(is_active=False)
+        self.message_user(request, f'{changed} delivery person(s) deactivated.', messages.SUCCESS)
 
 
 @admin.register(User)
@@ -187,6 +215,7 @@ class WSEventLogAdmin(admin.ModelAdmin):
     event_id_short.short_description = 'Event ID'
 
 
+@admin.register(ReportNote)
 class LegacyUserReportAdmin(admin.ModelAdmin):
     list_display = ('id', 'response_id', 'user', 'reported_store', 'note_preview', 'created_at')
     list_filter = ('created_at',)
@@ -207,6 +236,7 @@ class LegacyUserReportAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(StoreReportNote)
 class LegacyStoreReportAdmin(admin.ModelAdmin):
     list_display = ('id', 'context_type', 'context_id', 'store', 'reported_user', 'note_preview', 'created_at')
     list_filter = ('created_at',)
@@ -287,3 +317,12 @@ class PharmacistConsultationMessageAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+# --- Additional Registrations ---
+admin.site.register(QuoteDeliveryOffer)
+admin.site.register(DeliveryOTP)
+admin.site.register(UserStoreRelationship)
+admin.site.register(SavedMedicine)
+admin.site.register(AppRating)
+admin.site.register(PasswordResetOTP)
+admin.site.register(OrderReplacementRequest)

@@ -20,6 +20,9 @@ from .views import (
     StorePharmacistConsultationListView, StorePharmacistAvailabilityView,
     StoreDeliverySettingsView, StoreDeliveryPersonListCreateView,
     StoreDeliveryPersonDetailView, PrescriptionDeliveryPreviewView,
+    OrderReplacementCreateView, UserReplacementListView, UserReplacementCancelView,
+    StoreReplacementListView, StoreReplacementApproveView, StoreReplacementRejectView,
+    StoreReplacementInTransitView, StoreReplacementCompleteView
 )
 urlpatterns = [
     path('upload/', PrescriptionUploadView.as_view(), name='upload'),
@@ -103,4 +106,14 @@ urlpatterns = [
     path('password-reset/request-otp/', RequestPasswordResetOTPView.as_view(), name='password_reset_request_otp'),
     path('password-reset/verify-otp/', VerifyPasswordResetOTPView.as_view(), name='password_reset_verify_otp'),
     path('password-reset/confirm/', ConfirmPasswordResetView.as_view(), name='password_reset_confirm'),
+
+    # Order Replacements
+    path('orders/<int:id>/replace/', OrderReplacementCreateView.as_view(), name='order_replace_create'),
+    path('replacements/', UserReplacementListView.as_view(), name='user_replacements_list'),
+    path('replacements/<int:id>/cancel/', UserReplacementCancelView.as_view(), name='user_replacement_cancel'),
+    path('store/replacements/', StoreReplacementListView.as_view(), name='store_replacements_list'),
+    path('store/replacements/<int:id>/approve/', StoreReplacementApproveView.as_view(), name='store_replacement_approve'),
+    path('store/replacements/<int:id>/reject/', StoreReplacementRejectView.as_view(), name='store_replacement_reject'),
+    path('store/replacements/<int:id>/in-transit/', StoreReplacementInTransitView.as_view(), name='store_replacement_in_transit'),
+    path('store/replacements/<int:id>/complete/', StoreReplacementCompleteView.as_view(), name='store_replacement_complete'),
 ]
