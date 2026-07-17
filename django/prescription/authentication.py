@@ -3,6 +3,7 @@
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from .models import Store, User  # ✅ दोनों models import करो
+from django.utils import translation
 
 class StoreTokenAuthentication(BaseAuthentication):
     def authenticate(self, request):
@@ -28,6 +29,10 @@ class StoreTokenAuthentication(BaseAuthentication):
         if not getattr(store, 'is_active', True):
             raise AuthenticationFailed('Store account is inactive.')
 
+        language = getattr(store, 'preferred_language', 'en') or 'en'
+        translation.activate(language)
+        request.LANGUAGE_CODE = language
+        getattr(request, '_request', request).LANGUAGE_CODE = language
         return (store, None)  # Django expects (user, auth)
 
 
@@ -55,4 +60,8 @@ class UserTokenAuthentication(BaseAuthentication):
         if not getattr(user, 'is_active', True):
             raise AuthenticationFailed('User account is inactive.')
 
+        language = getattr(user, 'preferred_language', 'en') or 'en'
+        translation.activate(language)
+        request.LANGUAGE_CODE = language
+        getattr(request, '_request', request).LANGUAGE_CODE = language
         return (user, None)  # Django expects (user, auth)

@@ -878,6 +878,7 @@ class UserSerializer(serializers.ModelSerializer):
             'is_deleted',
             'lifecycle_status',
             'profile_completion_percent',  # ✅ Add this line
+            'preferred_language',
         ]
 
     def get_lifecycle_status(self, obj):
@@ -941,6 +942,7 @@ class StoreMeSerializer(serializers.ModelSerializer):
             "avg_delivery_time",
             "badge_progress",
             "auto_accept_prescription",
+            "preferred_language",
         ]
 
     def get_lifecycle_status(self, obj):

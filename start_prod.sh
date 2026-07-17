@@ -19,7 +19,7 @@ echo "🐍 Starting Django Backend (Gunicorn - 4 Workers)..."
 cd /home/rahulkolhe/Desktop/backup/vision/django
 source venv/bin/activate
 # Using gunicorn with Uvicorn worker class for async support and high throughput
-gnome-terminal --title="Django Prod Server" -- bash -c "cd /home/rahulkolhe/Desktop/backup/vision/django && source venv/bin/activate && pip install gunicorn uvloop httptools 2>/dev/null; gunicorn aarx.asgi:application -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120; exec bash"
+gnome-terminal --title="Django Prod Server" -- bash -c "cd /home/rahulkolhe/Desktop/backup/vision/django && source venv/bin/activate && pip install gunicorn uvloop httptools websockets 2>/dev/null; gunicorn aarx.asgi:application -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120; exec bash"
 
 # 3. AI Service (Gunicorn for high concurrency)
 echo "🤖 Starting AI Service (Gunicorn - 2 Workers)..."

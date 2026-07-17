@@ -22,7 +22,7 @@ from .views import (
     StoreDeliveryPersonDetailView, PrescriptionDeliveryPreviewView,
     OrderReplacementCreateView, UserReplacementListView, UserReplacementCancelView,
     StoreReplacementListView, StoreReplacementApproveView, StoreReplacementRejectView,
-    StoreReplacementInTransitView, StoreReplacementCompleteView
+    StoreReplacementInTransitView, StoreReplacementCompleteView, LanguagePreferenceView
 )
 urlpatterns = [
     path('upload/', PrescriptionUploadView.as_view(), name='upload'),
@@ -30,6 +30,7 @@ urlpatterns = [
 
     path("save-expo-token/", SaveExpoPushTokenView.as_view(), name="save-expo-token"),
     path("user-save-expo-token/", SaveUserExpoPushTokenView.as_view(), name="user-save-expo-token"),
+    path("language/", LanguagePreferenceView.as_view(), name="language-preference"),
     path("notifications/", AppNotificationListView.as_view(), name="app-notifications"),
     path("notifications/mark-read/", AppNotificationMarkReadView.as_view(), name="app-notifications-mark-read"),
 

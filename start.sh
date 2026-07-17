@@ -75,7 +75,7 @@ wait_for_port "PgBouncer" 6432 15
 info "Checking Django and applying pending migrations"
 (
   cd "$DJANGO_DIR"
-  "$DJANGO_VENV/bin/python" -c "import channels_redis, celery, uvicorn, whitenoise, corsheaders, django_filters, django_celery_results, psycopg2, geopy, geohash, razorpay, httpx" ||
+  "$DJANGO_VENV/bin/python" -c "import channels_redis, celery, uvicorn, websockets, whitenoise, corsheaders, django_filters, django_celery_results, psycopg2, geopy, geohash, razorpay, httpx" ||
     fail "Django venv dependencies are incomplete; run: $DJANGO_VENV/bin/pip install -r $DJANGO_DIR/requirements.txt"
   "$DJANGO_VENV/bin/python" manage.py check
   "$DJANGO_VENV/bin/python" manage.py migrate --noinput

@@ -112,6 +112,7 @@ import json
 import os
 from django.utils.dateparse import parse_date
 from django.utils import timezone  # ✅ required
+from django.utils.translation import gettext as _, override
 from django.core.exceptions import ValidationError
 from core.services.capability_service import Permission
 from core.services.action_validator import CapabilityBlocked, validate_action_capability, blocked_response
@@ -3526,6 +3527,46 @@ class NearbyPrescriptionsView(APIView):
         return Response(response_data)
 
 
+
+
+class LanguagePreferenceView(APIView):
+    """Read or update the authenticated customer/store language preference."""
+    authentication_classes = [StoreTokenAuthentication, UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    supported_languages = {'en': 'English', 'hi': 'हिन्दी', 'mr': 'मराठी'}
+
+    def get(self, request):
+        language = getattr(request.user, 'preferred_language', 'en') or 'en'
+        return Response({
+            'preferred_language': language,
+            'language_label': self.supported_languages[language],
+            'supported_languages': [
+                {'code': code, 'label': label}
+                for code, label in self.supported_languages.items()
+            ],
+        })
+
+    def patch(self, request):
+        language = str(request.data.get('preferred_language', '')).strip().lower()
+        if language not in self.supported_languages:
+            return Response({
+                'error': _('Unsupported language. Choose English, Hindi, or Marathi.'),
+                'code': 'unsupported_language',
+                'supported_languages': list(self.supported_languages),
+            }, status=400)
+
+        account = request.user
+        if account.preferred_language != language:
+            account.preferred_language = language
+            account.save(update_fields=['preferred_language'])
+
+        with override(language):
+            message = _('Language preference updated successfully.')
+        return Response({
+            'preferred_language': language,
+            'language_label': self.supported_languages[language],
+            'message': message,
+        })
 
 
 class AppNotificationListView(APIView):

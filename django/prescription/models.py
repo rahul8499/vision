@@ -68,6 +68,7 @@ class Store(models.Model):
     geohash = models.CharField(max_length=12, db_index=True, blank=True, null=True) # 🔑 For O(log N) spatial scaling
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(default=timezone.now)
+    preferred_language = models.CharField(max_length=2, choices=[('en', 'English'), ('hi', 'Hindi'), ('mr', 'Marathi')], default='en', db_index=True)
 
     # 📊 Store Performance Tracking (For Elite Ranking)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
@@ -250,6 +251,7 @@ class User(models.Model):
     is_deleted = models.BooleanField(default=False)
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(default=timezone.now)
+    preferred_language = models.CharField(max_length=2, choices=[('en', 'English'), ('hi', 'Hindi'), ('mr', 'Marathi')], default='en', db_index=True)
 
     @property
     def is_user(self):
