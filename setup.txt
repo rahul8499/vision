@@ -116,3 +116,63 @@ expo run:android
 
 ya Android Dev Build/APK use karna padega.
 
+----------------------------------------
+Firebase PUSH NOTIFIXCAATION SETUP COMMAND KEY SETUP KARNA HITA HAI
+npx eas-cli credentials --platform android
+npm install -g eas-cli
+
+
+✔ Which build profile do you want to configure? › production
+✔ Using build profile: production
+Specified value for "android.package" in app.json is ignored because an android directory was detected in the project.
+EAS Build will use the value found in the native code.
+Android Credentials     
+Project                 AARXUI
+Application Identifier  com.anonymous.AARXUI
+No credentials set up yet!  
+
+✔ What do you want to do? › Google Service Account
+Android Credentials     
+Project                 AARXUI
+Application Identifier  com.anonymous.AARXUI
+No credentials set up yet!  
+
+✔ What do you want to do? › Manage your Google Service Account Key for Push Notifications (FCM V1)
+Android Credentials     
+Project                 AARXUI
+Application Identifier  com.anonymous.AARXUI
+No credentials set up yet!  
+
+✔ What do you want to do? › Set up a Google Service Account Key for Push Notifications (FCM V1)
+Oops! Looks like you uploaded a google-services.json instead of your service account key. Learn more
+A Google Service Account JSON key has been found at
+  /home/rahulkolhe/Desktop/backup/vision/AARXUI/aarx-4dbaa-aa0e995b08d7.json
+✔ Would you like to use this file? … yes
+
+✔ Uploaded Google Service Account Key.
+✔ Google Service Account Key assigned to com.anonymous.AARXUI for FCM V1
+Press any key to continue...
+
+
+Android Credentials     
+Project                 AARXUI
+Application Identifier  com.anonymous.AARXUI
+
+Push Notifications (FCM Legacy)  
+  None assigned yet
+
+Push Notifications (FCM V1): Google Service Account Key For FCM V1  
+Project ID      aarx-4dbaa
+Client Email    firebase-adminsdk-fbsvc@aarx-4dbaa.iam.gserviceaccount.com
+Client ID       102161004194491212148
+Private Key ID  aa0e995b08d792911969620529482bae09550919
+Updated         1 minute ago
+
+Submissions: Google Service Account Key for Play Store Submissions  
+  None assigned yet
+
+? What do you want to do? › - Use arrow-keys. Return to submit.
+❯   Set up a Google Service Account Key for Push Notifications (FCM V1)
+    Select an existing Google Service Account Key for Push Notifications (FCM V1)
+    Go back
+rahulkolhe@rahulkolhe-N15I512:~/Desktop/backup/vision/AARXUI$ rm keyfilename 
