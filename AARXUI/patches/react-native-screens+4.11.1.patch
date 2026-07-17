@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-screens/src/fabric/FullWindowOverlayNativeComponent.ts b/node_modules/react-native-screens/src/fabric/FullWindowOverlayNativeComponent.ts
+index 616f607..dca89e4 100644
+--- a/node_modules/react-native-screens/src/fabric/FullWindowOverlayNativeComponent.ts
++++ b/node_modules/react-native-screens/src/fabric/FullWindowOverlayNativeComponent.ts
+@@ -6,7 +6,7 @@ import { WithDefault } from 'react-native/Libraries/Types/CodegenTypes';
+ 
+ // Internal export, not part of stable library API.
+ export interface NativeProps extends ViewProps {
+-  accessibilityContainerViewIsModal?: WithDefault<boolean, true>;
++  accessibilityContainerViewIsModal?: boolean;
+ }
+ 
+ export default codegenNativeComponent<NativeProps>('RNSFullWindowOverlay', {

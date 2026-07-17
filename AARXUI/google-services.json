@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "353818303767",
+    "project_id": "aarx-4dbaa",
+    "storage_bucket": "aarx-4dbaa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:353818303767:android:d4bdf668ce674387eaab52",
+        "android_client_info": {
+          "package_name": "com.anonymous.AARXUI"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDmbmebwLdiUIhFS33bQ3vTacDA6fHfw80"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
