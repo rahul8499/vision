@@ -576,6 +576,9 @@ def notify_nearby_stores_task(self, prescription_id):
             metrics["status"] = "batch_dispatched"
 
         _bump_store_prescription_cache(store_ids)
+        if prescription.status == 'emergency':
+            from emergency_services.services import record_stores_notified
+            record_stores_notified(prescription_id, len(store_ids))
         _broadcast_prescription_batch(prescription_id, store_ids)
         if prescription.status == 'emergency' and prescription.user_id:
             from channels.layers import get_channel_layer

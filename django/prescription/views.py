@@ -459,10 +459,13 @@ class PrescriptionUploadView(APIView):
 
         # Get emergency flag from request
         emergency = request.data.get('emergency', 'false').lower() == 'true'
+        emergency_charge_id = request.data.get('emergency_charge_id')
 
         if emergency:
             if request.data.get('latitude') in (None, '') or request.data.get('longitude') in (None, ''):
                 return Response({'error': 'Confirm your location before starting an emergency pharmacy request.', 'code': 'emergency_location_required'}, status=400)
+            from emergency_services.services import validate_charge_for_upload
+            validate_charge_for_upload(user, emergency_charge_id)
 
         # Validate and save prescription
         # NOTE: Do NOT copy request.data — it contains an open file object that can't be deep-copied.
@@ -488,6 +491,9 @@ class PrescriptionUploadView(APIView):
         if serializer.is_valid():
             status_val = 'emergency' if emergency else 'normal'
             prescription = serializer.save(user=user, status=status_val, user_upload_type=user_upload_type)
+            if emergency:
+                from emergency_services.services import bind_charge
+                bind_charge(user, emergency_charge_id, prescription)
             if verified_image_key:
                 prescription.image.name = verified_image_key
                 prescription.save(update_fields=['image'])
@@ -854,6 +860,10 @@ class SubmitResponseToUserPrescription(APIView):
 
 
 
+
+        if prescription.status == 'emergency':
+            from emergency_services.services import mark_valid_quote_received
+            mark_valid_quote_received(response)
 
         # Push notification is sent after the quote is fully saved and broadcast.
         
@@ -5428,6 +5438,15 @@ def _serialize_emergency_request(prescription):
             'opened_at': target.opened_at,
             'responded_at': target.responded_at,
         })
+    charge = getattr(prescription, 'emergency_charge', None)
+    billing = None if charge is None else {
+        'kind': charge.kind,
+        'status': charge.status,
+        'amount_paise': charge.amount_paise,
+        'amount_rupees': charge.amount_paise / 100,
+        'refund_reason': charge.refund_reason,
+        'refunded_at': charge.refunded_at,
+    }
     return {
         'id': prescription.id,
         'status': _emergency_state(prescription, quote_statuses),
@@ -5448,6 +5467,7 @@ def _serialize_emergency_request(prescription):
         'stores_opened': sum(1 for target in targets if target.opened_at),
         'stores_responded': sum(1 for target in targets if target.responded_at or target.status == 'responded'),
         'quotes_received': len(quote_statuses),
+        'billing': billing,
         'can_cancel': not prescription.emergency_cancelled_at and not any(
             value in {'accepted', 'processing', 'locked', 'out_for_delivery', 'completed', 'delivered'}
             for value in response_statuses

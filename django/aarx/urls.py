@@ -16,6 +16,7 @@ urlpatterns = [
     path('api/', include('prescription.urls')),
     path('api/complaints/', include('complaints.urls')),
     path('api/subscriptions/', include('subscription.urls')),
+    path('api/emergency-service/', include('emergency_services.urls')),
     path('api/s3/', include('core.urls')),
     path('', home_view),  # ✅ Root path points to home_view directly
 ]

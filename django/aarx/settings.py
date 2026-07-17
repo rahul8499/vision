@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_celery_results',
     'subscription',
+    'emergency_services',
     'complaints',
     'storages',
 
@@ -115,6 +116,7 @@ CELERY_TASK_DEFAULT_QUEUE = 'default'
 # Route all notification tasks to notifications queue
 CELERY_TASK_ROUTES = {
     'prescription.tasks.*': {'queue': 'notifications'},
+    'emergency_services.tasks.*': {'queue': 'default'},
 }
 
 REST_FRAMEWORK = {
@@ -330,6 +332,7 @@ WHATSAPP_OTP_COPY_CODE_BUTTON = os.getenv(
 RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
 RAZORPAY_WEBHOOK_SECRET = os.getenv('RAZORPAY_WEBHOOK_SECRET', '')
+EMERGENCY_RAZORPAY_WEBHOOK_SECRET = os.getenv('EMERGENCY_RAZORPAY_WEBHOOK_SECRET', RAZORPAY_WEBHOOK_SECRET)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # AWS S3 Storage — Production File Storage
