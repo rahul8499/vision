@@ -71,3 +71,10 @@ coverage/
 .idea/
 .vscode/
 Thumbs.db
+
+# generated i18n validation export
+dist-i18n-validation/
+
+# local Android credentials and Firebase configuration
+android/app/debug.keystore
+android/app/google-services.json
