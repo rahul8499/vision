@@ -124,6 +124,8 @@ export default function HomeScreen() {
   const [nearbyStores, setNearbyStores] = useState<Store[]>([]);
   const [emergency, setEmergency] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStage, setUploadStage] = useState('Preparing your request');
   const [emergencyOffer, setEmergencyOffer] = useState<{ free: boolean; waitMinutes: number } | null>(null);
   const emergencyOfferResolver = useRef<((approved: boolean) => void) | null>(null);
 
@@ -374,14 +376,27 @@ export default function HomeScreen() {
       Alert.alert('Error', 'Please provide either a prescription photo or type a medicine name.');
       return;
     }
-    setSubmitting(true); // 🟢 Show loading
+    setSubmitting(true);
+    setUploadProgress(5);
+    setUploadStage('Preparing your request');
 
     let emergencyChargeId: string | null = null;
     if (emergency) {
       try {
+        setUploadProgress(12);
+        setUploadStage('Checking emergency access');
         const authHeaders = { Authorization: `Bearer ${token}` };
         const eligibility = await axios.get(`${BASE_URL}/api/emergency-service/eligibility/`, { headers: authHeaders });
         const free = eligibility.data.free_broadcasts_remaining > 0;
+        const razorpayAvailable = !!RazorpayCheckout && typeof (RazorpayCheckout as any).open === 'function';
+        if (!free && !razorpayAvailable) {
+          Alert.alert(
+            'Payment component unavailable',
+            'Razorpay is not included in this installed app build. Expo Go does not support this native payment module. Install/rebuild the AARX development app and try again.',
+          );
+          setSubmitting(false);
+          return;
+        }
         const approved = await new Promise<boolean>((resolve) => {
           emergencyOfferResolver.current = resolve;
           setEmergencyOffer({ free, waitMinutes: eligibility.data.quote_wait_minutes || 10 });
@@ -395,6 +410,11 @@ export default function HomeScreen() {
         );
         let charge = created.data.charge;
         if (charge.kind === 'paid' && charge.status === 'payment_pending') {
+          if (!RazorpayCheckout || typeof (RazorpayCheckout as any).open !== 'function') {
+            throw new Error('Razorpay native payment module is unavailable in this installed app build.');
+          }
+          setUploadProgress(22);
+          setUploadStage('Waiting for secure payment');
           const payment: any = await RazorpayCheckout.open({
             key: created.data.razorpay_key_id,
             order_id: charge.razorpay_order_id,
@@ -416,6 +436,8 @@ export default function HomeScreen() {
         }
         if (charge.status !== 'authorized') throw new Error('Emergency payment was not authorized.');
         emergencyChargeId = charge.id;
+        setUploadProgress(30);
+        setUploadStage('Payment confirmed');
       } catch (error: any) {
         const cancelled = error?.code === 0;
         if (!cancelled) Alert.alert('Emergency Broadcast', error?.response?.data?.error || error?.message || 'Could not start emergency broadcast.');
@@ -439,12 +461,16 @@ export default function HomeScreen() {
     const formData = new FormData();
     if (image) {
       const uploadFile = getUploadFileMeta(image);
+      setUploadProgress(35);
+      setUploadStage('Uploading prescription securely');
       const imageKey = await uploadFileToS3(
         { uri: image.uri, name: uploadFile.name, type: uploadFile.type },
         'prescriptions',
         token || '',
       );
       formData.append('image_key', imageKey);
+      setUploadProgress(72);
+      setUploadStage('Prescription uploaded');
       formData.append('upload_type', uploadType);
     } else {
       formData.append('upload_type', 'text_only');
@@ -477,6 +503,8 @@ export default function HomeScreen() {
     }
 
     try {
+      setUploadProgress(82);
+      setUploadStage('Saving request and notifying pharmacies');
       const response = await axios.post(`${BASE_URL}/api/upload/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -488,6 +516,8 @@ export default function HomeScreen() {
       // setImageUri(null);
       // setImage(null);
 
+      setUploadProgress(100);
+      setUploadStage('Request sent to pharmacies');
       console.log("✅ Upload success:", response.data);
 
       const stores = response.data.nearby_stores || [];
@@ -536,7 +566,8 @@ export default function HomeScreen() {
       console.log("Full error:", error);
     }
     finally {
-      setSubmitting(false); // 🔴 Hide loading in all cases
+      setSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -713,6 +744,20 @@ export default function HomeScreen() {
 
   return (
     <View className="flex-1 bg-slate-100">
+      <Modal visible={submitting && !emergencyOffer} transparent animationType="fade" statusBarTranslucent>
+        <View className="flex-1 items-center justify-center bg-slate-950/75 px-6">
+          <LinearGradient colors={['#111827', '#0f3d32', '#047857']} className="w-full max-w-sm overflow-hidden rounded-[32px] border border-emerald-300/30 p-7">
+            <View className="flex-row items-center justify-between">
+              <View className="h-14 w-14 items-center justify-center rounded-2xl bg-white/15"><MaterialCommunityIcons name="file-upload-outline" size={29} color="#a7f3d0" /></View>
+              <View className="h-14 w-14 items-center justify-center rounded-full border-4 border-emerald-200/30"><RNText className="text-base font-black text-white">{uploadProgress}%</RNText></View>
+            </View>
+            <RNText className="mt-7 text-xl font-black text-white">Sending your prescription</RNText>
+            <RNText className="mt-2 text-sm font-semibold text-emerald-100">{uploadStage}</RNText>
+            <View className="mt-7 h-3 overflow-hidden rounded-full bg-black/25"><View className="h-full rounded-full bg-emerald-300" style={{ width: `${uploadProgress}%` }} /></View>
+            <View className="mt-5 flex-row items-center"><ActivityIndicator size="small" color="#a7f3d0" /><RNText className="ml-3 flex-1 text-[10px] font-bold uppercase tracking-[1.5px] text-emerald-100">Please keep this screen open</RNText></View>
+          </LinearGradient>
+        </View>
+      </Modal>
       {/* ── Zomato/Swiggy-style Sticky Header ── */}
       <View className="bg-white" style={{ elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6 }}>
         {/* Location Row */}
@@ -1122,8 +1167,6 @@ export default function HomeScreen() {
               <RNText className="text-white font-black text-sm ml-2 uppercase tracking-[2px]">
                 {submitting ? 'Sending Request' : emergency ? 'Emergency Dispatch' : 'Send Price Request'}
               </RNText>
-
-              {submitting && <ActivityIndicator color="#FFF" className="ml-3" />}
             </TouchableOpacity>
           )}
 
