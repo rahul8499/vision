@@ -10,6 +10,7 @@ import { Loading } from '@/components/common/Loading'
 import { EmptyState } from '@/components/common/EmptyState'
 import { useDebounce } from '@/hooks/useDebounce'
 import type { PaymentRecord, PaymentSource } from '@/types/payments'
+import { useCityStore } from '@/store/cityStore'
 
 const badgeVariant = (status: string) => {
   if (['paid', 'captured', 'refunded'].includes(status)) return 'success' as const
@@ -23,10 +24,12 @@ export const PaymentList = () => {
   const [search, setSearch] = useState('')
   const [source, setSource] = useState<PaymentSource | ''>('')
   const debouncedSearch = useDebounce(search, 300)
+  const city = useCityStore((state) => state.selectedCityId)
   const { data, isLoading } = useQuery({
-    queryKey: ['payments', page, debouncedSearch, source],
-    queryFn: () => paymentsApi.getAll({ page, pageSize: 20, search: debouncedSearch, source }),
+    queryKey: ['payments', page, debouncedSearch, source, city],
+    queryFn: () => paymentsApi.getAll({ page, pageSize: 20, search: debouncedSearch, source, city: city || undefined }),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   const columns = [
@@ -37,6 +40,7 @@ export const PaymentList = () => {
     { key: 'customerName', header: 'Customer', render: (item: PaymentRecord) => (
       <div><p className="font-medium text-slate-800">{item.customerName || 'Unknown'}</p><p className="text-xs capitalize text-slate-400">{item.customerType}</p></div>
     )},
+    { key: 'city', header: 'City', render: (item: PaymentRecord) => item.cityName || 'Unassigned' },
     { key: 'amount', header: 'Amount', render: (item: PaymentRecord) => (
       <span className="font-semibold">{item.currency === 'INR' ? '₹' : item.currency} {item.amount.toFixed(2)}</span>
     )},

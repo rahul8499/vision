@@ -7,7 +7,7 @@ def get_complaint_by_id(complaint_id):
     try:
         return Complaint.objects.select_related(
             "complainant_user", "complainant_store",
-            "respondent_user", "respondent_store", "order"
+            "respondent_user", "respondent_store", "order", "city", "service_zone"
         ).prefetch_related("attachments", "messages", "status_history").get(id=complaint_id)
     except Complaint.DoesNotExist:
         return None
@@ -16,7 +16,7 @@ def get_complaint_by_id(complaint_id):
 def get_complaint_queryset():
     return Complaint.objects.select_related(
         "complainant_user", "complainant_store",
-        "respondent_user", "respondent_store", "order"
+        "respondent_user", "respondent_store", "order", "city", "service_zone"
     ).all()
 
 

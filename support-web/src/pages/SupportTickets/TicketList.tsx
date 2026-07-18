@@ -15,6 +15,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { formatSafeDate } from '@/utils/formatters'
 import type { Ticket, TicketCategory, TicketPriority, TicketStatus } from '@/types/tickets'
 import { TICKET_PRIORITY_COLORS, TICKET_STATUS_COLORS } from '@/types/tickets'
+import { useCityStore } from '@/store/cityStore'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' }, { value: 'in_progress', label: 'In progress' },
@@ -40,14 +41,16 @@ export const TicketList = () => {
   const [priority, setPriority] = useState('')
   const [category, setCategory] = useState('')
   const debouncedSearch = useDebounce(search, 300)
+  const city = useCityStore((state) => state.selectedCityId)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['tickets', page, debouncedSearch, status, priority, category],
+    queryKey: ['tickets', page, debouncedSearch, status, priority, category, city],
     queryFn: () => ticketsApi.getAll({
       page, limit: 20, search: debouncedSearch || undefined,
       status: status as TicketStatus || undefined,
       priority: priority as TicketPriority || undefined,
       category: category as TicketCategory || undefined,
+      city: city || undefined,
     }),
     staleTime: 15_000,
     refetchInterval: 15_000,
@@ -67,6 +70,7 @@ export const TicketList = () => {
     { key: 'requesterName', header: 'Requester', render: (ticket: Ticket) => (
       <div><p className="font-medium text-slate-800">{ticket.requesterName}</p><p className="text-xs capitalize text-slate-400">{ticket.requesterType}</p></div>
     )},
+    { key: 'scope', header: 'Scope', render: (ticket: Ticket) => ticket.scope === 'GLOBAL' ? 'Global' : (ticket.cityName || 'City') },
     { key: 'priority', header: 'Priority', render: (ticket: Ticket) => <Badge className={TICKET_PRIORITY_COLORS[ticket.priority]}>{ticket.priorityDisplay}</Badge> },
     { key: 'status', header: 'Status', render: (ticket: Ticket) => <Badge className={TICKET_STATUS_COLORS[ticket.status]}>{ticket.statusDisplay}</Badge> },
     { key: 'messageCount', header: 'Conversation', render: (ticket: Ticket) => <span className="flex items-center gap-1.5 text-slate-600"><MessageSquare className="h-3.5 w-3.5" />{ticket.messageCount}</span> },

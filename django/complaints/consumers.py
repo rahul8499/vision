@@ -55,7 +55,13 @@ class ComplaintConsumer(AsyncJsonWebsocketConsumer):
         try:
             user_id = AccessToken(token).get("user_id")
             auth_user = get_user_model().objects.get(id=user_id, is_active=True)
-            return 'support' if SupportStaff.objects.filter(user=auth_user, is_active=True).exists() else None
+            staff = SupportStaff.objects.filter(user=auth_user, is_active=True).first()
+            if not staff:
+                return None
+            allowed = staff.role == SupportStaff.ROLE_ADMIN or staff.all_cities_access
+            allowed = allowed or complaint.scope == Complaint.SCOPE_GLOBAL
+            allowed = allowed or staff.cities.filter(id=complaint.city_id).exists()
+            return 'support' if allowed else None
         except (TokenError, get_user_model().DoesNotExist, TypeError, ValueError):
             return None
 
@@ -125,6 +131,15 @@ class SupportTicketConsumer(AsyncJsonWebsocketConsumer):
         try:
             user_id = AccessToken(token).get("user_id")
             auth_user = get_user_model().objects.get(id=user_id, is_active=True)
-            return SupportStaff.objects.filter(user=auth_user, is_active=True).exists()
+            staff = SupportStaff.objects.filter(user=auth_user, is_active=True).first()
+            if not staff:
+                return False
+            if ticket.scope == PlatformSupportTicket.SCOPE_GLOBAL:
+                return True
+            return (
+                staff.role == SupportStaff.ROLE_ADMIN
+                or staff.all_cities_access
+                or staff.cities.filter(id=ticket.city_id).exists()
+            )
         except (TokenError, get_user_model().DoesNotExist, TypeError, ValueError):
             return False

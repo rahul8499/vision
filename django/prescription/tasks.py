@@ -439,6 +439,13 @@ def monitor_emergency_store_response_task(target_id, stage):
             else:
                 target.reminder_count += 1
                 target.save(update_fields=[timestamp_field, "reminder_count"])
+            from support_admin.realtime import broadcast_monitoring_event
+            broadcast_monitoring_event(
+                "reminder_sent",
+                target_id=target.id,
+                prescription_id=target.prescription_id,
+                city_id=target.city_id,
+            )
             return {"status": "reminder_sent", "stage": stage}
 
         if stage == "escalate":
@@ -463,6 +470,13 @@ def monitor_emergency_store_response_task(target_id, stage):
                 )
                 for member in staff
             ])
+            from support_admin.realtime import broadcast_monitoring_event
+            broadcast_monitoring_event(
+                "support_escalated",
+                target_id=target.id,
+                prescription_id=target.prescription_id,
+                city_id=target.city_id,
+            )
             return {"status": "escalated", "recipients": staff.count()}
     return {"status": "ignored"}
 
@@ -714,6 +728,12 @@ def notify_nearby_stores_task(self, prescription_id):
             metrics["notified_count"] = len(store_ids)
             metrics["status"] = "batch_dispatched"
 
+        from support_admin.realtime import broadcast_monitoring_event
+        broadcast_monitoring_event(
+            "dispatch_created",
+            prescription_id=prescription.id,
+            city_id=prescription.city_id,
+        )
         _bump_store_prescription_cache(store_ids)
         if prescription.status == 'emergency':
             from emergency_services.services import record_stores_notified

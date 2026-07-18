@@ -1,9 +1,10 @@
+from django.db.models import Q
 from complaints.models import PlatformSupportTicket, PlatformSupportMessage
 
 
 def get_ticket_by_id(ticket_id):
     try:
-        return PlatformSupportTicket.objects.prefetch_related("messages").get(id=ticket_id)
+        return PlatformSupportTicket.objects.select_related("city", "service_zone", "requester_user", "requester_store").prefetch_related("messages").get(id=ticket_id)
     except PlatformSupportTicket.DoesNotExist:
         return None
 

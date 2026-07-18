@@ -65,6 +65,7 @@ class _BaseComplaintSerializer(serializers.ModelSerializer):
     priority_display = serializers.SerializerMethodField()
     complainant_name = serializers.SerializerMethodField()
     respondent_name = serializers.SerializerMethodField()
+    city_name = serializers.CharField(source='city.name', read_only=True, allow_null=True)
 
     def get_category_display(self, obj):
         return obj.get_category_display()
@@ -102,6 +103,7 @@ class ComplaintListSerializer(_BaseComplaintSerializer):
             'id', 'category', 'category_display', 'subject', 'status', 'status_display',
             'priority', 'priority_display', 'complainant_type', 'complainant_name',
             'respondent_type', 'respondent_name', 'order_id', 'created_at', 'updated_at',
+            'scope', 'city', 'city_name', 'service_zone',
             'unread_count', 'message_count', 'attachment_count',
         ]
 
@@ -152,6 +154,7 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
             'id', 'category', 'category_display', 'subject', 'description', 'status',
             'status_display', 'priority', 'priority_display', 'complainant_type',
             'complainant_name', 'respondent_type', 'respondent_name', 'order_id',
+            'scope', 'city', 'city_name', 'service_zone',
             'assigned_to', 'resolution_notes', 'resolved_at', 'created_at', 'updated_at',
             'attachments', 'messages', 'status_history', 'can_withdraw',
         ]

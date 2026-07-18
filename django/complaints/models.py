@@ -5,6 +5,9 @@ from prescription.models import Store, User, PrescriptionResponse
 
 
 class Complaint(models.Model):
+    SCOPE_CITY = 'CITY'
+    SCOPE_GLOBAL = 'GLOBAL'
+    SCOPE_CHOICES = [(SCOPE_CITY, 'City'), (SCOPE_GLOBAL, 'Global')]
     PARTY_CHOICES = [
         ('user', 'User'),
         ('store', 'Store'),
@@ -72,6 +75,15 @@ class Complaint(models.Model):
     order = models.ForeignKey(
         PrescriptionResponse, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints'
     )
+    scope = models.CharField(max_length=10, choices=SCOPE_CHOICES, default=SCOPE_CITY, db_index=True)
+    city = models.ForeignKey(
+        'emergency_services.City', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='complaints',
+    )
+    service_zone = models.ForeignKey(
+        'emergency_services.ServiceZone', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='complaints',
+    )
 
     category = models.CharField(max_length=40, choices=CATEGORY_CHOICES)
     subject = models.CharField(max_length=200)
@@ -98,6 +110,17 @@ class Complaint(models.Model):
         who = self.complainant_store.name if self.complainant_store else (self.complainant_user.name if self.complainant_user else '?')
         against = self.respondent_store.name if self.respondent_store else (self.respondent_user.name if self.respondent_user else '?')
         return f"Complaint #{self.id} {who} -> {against} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and self.scope == self.SCOPE_CITY and not self.city_id:
+            source = self.order.prescription if self.order_id else None
+            source = source or self.respondent_store or self.complainant_store
+            self.city = getattr(source, 'city', None)
+            self.service_zone = getattr(source, 'service_zone', None)
+            if not self.city_id:
+                from emergency_services.services import get_default_city
+                self.city = get_default_city()
+        super().save(*args, **kwargs)
 
     # ---- Convenience accessors ----
     @property
@@ -177,6 +200,10 @@ class ComplaintStatusHistory(models.Model):
 
 
 class PlatformSupportTicket(models.Model):
+    SCOPE_CITY = 'CITY'
+    SCOPE_GLOBAL = 'GLOBAL'
+    SCOPE_CHOICES = [(SCOPE_CITY, 'City'), (SCOPE_GLOBAL, 'Global')]
+    GLOBAL_CATEGORIES = {'app_bug', 'account', 'technical', 'feature', 'other'}
     CATEGORY_CHOICES = [
         ('app_bug', 'App bug'), ('account', 'Account access'),
         ('verification', 'Verification'), ('subscription', 'Subscription & billing'),
@@ -192,6 +219,15 @@ class PlatformSupportTicket(models.Model):
     requester_type = models.CharField(max_length=10, choices=REQUESTER_CHOICES)
     requester_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='platform_support_tickets')
     requester_store = models.ForeignKey(Store, on_delete=models.SET_NULL, null=True, blank=True, related_name='platform_support_tickets')
+    scope = models.CharField(max_length=10, choices=SCOPE_CHOICES, default=SCOPE_GLOBAL, db_index=True)
+    city = models.ForeignKey(
+        'emergency_services.City', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='support_tickets',
+    )
+    service_zone = models.ForeignKey(
+        'emergency_services.ServiceZone', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='support_tickets',
+    )
     category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
     subject = models.CharField(max_length=200)
     description = models.TextField()
@@ -209,6 +245,20 @@ class PlatformSupportTicket(models.Model):
 
     def __str__(self):
         return f"Support #{self.id}: {self.subject}"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            self.scope = self.SCOPE_GLOBAL if self.category in self.GLOBAL_CATEGORIES else self.SCOPE_CITY
+            if self.scope == self.SCOPE_CITY:
+                self.city = getattr(self.requester_store, 'city', None)
+                self.service_zone = getattr(self.requester_store, 'service_zone', None)
+                if not self.city_id:
+                    from emergency_services.services import get_default_city
+                    self.city = get_default_city()
+            else:
+                self.city = None
+                self.service_zone = None
+        super().save(*args, **kwargs)
 
 
 class PlatformSupportMessage(models.Model):

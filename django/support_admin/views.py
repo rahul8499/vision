@@ -369,6 +369,12 @@ class ComplaintListView(APIView):
             category=category_filter,
             priority=priority_filter,
         )
+        try:
+            qs = _scope_queryset(qs, request.support_staff, _requested_city(request, request.support_staff))
+        except ValueError as exc:
+            return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return fail(str(exc), status_code=status.HTTP_403_FORBIDDEN)
         return paginated(qs, request, ComplaintListSerializer, context={"viewer": None})
 
 
@@ -380,6 +386,8 @@ class ComplaintDetailView(APIView):
         complaint = complaint_selectors.get_complaint_by_id(complaint_id)
         if not complaint:
             return fail("Complaint not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not _can_access_scope(complaint, request.support_staff):
+            return fail("You do not have access to this complaint.", status_code=status.HTTP_403_FORBIDDEN)
         serializer = ComplaintDetailSerializer(complaint, context={"request": request, "viewer": None})
         return ok(serializer.data, status_code=status.HTTP_200_OK)
 
@@ -389,6 +397,9 @@ class ComplaintAssignView(APIView):
     permission_classes = [IsSupportAgent]
 
     def post(self, request, complaint_id):
+        complaint = complaint_selectors.get_complaint_by_id(complaint_id)
+        if not complaint or not _can_access_scope(complaint, request.support_staff):
+            return fail("Complaint not found.", status_code=status.HTTP_404_NOT_FOUND)
         assigned_to_id = request.data.get("assigned_to")
         if not assigned_to_id:
             return fail("assigned_to is required.", status_code=status.HTTP_400_BAD_REQUEST)
@@ -415,6 +426,9 @@ class ComplaintReplyView(APIView):
     permission_classes = [IsSupportStaff]
 
     def post(self, request, complaint_id):
+        complaint = complaint_selectors.get_complaint_by_id(complaint_id)
+        if not complaint or not _can_access_scope(complaint, request.support_staff):
+            return fail("Complaint not found.", status_code=status.HTTP_404_NOT_FOUND)
         text = request.data.get("text")
         visibility = request.data.get("visibility", ComplaintMessage.VISIBILITY_SHARED)
         if not text:
@@ -448,6 +462,9 @@ class ComplaintInternalNoteView(APIView):
     permission_classes = [IsSupportStaff]
 
     def get(self, request, complaint_id):
+        complaint = complaint_selectors.get_complaint_by_id(complaint_id)
+        if not complaint or not _can_access_scope(complaint, request.support_staff):
+            return fail("Complaint not found.", status_code=status.HTTP_404_NOT_FOUND)
         from django.contrib.contenttypes.models import ContentType
         ct = ContentType.objects.get_for_model(Complaint)
         notes = InternalNote.objects.filter(content_type=ct, object_id=complaint_id, is_deleted=False).select_related("created_by__user")
@@ -456,6 +473,9 @@ class ComplaintInternalNoteView(APIView):
         return ok({"results": serializer.data}, status_code=status.HTTP_200_OK)
 
     def post(self, request, complaint_id):
+        complaint = complaint_selectors.get_complaint_by_id(complaint_id)
+        if not complaint or not _can_access_scope(complaint, request.support_staff):
+            return fail("Complaint not found.", status_code=status.HTTP_404_NOT_FOUND)
         serializer = InternalNoteCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return fail("Validation failed.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
@@ -483,6 +503,9 @@ class ComplaintStatusUpdateView(APIView):
     permission_classes = [IsSupportAgent]
 
     def post(self, request, complaint_id):
+        existing = complaint_selectors.get_complaint_by_id(complaint_id)
+        if not existing or not _can_access_scope(existing, request.support_staff):
+            return fail("Complaint not found.", status_code=status.HTTP_404_NOT_FOUND)
         new_status = request.data.get("status")
         note = request.data.get("note")
         if not new_status:
@@ -513,7 +536,12 @@ class ComplaintBulkAssignView(APIView):
         assigned_to_id = request.data.get("assigned_to")
         if not complaint_ids or not assigned_to_id:
             return fail("complaint_ids and assigned_to are required.", status_code=status.HTTP_400_BAD_REQUEST)
-        results = complaint_service.bulk_assign_complaints(complaint_ids, assigned_to_id, request.support_staff)
+        permitted_ids = list(_scope_queryset(
+            Complaint.objects.filter(id__in=complaint_ids), request.support_staff
+        ).values_list("id", flat=True))
+        if len(set(map(int, complaint_ids))) != len(set(permitted_ids)):
+            return fail("One or more complaints are outside your city access.", status_code=status.HTTP_403_FORBIDDEN)
+        results = complaint_service.bulk_assign_complaints(permitted_ids, assigned_to_id, request.support_staff)
         ip, ua = _get_client_info(request)
         audit_service.log_audit(
             actor=request.support_staff,
@@ -534,7 +562,12 @@ class ComplaintBulkCloseView(APIView):
         complaint_ids = request.data.get("complaint_ids", [])
         if not complaint_ids:
             return fail("complaint_ids is required.", status_code=status.HTTP_400_BAD_REQUEST)
-        results = complaint_service.bulk_close_complaints(complaint_ids, "platform")
+        permitted_ids = list(_scope_queryset(
+            Complaint.objects.filter(id__in=complaint_ids), request.support_staff
+        ).values_list("id", flat=True))
+        if len(set(map(int, complaint_ids))) != len(set(permitted_ids)):
+            return fail("One or more complaints are outside your city access.", status_code=status.HTTP_403_FORBIDDEN)
+        results = complaint_service.bulk_close_complaints(permitted_ids, "platform")
         ip, ua = _get_client_info(request)
         audit_service.log_audit(
             actor=request.support_staff,
@@ -567,11 +600,24 @@ class TicketListView(APIView):
             category=category_filter,
             priority=priority_filter,
         )
+        try:
+            qs = _scope_queryset(
+                qs, request.support_staff,
+                _requested_city(request, request.support_staff),
+                include_global=True,
+            )
+        except ValueError as exc:
+            return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return fail(str(exc), status_code=status.HTTP_403_FORBIDDEN)
         tickets = qs.select_related("requester_user", "requester_store").prefetch_related("messages")
         data = []
         for ticket in tickets:
             data.append({
                 "id": ticket.id,
+                "scope": ticket.scope,
+                "city": ticket.city_id,
+                "city_name": ticket.city.name if ticket.city else None,
                 "category": ticket.category,
                 "category_display": ticket.get_category_display(),
                 "subject": ticket.subject,
@@ -625,10 +671,15 @@ class TicketDetailView(APIView):
         ticket = ticket_selectors.get_ticket_by_id(ticket_id)
         if not ticket:
             return fail("Support ticket not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not _can_access_scope(ticket, request.support_staff):
+            return fail("Support ticket not found.", status_code=status.HTTP_404_NOT_FOUND)
         ticket.messages.filter(is_read=False).exclude(sender_type="platform").update(is_read=True)
         messages = ticket.messages.select_related("sender_user", "sender_store").order_by("created_at")
         data = {
             "id": ticket.id,
+            "scope": ticket.scope,
+            "city": ticket.city_id,
+            "city_name": ticket.city.name if ticket.city else None,
             "category": ticket.category,
             "category_display": ticket.get_category_display(),
             "subject": ticket.subject,
@@ -670,6 +721,9 @@ class TicketReplyView(APIView):
     permission_classes = [IsSupportStaff]
 
     def post(self, request, ticket_id):
+        ticket_access = ticket_selectors.get_ticket_by_id(ticket_id)
+        if not ticket_access or not _can_access_scope(ticket_access, request.support_staff):
+            return fail("Support ticket not found.", status_code=status.HTTP_404_NOT_FOUND)
         text = request.data.get("text")
         if not text:
             return fail("text is required.", status_code=status.HTTP_400_BAD_REQUEST)
@@ -705,6 +759,9 @@ class TicketStatusUpdateView(APIView):
     permission_classes = [IsSupportAgent]
 
     def post(self, request, ticket_id):
+        ticket_access = ticket_selectors.get_ticket_by_id(ticket_id)
+        if not ticket_access or not _can_access_scope(ticket_access, request.support_staff):
+            return fail("Support ticket not found.", status_code=status.HTTP_404_NOT_FOUND)
         new_status = request.data.get("status")
         resolution_note = request.data.get("resolution_note")
         if not new_status:
@@ -743,6 +800,43 @@ def _staff_city_ids(staff):
     if staff.role == SupportStaff.ROLE_ADMIN or staff.all_cities_access:
         return None
     return list(staff.cities.values_list("id", flat=True))
+
+
+def _requested_city(request, staff):
+    value = request.query_params.get("city")
+    if not value:
+        return None
+    try:
+        city_id = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("Invalid city filter.")
+    allowed = _staff_city_ids(staff)
+    if allowed is not None and city_id not in allowed:
+        raise PermissionError("You do not have access to this city.")
+    return city_id
+
+
+def _scope_queryset(qs, staff, city_id=None, include_global=False):
+    allowed = _staff_city_ids(staff)
+    if city_id:
+        scoped = Q(city_id=city_id)
+        return qs.filter(scoped | Q(scope="GLOBAL") if include_global else scoped)
+    if allowed is None:
+        return qs
+    scoped = Q(city_id__in=allowed)
+    return qs.filter(scoped | Q(scope="GLOBAL") if include_global else scoped)
+
+
+def _can_access_scope(obj, staff):
+    if getattr(obj, "scope", "CITY") == "GLOBAL":
+        return True
+    allowed = _staff_city_ids(staff)
+    return allowed is None or obj.city_id in allowed
+
+
+def _can_access_city_id(city_id, staff):
+    allowed = _staff_city_ids(staff)
+    return allowed is None or city_id in allowed
 
 
 class EmergencyMonitoringView(APIView):
@@ -943,6 +1037,13 @@ class EmergencyMonitoringActionView(APIView):
         else:
             return fail("Invalid monitoring action.")
         target.save(update_fields=fields)
+        from .realtime import broadcast_monitoring_event
+        broadcast_monitoring_event(
+            action,
+            target_id=target.id,
+            prescription_id=target.prescription_id,
+            city_id=target.city_id,
+        )
         ip, ua = _get_client_info(request)
         audit_service.log_audit(
             actor=request.support_staff, action=action,
@@ -1039,6 +1140,13 @@ class PaymentListView(APIView):
     permission_classes = [IsSupportStaff]
 
     def get(self, request):
+        try:
+            city_id = _requested_city(request, request.support_staff)
+        except ValueError as exc:
+            return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return fail(str(exc), status_code=status.HTTP_403_FORBIDDEN)
+        allowed_city_ids = _staff_city_ids(request.support_staff)
         source_filter = request.query_params.get("source")
         status_filter = request.query_params.get("status")
         search = (request.query_params.get("search") or "").strip().lower()
@@ -1051,6 +1159,10 @@ class PaymentListView(APIView):
                 kind=EmergencyBroadcastCharge.Kind.PAID,
                 razorpay_payment_id__isnull=False,
             ).select_related("user", "prescription")
+            if allowed_city_ids is not None:
+                charges = charges.filter(city_id__in=allowed_city_ids)
+            if city_id:
+                charges = charges.filter(city_id=city_id)
             if date_from:
                 charges = charges.filter(created_at__date__gte=date_from)
             if date_to:
@@ -1079,6 +1191,8 @@ class PaymentListView(APIView):
                     "operational_status_display": charge.get_status_display(),
                     "reference_id": str(charge.id),
                     "refund_id": charge.razorpay_refund_id or "",
+                    "city_id": charge.city_id,
+                    "city_name": charge.city.name if charge.city else "Unassigned",
                     "created_at": charge.created_at,
                     "updated_at": charge.updated_at,
                 }
@@ -1087,7 +1201,11 @@ class PaymentListView(APIView):
                     records.append(record)
 
         if source_filter in (None, "", "store_subscription"):
-            payments = PaymentHistory.objects.select_related("store", "subscription", "subscription__plan")
+            payments = PaymentHistory.objects.select_related("store__city", "subscription", "subscription__plan")
+            if allowed_city_ids is not None:
+                payments = payments.filter(store__city_id__in=allowed_city_ids)
+            if city_id:
+                payments = payments.filter(store__city_id=city_id)
             if date_from:
                 payments = payments.filter(created_at__date__gte=date_from)
             if date_to:
@@ -1110,6 +1228,8 @@ class PaymentListView(APIView):
                     "operational_status_display": payment.subscription.get_status_display() if payment.subscription else "Subscription unavailable",
                     "reference_id": payment.subscription.razorpay_subscription_id if payment.subscription else "",
                     "refund_id": "",
+                    "city_id": payment.store.city_id,
+                    "city_name": payment.store.city.name if payment.store.city else "Unassigned",
                     "created_at": payment.created_at,
                     "updated_at": payment.created_at,
                 }
@@ -1121,6 +1241,10 @@ class PaymentListView(APIView):
         paginator = SupportPagination()
         page = paginator.paginate_queryset(records, request)
         emergency = EmergencyBroadcastCharge.objects.all()
+        if allowed_city_ids is not None:
+            emergency = emergency.filter(city_id__in=allowed_city_ids)
+        if city_id:
+            emergency = emergency.filter(city_id=city_id)
         summary = {
             "total_payments": len(records),
             "broadcasting": emergency.filter(status=EmergencyBroadcastCharge.Status.BROADCASTING).count(),
@@ -1145,14 +1269,35 @@ class RefundListCreateView(APIView):
     permission_classes = [IsSupportStaff]
 
     def get(self, request):
+        try:
+            city_id = _requested_city(request, request.support_staff)
+        except ValueError as exc:
+            return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return fail(str(exc), status_code=status.HTTP_403_FORBIDDEN)
+        allowed_city_ids = _staff_city_ids(request.support_staff)
         status_filter = request.query_params.get("status")
         assigned_to_filter = request.query_params.get("assigned_to")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        search = (request.query_params.get("search") or "").strip()
         qs, total = refund_selectors.search_refunds(
+            query=search,
             status=status_filter,
             assigned_to=assigned_to_filter,
         )
+        if allowed_city_ids is not None:
+            qs = qs.filter(charge__city_id__in=allowed_city_ids)
+        if city_id:
+            qs = qs.filter(charge__city_id=city_id)
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
         from .serializers import RefundRequestSerializer
-        manual_refunds = list(RefundRequestSerializer(qs, many=True).data)
+        manual_models = list(qs.select_related("charge__city"))
+        manual_refunds = list(RefundRequestSerializer(manual_models, many=True).data)
+        manual_by_id = {item.id: item for item in manual_models}
 
         emergency_statuses = {
             EmergencyBroadcastCharge.Status.REFUND_PENDING,
@@ -1161,7 +1306,22 @@ class RefundListCreateView(APIView):
         }
         emergency_qs = EmergencyBroadcastCharge.objects.filter(
             status__in=emergency_statuses
-        ).select_related("user", "prescription")
+        ).select_related("user", "prescription", "city")
+        if allowed_city_ids is not None:
+            emergency_qs = emergency_qs.filter(city_id__in=allowed_city_ids)
+        if city_id:
+            emergency_qs = emergency_qs.filter(city_id=city_id)
+        if date_from:
+            emergency_qs = emergency_qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            emergency_qs = emergency_qs.filter(created_at__date__lte=date_to)
+        if search:
+            emergency_qs = emergency_qs.filter(
+                Q(razorpay_payment_id__icontains=search)
+                | Q(razorpay_refund_id__icontains=search)
+                | Q(user__name__icontains=search)
+                | Q(user__mobile__icontains=search)
+            )
         emergency_status_map = {
             EmergencyBroadcastCharge.Status.REFUND_PENDING: "pending",
             EmergencyBroadcastCharge.Status.REFUND_FAILED: "failed",
@@ -1183,6 +1343,8 @@ class RefundListCreateView(APIView):
                 "status": emergency_status_map[charge.status],
                 "amount": str(charge.amount_paise / 100),
                 "currency": charge.currency,
+                "city_id": charge.city_id,
+                "city_name": charge.city.name if charge.city else "Unassigned",
                 "reason": charge.refund_reason or charge.failure_reason or "Automatic emergency broadcast refund",
                 "requested_by": None,
                 "requested_by_name": getattr(charge.user, "name", "") or getattr(charge.user, "mobile", ""),
@@ -1210,6 +1372,9 @@ class RefundListCreateView(APIView):
             refund["source_display"] = "Support request"
             refund["currency"] = "INR"
             refund["is_actionable"] = True
+            source = manual_by_id.get(refund["id"])
+            refund["city_id"] = source.charge.city_id if source else None
+            refund["city_name"] = source.charge.city.name if source and source.charge.city else "Unassigned"
 
         records = sorted(
             [*manual_refunds, *emergency_refunds],
@@ -1232,6 +1397,9 @@ class RefundListCreateView(APIView):
         serializer = RefundRequestCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return fail("Validation failed.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+        charge = EmergencyBroadcastCharge.objects.filter(id=serializer.validated_data["charge_id"]).first()
+        if not charge or not _can_access_city_id(charge.city_id, request.support_staff):
+            return fail("Charge not found.", status_code=status.HTTP_404_NOT_FOUND)
         try:
             refund = refund_service.create_refund_request(
                 charge_id=serializer.validated_data["charge_id"],
@@ -1263,6 +1431,8 @@ class RefundDetailView(APIView):
         refund = refund_selectors.get_refund_by_id(pk)
         if not refund:
             return fail("Refund not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not _can_access_city_id(refund.charge.city_id, request.support_staff):
+            return fail("Refund not found.", status_code=status.HTTP_404_NOT_FOUND)
         from .serializers import RefundRequestSerializer
         return ok(RefundRequestSerializer(refund).data, status_code=status.HTTP_200_OK)
 
@@ -1272,6 +1442,9 @@ class RefundReviewView(APIView):
     permission_classes = [CanApproveRefund]
 
     def post(self, request, pk):
+        existing = refund_selectors.get_refund_by_id(pk)
+        if not existing or not _can_access_city_id(existing.charge.city_id, request.support_staff):
+            return fail("Refund not found.", status_code=status.HTTP_404_NOT_FOUND)
         serializer = RefundReviewSerializer(data=request.data)
         if not serializer.is_valid():
             return fail("Validation failed.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)

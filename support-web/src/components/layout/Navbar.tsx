@@ -6,6 +6,7 @@ import { Bell, Search, ChevronDown, LogOut, User, Settings } from 'lucide-react'
 import { notificationsApi } from '@/api/notificationsApi'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { useCityStore } from '@/store/cityStore'
 
 export const Navbar = () => {
   const { logout } = useAuth()
@@ -15,7 +16,12 @@ export const Navbar = () => {
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const navigate = useNavigate()
+  const { cities, selectedCityId, setSelectedCityId, loadCities } = useCityStore()
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    loadCities().catch(() => undefined)
+  }, [loadCities])
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -74,6 +80,15 @@ export const Navbar = () => {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        <select
+          aria-label="Operational city"
+          value={selectedCityId}
+          onChange={(event) => setSelectedCityId(event.target.value)}
+          className="hidden h-9 max-w-48 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 sm:block"
+        >
+          <option value="">All permitted cities</option>
+          {cities.map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
+        </select>
         <button
           onClick={() => setNotificationPanelOpen(!notificationPanelOpen)}
           className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"

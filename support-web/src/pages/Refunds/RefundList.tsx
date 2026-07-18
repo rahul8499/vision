@@ -17,6 +17,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import type { Refund, RefundStatus } from '@/types/refunds'
 import { REFUND_STATUS_COLORS } from '@/types/refunds'
 import { PaymentTabs } from '@/components/payments/PaymentTabs'
+import { useCityStore } from '@/store/cityStore'
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
@@ -35,9 +36,10 @@ export const RefundList = () => {
   const [dateFrom, setDateFrom] = useState<Date | undefined>()
   const [dateTo, setDateTo] = useState<Date | undefined>()
   const debouncedSearch = useDebounce(search, 300)
+  const city = useCityStore((state) => state.selectedCityId)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['refunds', page, debouncedSearch, status, dateFrom, dateTo],
+    queryKey: ['refunds', page, debouncedSearch, status, dateFrom, dateTo, city],
     queryFn: () => refundsApi.getAll({
       page,
       limit: 20,
@@ -47,8 +49,10 @@ export const RefundList = () => {
       dateTo: dateTo?.toISOString().slice(0, 10),
       sortBy: 'createdAt',
       sortOrder: 'desc',
+      city: city || undefined,
     }),
     staleTime: 30000,
+    refetchInterval: 15_000,
   })
 
   const refunds = data?.results ?? []
@@ -62,6 +66,7 @@ export const RefundList = () => {
       <span className="font-mono text-xs">{String(item.charge).slice(0, 8)}</span>
     )},
     { key: 'source', header: 'Source', render: (item: Refund) => item.sourceDisplay },
+    { key: 'city', header: 'City', render: (item: Refund) => item.cityName || 'Unassigned' },
     { key: 'amount', header: 'Amount', sortable: true, render: (item: Refund) => (
       <span className="font-medium">{item.currency === 'INR' ? '₹' : item.currency} {item.amount.toFixed(2)}</span>
     )},

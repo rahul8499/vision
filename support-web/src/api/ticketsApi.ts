@@ -19,6 +19,9 @@ export const normalizeTicketMessage = (raw: Raw): TicketMessage => ({
 
 export const normalizeTicket = (raw: Raw): Ticket => ({
   id: Number(raw.id),
+  scope: raw.scope || 'GLOBAL',
+  cityId: pick(raw, 'cityId', 'city') ?? undefined,
+  cityName: pick(raw, 'cityName', 'city_name') || undefined,
   category: raw.category || 'other',
   categoryDisplay: asText(raw, 'categoryDisplay', 'category_display', String(raw.category || 'Other').replace(/_/g, ' ')),
   subject: String(raw.subject || 'Untitled support request'),
@@ -49,6 +52,7 @@ export const ticketsApi = {
         status: params?.status,
         priority: params?.priority,
         category: params?.category,
+        city: params?.city,
       },
     })
     const data = response.data.data

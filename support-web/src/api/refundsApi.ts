@@ -14,6 +14,8 @@ type RefundPage = {
 
 const normalizeRefund = (raw: Raw): Refund => ({
   id: raw.id,
+  cityId: raw.city_id ?? undefined,
+  cityName: raw.city_name || undefined,
   charge: String(raw.charge),
   source: raw.source || 'support_request',
   sourceDisplay: raw.source_display || 'Support request',
@@ -41,7 +43,17 @@ const normalizeRefund = (raw: Raw): Refund => ({
 
 export const refundsApi = {
   getAll: async (params?: RefundListParams): Promise<RefundPage> => {
-    const response = await apiClient.get<{ success: boolean; data: RefundPage }>('/refunds/', { params })
+    const response = await apiClient.get<{ success: boolean; data: RefundPage }>('/refunds/', {
+      params: {
+        page: params?.page,
+        page_size: params?.limit,
+        search: params?.search,
+        status: params?.status,
+        date_from: params?.dateFrom,
+        date_to: params?.dateTo,
+        city: params?.city,
+      },
+    })
     return {
       ...response.data.data,
       results: response.data.data.results.map(normalizeRefund),

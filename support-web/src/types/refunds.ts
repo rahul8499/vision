@@ -3,6 +3,8 @@ export type RefundType = 'order_refund' | 'partial_refund' | 'tip_refund' | 'fee
 
 export interface Refund {
   id: string | number
+  cityId?: number
+  cityName?: string
   charge: string
   source: 'support_request' | 'emergency_broadcast'
   sourceDisplay: string
@@ -40,6 +42,7 @@ export interface RefundListParams {
   maxAmount?: number
   sortBy?: 'createdAt' | 'amount' | 'status'
   sortOrder?: 'asc' | 'desc'
+  city?: string
 }
 
 export interface RefundApproveRequest {

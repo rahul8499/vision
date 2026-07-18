@@ -5,6 +5,8 @@ type Raw = Record<string, unknown>
 
 const normalizePayment = (raw: Raw): PaymentRecord => ({
   id: String(raw.id),
+  cityId: raw.city_id == null ? undefined : Number(raw.city_id),
+  cityName: raw.city_name ? String(raw.city_name) : undefined,
   source: raw.source as PaymentRecord['source'],
   sourceDisplay: String(raw.source_display || ''),
   customerType: raw.customer_type as PaymentRecord['customerType'],
@@ -34,6 +36,7 @@ export const paymentsApi = {
         status: params.status,
         date_from: params.dateFrom,
         date_to: params.dateTo,
+        city: params.city,
       },
     })
     const raw = response.data.data

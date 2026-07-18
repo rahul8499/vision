@@ -817,6 +817,13 @@ class SubmitResponseToUserPrescription(APIView):
             status='responded',
             responded_at=response.created_at
         )
+        from support_admin.realtime import broadcast_monitoring_event
+        broadcast_monitoring_event(
+            "store_responded",
+            target_id=target_link.id,
+            prescription_id=prescription.id,
+            city_id=target_link.city_id,
+        )
 
         for med_data in medicines_data:
             if not isinstance(med_data, dict):

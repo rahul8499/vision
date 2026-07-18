@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BellRing, CheckCircle2, Clock3, Phone, Radio, Search, Send, TriangleAlert } from 'lucide-react'
+import { BellRing, CheckCircle2, Clock3, Phone, Radio, RefreshCw, Search, Send, TriangleAlert } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { emergencyMonitoringApi } from '@/api/emergencyMonitoringApi'
 import { Badge } from '@/components/common/Badge'
@@ -10,14 +10,23 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { Loading } from '@/components/common/Loading'
 import { Pagination } from '@/components/tables/Pagination'
 import { useCurrentUser } from '@/store/authStore'
+import { useAuthStore } from '@/store/authStore'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import type { EmergencyDispatchRow, EmergencyPolicy } from '@/types/emergencyMonitoring'
+import { useCityStore } from '@/store/cityStore'
 
 const duration = (seconds: number) => seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 
 export const EmergencyMonitoringPage = () => {
   const user = useCurrentUser()
   const queryClient = useQueryClient()
-  const [city, setCity] = useState('')
+  const token = useAuthStore((state) => state.accessToken)
+  const wsBase = (import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000').replace(/\/$/, '')
+  const { subscribe, isConnected, isReconnecting } = useWebSocket(
+    `${wsBase}/ws/support/emergency-monitoring/?token=${encodeURIComponent(token || '')}`,
+  )
+  const city = useCityStore((state) => state.selectedCityId)
+  const setCity = useCityStore((state) => state.setSelectedCityId)
   const [status, setStatus] = useState('awaiting')
   const [requestType, setRequestType] = useState<'emergency' | 'normal'>('emergency')
   const [mode, setMode] = useState<'active' | 'history'>('active')
@@ -33,8 +42,18 @@ export const EmergencyMonitoringPage = () => {
       search: search || undefined, push: push || undefined,
       waiting_minutes: waitingMinutes || undefined, page, page_size: 20,
     }),
-    refetchInterval: 5_000,
+    refetchInterval: isConnected ? false : 5_000,
   })
+  useEffect(() => {
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ['emergency-monitoring'] })
+    const eventTypes = [
+      'dispatch_created', 'store_opened', 'store_responded', 'reminder_sent',
+      'support_escalated', 'mark_contacted', 'suppress_reminders', 'resume_reminders',
+      'request_closed', 'push_failed',
+    ]
+    const unsubscribers = eventTypes.map((eventType) => subscribe(eventType, refresh))
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
+  }, [queryClient, subscribe])
   const policyQuery = useQuery({
     queryKey: ['emergency-policy', city, requestType],
     queryFn: () => emergencyMonitoringApi.getPolicy(city, requestType),
@@ -82,7 +101,14 @@ export const EmergencyMonitoringPage = () => {
   return <div className="space-y-5">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
       <div><h1 className="text-2xl font-bold text-slate-950">Emergency monitoring</h1><p className="mt-1 text-sm text-slate-500">Live city-wise store response, reminders and escalations.</p></div>
-      <select value={city} onChange={(event) => setCity(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">All permitted cities</option>{cities.data?.map(item => <option key={item.id} value={item.id}>{item.name}, {item.state}</option>)}</select>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-xs font-semibold ${isConnected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+          <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          {isConnected ? 'Live' : isReconnecting ? 'Reconnecting · polling every 5s' : 'Polling every 5s'}
+        </span>
+        <Button variant="secondary" loading={monitoring.isFetching} onClick={() => monitoring.refetch()}><RefreshCw className="h-4 w-4" />Refresh</Button>
+        <select value={city} onChange={(event) => setCity(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">All permitted cities</option>{cities.data?.map(item => <option key={item.id} value={item.id}>{item.name}, {item.state}</option>)}</select>
+      </div>
     </div>
     <div className="grid gap-3 sm:grid-cols-4">
       <Metric icon={<Clock3 />} label="Awaiting" value={summary?.awaiting || 0} />

@@ -754,3 +754,34 @@ Store responds OR request closes
     ↓
 History and audit retained
 ```
+
+## 21. Support web city scope and live behavior
+
+Navbar ka **All permitted cities / City** selector operational pages ka shared filter hai.
+Selector security nahi hai; har backend endpoint support staff ki assigned cities independently verify karta hai.
+
+### Scope rules
+
+- Complaints: operational dispute hai, isliye complaint create hote waqt order/prescription ya involved store ki city snapshot save hoti hai.
+- Platform tickets:
+  - `GLOBAL`: app bug, account, technical problem, feature request, general/other.
+  - `CITY`: verification aur subscription/billing jaisi local store operations.
+- Payments: emergency charge ki city ya subscription store ki city se derive hote hain.
+- Refunds: original charge/payment ki city use karte hain.
+- Admin ya `all_cities_access`: sab cities.
+- City-assigned agent: sirf assigned cities; global platform tickets visible rehte hain.
+
+Existing complaints/tickets migration ke waqt safely backfill hue. Location unavailable ho to
+`Default Service Area` use hota hai, isliye old records disappear nahi hote.
+
+### Refresh behavior
+
+- Emergency/normal monitoring: WebSocket immediate update + disconnect par 5-second polling + manual Refresh.
+- Complaint and support-ticket chat: WebSocket immediate messages.
+- Complaint list and ticket inbox: periodic refresh.
+- Refund list: 15-second refresh, especially pending/failed cases ke liye.
+- Payments: 30-second refresh; financial ledger ko chat-style WebSocket ki zarurat nahi.
+
+City selector change karne par complaints, tickets, payments, refunds aur monitoring ki queries
+selected authorized city ke liye automatically reload hoti hain. Global tickets selected city ke
+saath bhi visible rehte hain because unka issue platform-wide hota hai.

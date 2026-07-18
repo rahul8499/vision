@@ -28,6 +28,9 @@ export const normalizeComplaintMessage = (raw: Raw): ComplaintMessage => ({
 
 export const normalizeComplaint = (raw: Raw): Complaint => ({
   id: Number(raw.id),
+  scope: value(raw, 'scope', 'scope') || 'CITY',
+  cityId: value(raw, 'cityId', 'city') ?? undefined,
+  cityName: value(raw, 'cityName', 'city_name') || undefined,
   category: raw.category || 'other',
   categoryDisplay: text(raw, 'categoryDisplay', 'category_display', String(raw.category || 'Other').replace(/_/g, ' ')),
   subject: String(raw.subject || 'Untitled complaint'),
@@ -84,6 +87,7 @@ export const complaintsApi = {
         status: params?.status,
         priority: params?.priority,
         category: params?.category,
+        city: params?.city,
       },
     })
     const data = response.data.data

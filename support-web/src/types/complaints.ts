@@ -49,6 +49,9 @@ export interface InternalNote {
 
 export interface Complaint {
   id: number
+  scope: 'CITY' | 'GLOBAL'
+  cityId?: number
+  cityName?: string
   category: ComplaintCategory
   categoryDisplay: string
   subject: string
@@ -88,6 +91,7 @@ export interface ComplaintListParams {
   dateTo?: string
   sortBy?: 'createdAt' | 'priority' | 'status'
   sortOrder?: 'asc' | 'desc'
+  city?: string
 }
 
 export interface ComplaintCreateRequest {

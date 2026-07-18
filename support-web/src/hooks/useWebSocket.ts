@@ -9,7 +9,7 @@ export const useWebSocket = (url: string) => {
   const reconnectAttemptsRef = useRef(0)
   const manuallyClosedRef = useRef(false)
   const [isConnected, setIsConnected] = useState(false)
-  const maxReconnectAttempts = 5
+  const [isReconnecting, setIsReconnecting] = useState(false)
   const reconnectDelay = 3000
 
   const connect = useCallback(() => {
@@ -23,6 +23,7 @@ export const useWebSocket = (url: string) => {
       wsRef.current.onopen = () => {
         reconnectAttemptsRef.current = 0
         setIsConnected(true)
+        setIsReconnecting(false)
       }
 
       wsRef.current.onmessage = (event) => {
@@ -41,16 +42,18 @@ export const useWebSocket = (url: string) => {
 
       wsRef.current.onclose = () => {
         setIsConnected(false)
-        if (!manuallyClosedRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        if (!manuallyClosedRef.current) {
+          setIsReconnecting(true)
           reconnectAttemptsRef.current += 1
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect()
-          }, reconnectDelay)
+          }, Math.min(15_000, reconnectDelay * reconnectAttemptsRef.current))
         }
       }
     } catch (error) {
       console.error('Failed to create WebSocket:', error)
       setIsConnected(false)
+      setIsReconnecting(true)
     }
   }, [url])
 
@@ -96,5 +99,6 @@ export const useWebSocket = (url: string) => {
     subscribe,
     send,
     isConnected,
+    isReconnecting,
   }
 }

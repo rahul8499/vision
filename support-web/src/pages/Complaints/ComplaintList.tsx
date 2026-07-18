@@ -16,6 +16,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import type { Complaint, ComplaintStatus, ComplaintPriority, ComplaintCategory } from '@/types/complaints'
 import { COMPLAINT_STATUS_COLORS, COMPLAINT_PRIORITY_COLORS } from '@/types/complaints'
 import { formatSafeDate } from '@/utils/formatters'
+import { useCityStore } from '@/store/cityStore'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' },
@@ -55,9 +56,10 @@ export const ComplaintList = () => {
   const [category, setCategory] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set())
   const debouncedSearch = useDebounce(search, 300)
+  const city = useCityStore((state) => state.selectedCityId)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['complaints', page, debouncedSearch, status, priority, category],
+    queryKey: ['complaints', page, debouncedSearch, status, priority, category, city],
     queryFn: () => complaintsApi.getAll({
       page,
       limit: 20,
@@ -65,10 +67,12 @@ export const ComplaintList = () => {
       status: (status as ComplaintStatus) || undefined,
       priority: (priority as ComplaintPriority) || undefined,
       category: (category as ComplaintCategory) || undefined,
+      city: city || undefined,
       sortBy: 'createdAt',
       sortOrder: 'desc',
     }),
     staleTime: 30000,
+    refetchInterval: 15_000,
   })
 
   const complaints = data?.results ?? []
@@ -101,6 +105,7 @@ export const ComplaintList = () => {
     { key: 'respondentName', header: 'Against', render: (item: Complaint) => (
       <div><p className="font-medium text-slate-800">{item.respondentName}</p><p className="text-xs capitalize text-slate-400">{item.respondentType}</p></div>
     )},
+    { key: 'city', header: 'City', render: (item: Complaint) => item.scope === 'GLOBAL' ? 'Global' : (item.cityName || 'Unassigned') },
     { key: 'status', header: 'Status', sortable: true, render: (item: Complaint) => (
       <Badge className={COMPLAINT_STATUS_COLORS[item.status]}>
         {item.statusDisplay || item.status.replace('_', ' ')}

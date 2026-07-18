@@ -6,13 +6,16 @@ from .models import SupportStaff, SupportAssignment, InternalNote, RefundRequest
 
 
 class SupportStaffSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(source="user.name", read_only=True)
+    name = serializers.SerializerMethodField()
     email = serializers.CharField(source="user.email", read_only=True)
 
     class Meta:
         model = SupportStaff
         fields = ["id", "user", "name", "email", "role", "is_active", "employee_id", "department", "phone", "timezone", "last_seen_at", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+    def get_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
 
 
 class SupportStaffCreateSerializer(serializers.Serializer):

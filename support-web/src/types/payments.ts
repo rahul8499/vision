@@ -2,6 +2,8 @@ export type PaymentSource = 'emergency_broadcast' | 'store_subscription'
 
 export interface PaymentRecord {
   id: string
+  cityId?: number
+  cityName?: string
   source: PaymentSource
   sourceDisplay: string
   customerType: 'user' | 'store'
@@ -36,6 +38,7 @@ export interface PaymentListParams {
   status?: string
   dateFrom?: string
   dateTo?: string
+  city?: string
 }
 
 export interface PaymentPage {

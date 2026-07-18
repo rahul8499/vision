@@ -14,6 +14,9 @@ export interface TicketMessage {
 
 export interface Ticket {
   id: number
+  scope: 'CITY' | 'GLOBAL'
+  cityId?: number
+  cityName?: string
   category: TicketCategory
   categoryDisplay: string
   subject: string
@@ -41,6 +44,7 @@ export interface TicketListParams {
   status?: TicketStatus | ''
   priority?: TicketPriority | ''
   category?: TicketCategory | ''
+  city?: string
 }
 
 export interface TicketReplyRequest {

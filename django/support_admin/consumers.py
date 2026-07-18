@@ -66,3 +66,53 @@ class AdminNotificationConsumer(AsyncJsonWebsocketConsumer):
         if not getattr(self, "staff", None):
             return
         SupportNotification.objects.filter(id=notification_id, recipient=self.staff).update(is_read=True)
+
+
+class EmergencyMonitoringConsumer(AsyncJsonWebsocketConsumer):
+    """Read-only live monitoring stream with server-side city authorization."""
+
+    async def connect(self):
+        from urllib.parse import parse_qs
+
+        token = parse_qs(self.scope.get("query_string", b"").decode()).get("token", [""])[0]
+        access = await self._get_access(token)
+        if not access:
+            await self.close(code=4003)
+            return
+        self.staff_id, self.allowed_city_ids = access
+        self.group_name = "support_emergency_monitoring"
+        await self.accept()
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.send_json({"type": "connected", "staff_id": self.staff_id})
+
+    async def disconnect(self, close_code):
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def receive_json(self, content, **kwargs):
+        if content.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+
+    async def monitoring_event(self, event):
+        data = event.get("data") or {}
+        city_id = data.get("city_id")
+        if self.allowed_city_ids is not None and city_id not in self.allowed_city_ids:
+            return
+        await self.send_json({"type": event.get("event_type", "monitoring_updated"), "data": data})
+
+    @database_sync_to_async
+    def _get_access(self, token):
+        from django.contrib.auth import get_user_model
+        from rest_framework_simplejwt.exceptions import TokenError
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        try:
+            user_id = AccessToken(token).get("user_id")
+            user = get_user_model().objects.get(id=user_id, is_active=True)
+            staff = SupportStaff.objects.get(user=user, is_active=True)
+        except (TokenError, get_user_model().DoesNotExist, SupportStaff.DoesNotExist, TypeError, ValueError):
+            return None
+        allowed = None
+        if staff.role != SupportStaff.ROLE_ADMIN and not staff.all_cities_access:
+            allowed = set(staff.cities.values_list("id", flat=True))
+        return staff.id, allowed
