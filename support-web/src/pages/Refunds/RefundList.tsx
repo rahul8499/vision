@@ -8,7 +8,6 @@ import { FilterBar } from '@/components/filters/FilterBar'
 import { SearchInput } from '@/components/filters/SearchInput'
 import { SelectFilter } from '@/components/filters/SelectFilter'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
-import { Button } from '@/components/common/Button'
 import { Badge } from '@/components/common/Badge'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Loading } from '@/components/common/Loading'
@@ -17,6 +16,7 @@ import { Wallet } from 'lucide-react'
 import { useDebounce } from '@/hooks/useDebounce'
 import type { Refund, RefundStatus } from '@/types/refunds'
 import { REFUND_STATUS_COLORS } from '@/types/refunds'
+import { PaymentTabs } from '@/components/payments/PaymentTabs'
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
@@ -32,8 +32,8 @@ export const RefundList = () => {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState<Date | undefined>()
+  const [dateTo, setDateTo] = useState<Date | undefined>()
   const debouncedSearch = useDebounce(search, 300)
 
   const { data, isLoading } = useQuery({
@@ -43,8 +43,8 @@ export const RefundList = () => {
       limit: 20,
       search: debouncedSearch || undefined,
       status: (status as RefundStatus) || undefined,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
+      dateFrom: dateFrom?.toISOString().slice(0, 10),
+      dateTo: dateTo?.toISOString().slice(0, 10),
       sortBy: 'createdAt',
       sortOrder: 'desc',
     }),
@@ -61,8 +61,9 @@ export const RefundList = () => {
     { key: 'charge', header: 'Charge ID', render: (item: Refund) => (
       <span className="font-mono text-xs">{String(item.charge).slice(0, 8)}</span>
     )},
+    { key: 'source', header: 'Source', render: (item: Refund) => item.sourceDisplay },
     { key: 'amount', header: 'Amount', sortable: true, render: (item: Refund) => (
-      <span className="font-medium">{item.amount.toFixed(2)}</span>
+      <span className="font-medium">{item.currency === 'INR' ? '₹' : item.currency} {item.amount.toFixed(2)}</span>
     )},
     { key: 'reason', header: 'Reason', render: (item: Refund) => (
       <p className="truncate max-w-[150px]">{item.reason}</p>
@@ -80,21 +81,22 @@ export const RefundList = () => {
   const handleResetFilters = () => {
     setSearch('')
     setStatus('')
-    setDateFrom('')
-    setDateTo('')
+    setDateFrom(undefined)
+    setDateTo(undefined)
     setPage(1)
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Refunds</h1>
-          <p className="text-gray-500 mt-1">Manage and process refund requests</p>
+          <h1 className="text-2xl font-bold text-gray-900">Payments & refunds</h1>
+          <p className="text-gray-500 mt-1">Refund cases only—payments and broadcast operations remain separate.</p>
         </div>
+        <PaymentTabs />
       </div>
 
-      <FilterBar onReset={handleResetFilters} activeFilterCount={[status, dateFrom, dateTo, search].filter(Boolean).length}>
+      <FilterBar onReset={handleResetFilters} activeFiltersCount={[status, dateFrom, dateTo, search].filter(Boolean).length}>
         <SearchInput value={search} onChange={setSearch} />
         <SelectFilter label="Status" value={status} onChange={setStatus} options={STATUS_OPTIONS} />
         <DateRangeFilter
@@ -113,7 +115,14 @@ export const RefundList = () => {
         <EmptyState icon={<Wallet className="h-12 w-12" />} title="No refunds found" description="No refund requests match your filters." />
       ) : (
         <>
-          <DataTable data={refunds} columns={columns} keyExtractor={(item) => item.id} onRowClick={(item) => navigate(`/refunds/${item.id}`)} />
+          <DataTable
+            data={refunds}
+            columns={columns}
+            keyExtractor={(item) => item.id}
+            onRowClick={(item) => {
+              if (item.isActionable) navigate(`/refunds/${item.id}`)
+            }}
+          />
           <div className="bg-white rounded-xl border border-gray-200">
             <Pagination currentPage={page} totalPages={pagination?.total_pages ?? 1} totalItems={pagination?.total_count ?? 0} itemsPerPage={20} onPageChange={setPage} />
           </div>

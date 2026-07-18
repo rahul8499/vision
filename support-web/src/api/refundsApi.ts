@@ -1,15 +1,56 @@
 import apiClient from './axios'
-import type { Refund, RefundListParams, RefundApproveRequest, RefundRejectRequest, RefundProcessRequest, PaginatedResponse } from '@/types/auth'
+import type { Refund, RefundListParams, RefundApproveRequest, RefundRejectRequest, RefundProcessRequest } from '@/types/refunds'
+
+type Raw = Record<string, any>
+type RefundPage = {
+  results: Refund[]
+  pagination: {
+    page: number
+    page_size: number
+    total_pages: number
+    total_count: number
+  }
+}
+
+const normalizeRefund = (raw: Raw): Refund => ({
+  id: raw.id,
+  charge: String(raw.charge),
+  source: raw.source || 'support_request',
+  sourceDisplay: raw.source_display || 'Support request',
+  isActionable: raw.is_actionable ?? true,
+  currency: raw.currency || 'INR',
+  prescriptionResponse: raw.prescription_response ?? undefined,
+  requestedById: raw.requested_by,
+  requestedByName: raw.requested_by_name || 'System',
+  assignedToId: raw.assigned_to ?? undefined,
+  assignedToName: raw.assigned_to_name || undefined,
+  reviewedById: raw.reviewed_by ?? undefined,
+  reviewedByName: raw.reviewed_by_name || undefined,
+  status: raw.status,
+  amount: Number(raw.amount || 0),
+  reason: raw.reason || '',
+  rejectionReason: raw.rejection_reason || undefined,
+  paymentGateway: raw.payment_gateway || undefined,
+  paymentReference: raw.payment_reference || undefined,
+  processedAt: raw.processed_at || undefined,
+  approvedAt: raw.approved_at || undefined,
+  metadata: raw.metadata || {},
+  createdAt: raw.created_at,
+  updatedAt: raw.updated_at,
+})
 
 export const refundsApi = {
-  getAll: async (params?: RefundListParams): Promise<PaginatedResponse<Refund>> => {
-    const response = await apiClient.get<{ success: boolean; data: PaginatedResponse<Refund> }>('/refunds/', { params })
-    return response.data.data
+  getAll: async (params?: RefundListParams): Promise<RefundPage> => {
+    const response = await apiClient.get<{ success: boolean; data: RefundPage }>('/refunds/', { params })
+    return {
+      ...response.data.data,
+      results: response.data.data.results.map(normalizeRefund),
+    }
   },
 
   getOne: async (id: string): Promise<Refund> => {
     const response = await apiClient.get(`/refunds/${id}/`)
-    return response.data.data
+    return normalizeRefund(response.data.data)
   },
 
   approve: async (id: string, data?: RefundApproveRequest): Promise<Refund> => {

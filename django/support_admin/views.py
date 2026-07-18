@@ -45,6 +45,7 @@ from complaints.models import (
 )
 from prescription.models import User, Store
 from emergency_services.models import EmergencyBroadcastCharge
+from subscription.models import PaymentHistory
 
 
 # ---------------------------------------------------------------------------
@@ -731,8 +732,116 @@ class TicketStatusUpdateView(APIView):
 
 
 # ---------------------------------------------------------------------------
-# Refund views
+# Payment and refund views
 # ---------------------------------------------------------------------------
+
+class PaymentListView(APIView):
+    """Read-only unified ledger for payment records owned by this application."""
+
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def get(self, request):
+        source_filter = request.query_params.get("source")
+        status_filter = request.query_params.get("status")
+        search = (request.query_params.get("search") or "").strip().lower()
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+
+        records = []
+        if source_filter in (None, "", "emergency_broadcast"):
+            charges = EmergencyBroadcastCharge.objects.filter(
+                kind=EmergencyBroadcastCharge.Kind.PAID,
+                razorpay_payment_id__isnull=False,
+            ).select_related("user", "prescription")
+            if date_from:
+                charges = charges.filter(created_at__date__gte=date_from)
+            if date_to:
+                charges = charges.filter(created_at__date__lte=date_to)
+            for charge in charges:
+                payment_status = (
+                    "refunded" if charge.status == EmergencyBroadcastCharge.Status.REFUNDED
+                    else "refund_pending" if charge.status == EmergencyBroadcastCharge.Status.REFUND_PENDING
+                    else "refund_failed" if charge.status == EmergencyBroadcastCharge.Status.REFUND_FAILED
+                    else "paid" if charge.razorpay_payment_id
+                    else "pending"
+                )
+                record = {
+                    "id": f"emergency:{charge.id}",
+                    "source": "emergency_broadcast",
+                    "source_display": "Emergency broadcast",
+                    "customer_type": "user",
+                    "customer_id": charge.user_id,
+                    "customer_name": getattr(charge.user, "name", "") or getattr(charge.user, "mobile", ""),
+                    "payment_id": charge.razorpay_payment_id or "",
+                    "order_id": charge.razorpay_order_id or "",
+                    "amount": str(charge.amount_paise / 100),
+                    "currency": charge.currency,
+                    "status": payment_status,
+                    "operational_status": charge.status,
+                    "operational_status_display": charge.get_status_display(),
+                    "reference_id": str(charge.id),
+                    "refund_id": charge.razorpay_refund_id or "",
+                    "created_at": charge.created_at,
+                    "updated_at": charge.updated_at,
+                }
+                haystack = " ".join(str(value).lower() for value in record.values())
+                if (not status_filter or payment_status == status_filter) and (not search or search in haystack):
+                    records.append(record)
+
+        if source_filter in (None, "", "store_subscription"):
+            payments = PaymentHistory.objects.select_related("store", "subscription", "subscription__plan")
+            if date_from:
+                payments = payments.filter(created_at__date__gte=date_from)
+            if date_to:
+                payments = payments.filter(created_at__date__lte=date_to)
+            for payment in payments:
+                normalized_status = (payment.status or "unknown").lower()
+                record = {
+                    "id": f"subscription:{payment.id}",
+                    "source": "store_subscription",
+                    "source_display": "Store subscription",
+                    "customer_type": "store",
+                    "customer_id": payment.store_id,
+                    "customer_name": payment.store.name,
+                    "payment_id": payment.razorpay_payment_id,
+                    "order_id": "",
+                    "amount": str(payment.amount),
+                    "currency": "INR",
+                    "status": normalized_status,
+                    "operational_status": payment.subscription.status if payment.subscription else "",
+                    "operational_status_display": payment.subscription.get_status_display() if payment.subscription else "Subscription unavailable",
+                    "reference_id": payment.subscription.razorpay_subscription_id if payment.subscription else "",
+                    "refund_id": "",
+                    "created_at": payment.created_at,
+                    "updated_at": payment.created_at,
+                }
+                haystack = " ".join(str(value).lower() for value in record.values())
+                if (not status_filter or normalized_status == status_filter) and (not search or search in haystack):
+                    records.append(record)
+
+        records.sort(key=lambda item: item["created_at"], reverse=True)
+        paginator = SupportPagination()
+        page = paginator.paginate_queryset(records, request)
+        emergency = EmergencyBroadcastCharge.objects.all()
+        summary = {
+            "total_payments": len(records),
+            "broadcasting": emergency.filter(status=EmergencyBroadcastCharge.Status.BROADCASTING).count(),
+            "service_delivered": emergency.filter(status=EmergencyBroadcastCharge.Status.SERVICE_DELIVERED).count(),
+            "refund_pending": emergency.filter(status=EmergencyBroadcastCharge.Status.REFUND_PENDING).count(),
+            "refund_failed": emergency.filter(status=EmergencyBroadcastCharge.Status.REFUND_FAILED).count(),
+        }
+        return ok({
+            "results": page,
+            "pagination": {
+                "page": paginator.page.number,
+                "page_size": paginator.get_page_size(request),
+                "total_pages": paginator.page.paginator.num_pages,
+                "total_count": paginator.page.paginator.count,
+            },
+            "summary": summary,
+        })
+
 
 class RefundListCreateView(APIView):
     authentication_classes = [SupportJWTAuthentication]
@@ -746,7 +855,81 @@ class RefundListCreateView(APIView):
             assigned_to=assigned_to_filter,
         )
         from .serializers import RefundRequestSerializer
-        return paginated(qs, request, RefundRequestSerializer)
+        manual_refunds = list(RefundRequestSerializer(qs, many=True).data)
+
+        emergency_statuses = {
+            EmergencyBroadcastCharge.Status.REFUND_PENDING,
+            EmergencyBroadcastCharge.Status.REFUND_FAILED,
+            EmergencyBroadcastCharge.Status.REFUNDED,
+        }
+        emergency_qs = EmergencyBroadcastCharge.objects.filter(
+            status__in=emergency_statuses
+        ).select_related("user", "prescription")
+        emergency_status_map = {
+            EmergencyBroadcastCharge.Status.REFUND_PENDING: "pending",
+            EmergencyBroadcastCharge.Status.REFUND_FAILED: "failed",
+            EmergencyBroadcastCharge.Status.REFUNDED: "processed",
+        }
+        if status_filter:
+            matching_statuses = [
+                source_status for source_status, support_status in emergency_status_map.items()
+                if support_status == status_filter
+            ]
+            emergency_qs = emergency_qs.filter(status__in=matching_statuses)
+
+        emergency_refunds = [
+            {
+                "id": str(charge.id),
+                "charge": str(charge.id),
+                "source": "emergency_broadcast",
+                "source_display": "Emergency broadcast",
+                "status": emergency_status_map[charge.status],
+                "amount": str(charge.amount_paise / 100),
+                "currency": charge.currency,
+                "reason": charge.refund_reason or charge.failure_reason or "Automatic emergency broadcast refund",
+                "requested_by": None,
+                "requested_by_name": getattr(charge.user, "name", "") or getattr(charge.user, "mobile", ""),
+                "assigned_to": None,
+                "assigned_to_name": "",
+                "reviewed_by": None,
+                "reviewed_by_name": "",
+                "payment_gateway": "Razorpay",
+                "payment_reference": charge.razorpay_refund_id or "",
+                "processed_at": charge.refunded_at,
+                "approved_at": charge.refund_requested_at,
+                "metadata": {
+                    "prescription_id": charge.prescription_id,
+                    "provider_status": charge.provider_refund_status,
+                    "refund_attempts": charge.refund_attempts,
+                },
+                "created_at": charge.created_at,
+                "updated_at": charge.updated_at,
+                "is_actionable": False,
+            }
+            for charge in emergency_qs
+        ]
+        for refund in manual_refunds:
+            refund["source"] = "support_request"
+            refund["source_display"] = "Support request"
+            refund["currency"] = "INR"
+            refund["is_actionable"] = True
+
+        records = sorted(
+            [*manual_refunds, *emergency_refunds],
+            key=lambda item: str(item.get("created_at") or ""),
+            reverse=True,
+        )
+        paginator = SupportPagination()
+        page = paginator.paginate_queryset(records, request)
+        return ok({
+            "results": page,
+            "pagination": {
+                "page": paginator.page.number,
+                "page_size": paginator.get_page_size(request),
+                "total_pages": paginator.page.paginator.num_pages,
+                "total_count": paginator.page.paginator.count,
+            },
+        })
 
     def post(self, request):
         serializer = RefundRequestCreateSerializer(data=request.data)

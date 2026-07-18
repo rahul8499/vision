@@ -16,6 +16,7 @@ const ComplaintList = lazy(() => import('@/pages/Complaints/ComplaintList').then
 const ComplaintDetail = lazy(() => import('@/pages/Complaints/ComplaintDetail').then(m => ({ default: m.ComplaintDetail })))
 const TicketList = lazy(() => import('@/pages/SupportTickets/TicketList').then(m => ({ default: m.TicketList })))
 const TicketDetail = lazy(() => import('@/pages/SupportTickets/TicketDetail').then(m => ({ default: m.TicketDetail })))
+const PaymentList = lazy(() => import('@/pages/Payments/PaymentList').then(m => ({ default: m.PaymentList })))
 const RefundList = lazy(() => import('@/pages/Refunds/RefundList').then(m => ({ default: m.RefundList })))
 const RefundDetail = lazy(() => import('@/pages/Refunds/RefundDetail').then(m => ({ default: m.RefundDetail })))
 const SafetyReportList = lazy(() => import('@/pages/SafetyReports/SafetyReportList').then(m => ({ default: m.SafetyReportList })))
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: 'complaints/:id', element: LazyWrapper(ComplaintDetail) },
       { path: 'tickets', element: LazyWrapper(TicketList) },
       { path: 'tickets/:id', element: LazyWrapper(TicketDetail) },
+      { path: 'payments', element: LazyWrapper(PaymentList) },
       { path: 'refunds', element: LazyWrapper(RefundList) },
       { path: 'refunds/:id', element: LazyWrapper(RefundDetail) },
       { path: 'safety-reports', element: LazyWrapper(SafetyReportList) },

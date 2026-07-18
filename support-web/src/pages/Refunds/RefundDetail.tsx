@@ -5,7 +5,6 @@ import { Card } from '@/components/common/Card'
 import { Badge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
 import { Modal } from '@/components/common/Modal'
-import { InternalNotesPanel } from '@/components/threads/InternalNotesPanel'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
@@ -36,11 +35,6 @@ export const RefundDetail = () => {
     queryFn: () => refundsApi.getOne(id!),
     enabled: !!id,
     staleTime: 30000,
-  })
-
-  const addNoteMutation = useMutation({
-    mutationFn: (content: string) => refundsApi.addInternalNote(id!, content),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['refund', id] }),
   })
 
   const approveMutation = useMutation({
@@ -199,10 +193,6 @@ export const RefundDetail = () => {
             </div>
           </Card>
 
-          <InternalNotesPanel
-            notes={(refund.internalNotes || []).map((n) => ({ id: n.id, content: n.body, authorName: n.createdByName, createdAt: n.createdAt }))}
-            onAddNote={async (content) => { await addNoteMutation.mutateAsync(content); toast.success('Note added') }}
-          />
         </div>
       </div>
 

@@ -2,8 +2,12 @@ export type RefundStatus = 'pending' | 'approved' | 'rejected' | 'processed' | '
 export type RefundType = 'order_refund' | 'partial_refund' | 'tip_refund' | 'fee_refund' | 'compensation'
 
 export interface Refund {
-  id: number
+  id: string | number
   charge: string
+  source: 'support_request' | 'emergency_broadcast'
+  sourceDisplay: string
+  isActionable: boolean
+  currency: string
   prescriptionResponse?: number
   requestedById: number
   requestedByName: string
@@ -51,13 +55,13 @@ export interface RefundProcessRequest {
   paymentMethod: string
 }
 
-export const REFUND_STATUS_COLORS: Record<RefundStatus, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  approved: 'bg-blue-100 text-blue-800',
-  rejected: 'bg-red-100 text-red-800',
-  processed: 'bg-green-100 text-green-800',
-  failed: 'bg-red-100 text-red-800',
-  cancelled: 'bg-gray-100 text-gray-800',
+export const REFUND_STATUS_COLORS: Record<RefundStatus, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
+  pending: 'warning',
+  approved: 'info',
+  rejected: 'danger',
+  processed: 'success',
+  failed: 'danger',
+  cancelled: 'default',
 }
 
 export const REFUND_TYPE_LABELS: Record<RefundType, string> = {
