@@ -69,6 +69,8 @@ class Store(models.Model):
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(default=timezone.now)
     preferred_language = models.CharField(max_length=2, choices=[('en', 'English'), ('hi', 'Hindi'), ('mr', 'Marathi')], default='en', db_index=True)
+    city = models.ForeignKey('emergency_services.City', on_delete=models.SET_NULL, null=True, blank=True, related_name='stores')
+    service_zone = models.ForeignKey('emergency_services.ServiceZone', on_delete=models.SET_NULL, null=True, blank=True, related_name='stores')
 
     # 📊 Store Performance Tracking (For Elite Ranking)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
@@ -137,6 +139,10 @@ class Store(models.Model):
         if self.latitude and self.longitude:
             self.location = Point(float(self.longitude), float(self.latitude), srid=4326)
             self.geohash = geohash.encode(float(self.latitude), float(self.longitude), precision=12)
+            from emergency_services.models import City
+            if not self.city_id or City.objects.filter(id=self.city_id, is_default=True).exists():
+                from emergency_services.services import resolve_city_zone
+                self.city, self.service_zone = resolve_city_zone(self.location)
         if not self.pk:
             self.password = make_password(self.password)
         super().save(*args, **kwargs)
@@ -332,6 +338,8 @@ class Prescription(models.Model):
     dispatch_completed_at = models.DateTimeField(null=True, blank=True)
     emergency_cancelled_at = models.DateTimeField(null=True, blank=True, db_index=True)
     emergency_cancel_reason = models.TextField(blank=True, default='')
+    city = models.ForeignKey('emergency_services.City', on_delete=models.SET_NULL, null=True, blank=True, related_name='prescriptions')
+    service_zone = models.ForeignKey('emergency_services.ServiceZone', on_delete=models.SET_NULL, null=True, blank=True, related_name='prescriptions')
     source_response = models.ForeignKey(
         'PrescriptionResponse',
         on_delete=models.SET_NULL,
@@ -358,6 +366,10 @@ class Prescription(models.Model):
             lat, lon = float(self.latitude), float(self.longitude)
             self.location = Point(lon, lat, srid=4326)
             self.geohash = geohash.encode(lat, lon, precision=12)
+            from emergency_services.models import City
+            if not self.city_id or City.objects.filter(id=self.city_id, is_default=True).exists():
+                from emergency_services.services import resolve_city_zone
+                self.city, self.service_zone = resolve_city_zone(self.location)
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -741,6 +753,20 @@ class PrescriptionTargetStore(models.Model):
     notified_at = models.DateTimeField(default=timezone.now, db_index=True)
     opened_at = models.DateTimeField(null=True, blank=True)
     responded_at = models.DateTimeField(null=True, blank=True)
+    first_reminder_at = models.DateTimeField(null=True, blank=True)
+    second_reminder_at = models.DateTimeField(null=True, blank=True)
+    escalated_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    reminder_count = models.PositiveSmallIntegerField(default=0)
+    manual_reminder_count = models.PositiveSmallIntegerField(default=0)
+    last_manual_reminder_at = models.DateTimeField(null=True, blank=True)
+    reminders_suppressed_at = models.DateTimeField(null=True, blank=True)
+    reminders_suppressed_by_id = models.PositiveBigIntegerField(null=True, blank=True)
+    support_contacted_at = models.DateTimeField(null=True, blank=True)
+    support_contacted_by_id = models.PositiveBigIntegerField(null=True, blank=True)
+    last_notification_error = models.CharField(max_length=500, blank=True)
+    policy_snapshot = models.JSONField(default=dict, blank=True)
+    city = models.ForeignKey('emergency_services.City', on_delete=models.SET_NULL, null=True, blank=True, related_name='store_dispatches')
+    service_zone = models.ForeignKey('emergency_services.ServiceZone', on_delete=models.SET_NULL, null=True, blank=True, related_name='store_dispatches')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='notified', db_index=True)
 
     class Meta:

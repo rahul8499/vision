@@ -1,7 +1,91 @@
 import uuid
+import math
 
-from django.db import models
+from django.contrib.gis.db import models
+from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.utils import timezone
+
+
+class City(models.Model):
+    BOUNDARY_MODE_CHOICES = (("radius", "Automatic radius"), ("manual", "Advanced manual polygon"))
+    name = models.CharField(max_length=120)
+    state = models.CharField(max_length=120)
+    timezone = models.CharField(max_length=50, default="Asia/Kolkata")
+    boundary = models.MultiPolygonField(srid=4326, geography=True, null=True, blank=True)
+    boundary_mode = models.CharField(max_length=10, choices=BOUNDARY_MODE_CHOICES, default="radius")
+    center_latitude = models.FloatField(null=True, blank=True)
+    center_longitude = models.FloatField(null=True, blank=True)
+    service_radius_km = models.PositiveSmallIntegerField(default=40)
+    is_active = models.BooleanField(default=True, db_index=True)
+    is_default = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("name", "state")
+        ordering = ("state", "name")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("is_default",),
+                condition=models.Q(is_default=True),
+                name="single_default_service_city",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name}, {self.state}"
+
+    def save(self, *args, **kwargs):
+        if self.boundary_mode == "radius" and self.center_latitude is not None and self.center_longitude is not None:
+            self.boundary = _radius_boundary(self.center_latitude, self.center_longitude, self.service_radius_km)
+        super().save(*args, **kwargs)
+
+
+class ServiceZone(models.Model):
+    city = models.ForeignKey(City, on_delete=models.CASCADE, related_name="service_zones")
+    name = models.CharField(max_length=120)
+    boundary = models.MultiPolygonField(srid=4326, geography=True, null=True, blank=True)
+    boundary_mode = models.CharField(max_length=10, choices=City.BOUNDARY_MODE_CHOICES, default="radius")
+    center_latitude = models.FloatField(null=True, blank=True)
+    center_longitude = models.FloatField(null=True, blank=True)
+    service_radius_km = models.PositiveSmallIntegerField(default=5)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("city", "name")
+        ordering = ("city__name", "name")
+
+    def __str__(self):
+        return f"{self.city.name} / {self.name}"
+
+    def save(self, *args, **kwargs):
+        if self.boundary_mode == "radius" and self.center_latitude is not None and self.center_longitude is not None:
+            self.boundary = _radius_boundary(self.center_latitude, self.center_longitude, self.service_radius_km)
+        super().save(*args, **kwargs)
+
+
+def _radius_boundary(latitude, longitude, radius_km, points=72):
+    """Build a WGS84 geodesic circle approximation suitable for PostGIS."""
+    earth_radius_km = 6371.0088
+    angular_distance = float(radius_km) / earth_radius_km
+    latitude_radians = math.radians(float(latitude))
+    longitude_radians = math.radians(float(longitude))
+    coordinates = []
+    for index in range(points):
+        bearing = math.radians((360 / points) * index)
+        destination_latitude = math.asin(
+            math.sin(latitude_radians) * math.cos(angular_distance)
+            + math.cos(latitude_radians) * math.sin(angular_distance) * math.cos(bearing)
+        )
+        destination_longitude = longitude_radians + math.atan2(
+            math.sin(bearing) * math.sin(angular_distance) * math.cos(latitude_radians),
+            math.cos(angular_distance) - math.sin(latitude_radians) * math.sin(destination_latitude),
+        )
+        coordinates.append((math.degrees(destination_longitude), math.degrees(destination_latitude)))
+    coordinates.append(coordinates[0])
+    return MultiPolygon(Polygon(coordinates), srid=4326)
 
 
 class EmergencyFeePolicy(models.Model):
@@ -9,11 +93,55 @@ class EmergencyFeePolicy(models.Model):
     free_broadcasts_per_user = models.PositiveSmallIntegerField(default=1)
     quote_wait_minutes = models.PositiveSmallIntegerField(default=15)
     checkout_expiry_minutes = models.PositiveSmallIntegerField(default=30)
+    first_store_reminder_seconds = models.PositiveIntegerField(default=60)
+    second_store_reminder_seconds = models.PositiveIntegerField(default=120)
+    support_escalation_seconds = models.PositiveIntegerField(default=180)
+    normal_first_store_reminder_seconds = models.PositiveIntegerField(default=180)
+    normal_second_store_reminder_seconds = models.PositiveIntegerField(default=300)
+    normal_support_escalation_seconds = models.PositiveIntegerField(default=420)
+    manual_reminder_cooldown_seconds = models.PositiveIntegerField(default=120)
+    manual_reminder_daily_limit = models.PositiveSmallIntegerField(default=10)
+    max_store_reminders = models.PositiveSmallIntegerField(default=2)
+    reminders_enabled = models.BooleanField(default=True)
+    support_escalation_enabled = models.BooleanField(default=True)
     enabled = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Emergency broadcast ₹{self.amount_paise / 100:.2f}"
+
+
+class CityEmergencyPolicy(models.Model):
+    city = models.ForeignKey(City, on_delete=models.CASCADE, related_name="emergency_policies")
+    service_zone = models.OneToOneField(
+        ServiceZone, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="emergency_policy",
+    )
+    first_store_reminder_seconds = models.PositiveIntegerField(null=True, blank=True)
+    second_store_reminder_seconds = models.PositiveIntegerField(null=True, blank=True)
+    support_escalation_seconds = models.PositiveIntegerField(null=True, blank=True)
+    normal_first_store_reminder_seconds = models.PositiveIntegerField(null=True, blank=True)
+    normal_second_store_reminder_seconds = models.PositiveIntegerField(null=True, blank=True)
+    normal_support_escalation_seconds = models.PositiveIntegerField(null=True, blank=True)
+    manual_reminder_cooldown_seconds = models.PositiveIntegerField(null=True, blank=True)
+    manual_reminder_daily_limit = models.PositiveSmallIntegerField(null=True, blank=True)
+    max_store_reminders = models.PositiveSmallIntegerField(null=True, blank=True)
+    reminders_enabled = models.BooleanField(null=True, blank=True)
+    support_escalation_enabled = models.BooleanField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("city",),
+                condition=models.Q(service_zone__isnull=True),
+                name="unique_city_emergency_policy",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Emergency policy: {self.service_zone or self.city}"
 
 
 class UserEmergencyEntitlement(models.Model):
@@ -52,6 +180,9 @@ class EmergencyBroadcastCharge(models.Model):
         blank=True,
         related_name="emergency_charge",
     )
+    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True, related_name="emergency_charges")
+    service_zone = models.ForeignKey(ServiceZone, on_delete=models.SET_NULL, null=True, blank=True, related_name="emergency_charges")
+    policy_snapshot = models.JSONField(default=dict, blank=True)
     kind = models.CharField(max_length=8, choices=Kind.choices)
     status = models.CharField(max_length=24, choices=Status.choices)
     amount_paise = models.PositiveIntegerField(default=0)

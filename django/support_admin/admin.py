@@ -14,10 +14,11 @@ from .models import (
 
 @admin.register(SupportStaff)
 class SupportStaffAdmin(admin.ModelAdmin):
-    list_display = ("user", "role", "employee_id", "is_active", "last_seen_at", "created_at")
+    list_display = ("user", "role", "employee_id", "all_cities_access", "is_active", "last_seen_at", "created_at")
     list_filter = ("role", "is_active", "created_at")
     search_fields = ("user__email", "employee_id", "phone")
     readonly_fields = ("created_at", "updated_at")
+    filter_horizontal = ("cities",)
 
 
 @admin.register(SupportSession)

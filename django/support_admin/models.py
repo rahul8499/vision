@@ -31,6 +31,8 @@ class SupportStaff(models.Model):
     department = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     timezone = models.CharField(max_length=50, default="Asia/Kolkata")
+    all_cities_access = models.BooleanField(default=False)
+    cities = models.ManyToManyField("emergency_services.City", blank=True, related_name="support_staff")
     last_seen_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         User,

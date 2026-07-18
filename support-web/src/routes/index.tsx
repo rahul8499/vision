@@ -12,6 +12,7 @@ const LazyWrapper = (Component: React.LazyExoticComponent<React.ComponentType>) 
 )
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })))
+const EmergencyMonitoringPage = lazy(() => import('@/pages/EmergencyMonitoring/EmergencyMonitoringPage').then(m => ({ default: m.EmergencyMonitoringPage })))
 const ComplaintList = lazy(() => import('@/pages/Complaints/ComplaintList').then(m => ({ default: m.ComplaintList })))
 const ComplaintDetail = lazy(() => import('@/pages/Complaints/ComplaintDetail').then(m => ({ default: m.ComplaintDetail })))
 const TicketList = lazy(() => import('@/pages/SupportTickets/TicketList').then(m => ({ default: m.TicketList })))
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
     children: [
       { path: '', element: LazyWrapper(DashboardPage) },
       { path: 'dashboard', element: LazyWrapper(DashboardPage) },
+      { path: 'emergency-monitoring', element: LazyWrapper(EmergencyMonitoringPage) },
       { path: 'complaints', element: LazyWrapper(ComplaintList) },
       { path: 'complaints/:id', element: LazyWrapper(ComplaintDetail) },
       { path: 'tickets', element: LazyWrapper(TicketList) },

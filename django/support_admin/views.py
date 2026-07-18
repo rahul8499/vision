@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -44,8 +45,11 @@ from complaints.models import (
     PlatformSupportTicket, PlatformSupportMessage,
 )
 from prescription.models import User, Store
-from emergency_services.models import EmergencyBroadcastCharge
+from emergency_services.models import (
+    City, CityEmergencyPolicy, EmergencyBroadcastCharge, EmergencyFeePolicy, ServiceZone,
+)
 from subscription.models import PaymentHistory
+from prescription.models import PrescriptionTargetStore
 
 
 # ---------------------------------------------------------------------------
@@ -729,6 +733,299 @@ class TicketStatusUpdateView(APIView):
             return ok(data, message="Ticket status updated.", status_code=status.HTTP_200_OK)
         except ValueError as exc:
             return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
+
+# ---------------------------------------------------------------------------
+# Emergency monitoring
+# ---------------------------------------------------------------------------
+
+def _staff_city_ids(staff):
+    if staff.role == SupportStaff.ROLE_ADMIN or staff.all_cities_access:
+        return None
+    return list(staff.cities.values_list("id", flat=True))
+
+
+class EmergencyMonitoringView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def get(self, request):
+        city_ids = _staff_city_ids(request.support_staff)
+        city_filter = request.query_params.get("city")
+        request_type = request.query_params.get("request_type")
+        mode = request.query_params.get("mode", "active")
+        status_filter = request.query_params.get("status", "awaiting")
+        qs = PrescriptionTargetStore.objects.filter(
+            prescription__status__in=("emergency", "normal"),
+        ).select_related("prescription", "store", "city", "service_zone")
+        if mode == "active":
+            qs = qs.filter(prescription__dispatch_status="active")
+        elif mode == "history":
+            qs = qs.exclude(prescription__dispatch_status="active")
+        if request_type in ("emergency", "normal"):
+            qs = qs.filter(prescription__status=request_type)
+        if city_ids is not None:
+            qs = qs.filter(city_id__in=city_ids)
+        if city_filter:
+            if city_ids is not None and int(city_filter) not in city_ids:
+                return fail("You do not have access to this city.", status_code=status.HTTP_403_FORBIDDEN)
+            qs = qs.filter(city_id=city_filter)
+        zone_filter = request.query_params.get("service_zone")
+        if zone_filter:
+            qs = qs.filter(service_zone_id=zone_filter)
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            search_filter = Q(store__name__icontains=search) | Q(store__mobile__icontains=search)
+            if search.isdigit():
+                search_filter |= Q(prescription_id=int(search))
+            qs = qs.filter(search_filter)
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        if date_from:
+            qs = qs.filter(notified_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(notified_at__date__lte=date_to)
+        push_filter = request.query_params.get("push")
+        if push_filter == "available":
+            qs = qs.exclude(store__expo_push_token__isnull=True).exclude(store__expo_push_token="")
+        elif push_filter == "unavailable":
+            qs = qs.filter(Q(store__expo_push_token__isnull=True) | Q(store__expo_push_token=""))
+        waiting_minutes = request.query_params.get("waiting_minutes")
+        if waiting_minutes:
+            qs = qs.filter(notified_at__lte=timezone.now() - timezone.timedelta(minutes=int(waiting_minutes)))
+        if request.query_params.get("reminder_due") == "true":
+            qs = qs.filter(status="notified", responded_at__isnull=True, reminder_count__lt=2)
+        if status_filter == "awaiting":
+            qs = qs.filter(status="notified", responded_at__isnull=True)
+        elif status_filter == "escalated":
+            qs = qs.filter(escalated_at__isnull=False, responded_at__isnull=True)
+        elif status_filter == "responded":
+            qs = qs.filter(status="responded")
+
+        now = timezone.now()
+        qs = qs.annotate(
+            request_priority=Case(
+                When(prescription__status="emergency", then=Value(0)),
+                default=Value(1), output_field=IntegerField(),
+            ),
+            escalation_priority=Case(
+                When(escalated_at__isnull=False, then=Value(0)),
+                default=Value(1), output_field=IntegerField(),
+            ),
+        ).order_by("escalation_priority", "request_priority", "notified_at")
+        paginator = SupportPagination()
+        page = paginator.paginate_queryset(qs, request)
+        rows = [{
+            "id": target.id,
+            "prescription_id": target.prescription_id,
+            "request_type": target.prescription.status,
+            "store_id": target.store_id,
+            "store_name": target.store.name,
+            "store_mobile": target.store.mobile,
+            "city_id": target.city_id,
+            "city_name": target.city.name if target.city else "Unassigned",
+            "service_zone_id": target.service_zone_id,
+            "service_zone_name": target.service_zone.name if target.service_zone else "",
+            "distance_km": target.distance_km,
+            "batch_number": target.batch_number,
+            "status": target.status,
+            "notified_at": target.notified_at,
+            "opened_at": target.opened_at,
+            "responded_at": target.responded_at,
+            "first_reminder_at": target.first_reminder_at,
+            "second_reminder_at": target.second_reminder_at,
+            "reminder_count": target.reminder_count,
+            "manual_reminder_count": target.manual_reminder_count,
+            "last_manual_reminder_at": target.last_manual_reminder_at,
+            "reminders_suppressed_at": target.reminders_suppressed_at,
+            "support_contacted_at": target.support_contacted_at,
+            "escalated_at": target.escalated_at,
+            "waiting_seconds": max(0, int((now - target.notified_at).total_seconds())),
+            "push_available": bool(target.store.expo_push_token),
+            "last_notification_error": target.last_notification_error,
+            "manual_cooldown_seconds": int((target.policy_snapshot or {}).get("manual_reminder_cooldown_seconds", 120)),
+        } for target in page]
+        base = PrescriptionTargetStore.objects.filter(
+            prescription__status__in=("emergency", "normal"),
+        )
+        if mode == "active":
+            base = base.filter(prescription__dispatch_status="active")
+        elif mode == "history":
+            base = base.exclude(prescription__dispatch_status="active")
+        if request_type in ("emergency", "normal"):
+            base = base.filter(prescription__status=request_type)
+        if city_ids is not None:
+            base = base.filter(city_id__in=city_ids)
+        if city_filter:
+            base = base.filter(city_id=city_filter)
+        return ok({
+            "results": rows,
+            "pagination": {
+                "page": paginator.page.number,
+                "page_size": paginator.get_page_size(request),
+                "total_pages": paginator.page.paginator.num_pages,
+                "total_count": paginator.page.paginator.count,
+            },
+            "summary": {
+                "awaiting": base.filter(status="notified", responded_at__isnull=True).count(),
+                "responded": base.filter(status="responded").count(),
+                "escalated": base.filter(escalated_at__isnull=False, responded_at__isnull=True).count(),
+                "push_unavailable": base.filter(store__expo_push_token__isnull=True, status="notified").count(),
+            },
+        })
+
+
+class EmergencyMonitoringReminderView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def post(self, request, target_id):
+        target = PrescriptionTargetStore.objects.filter(
+            id=target_id, prescription__status__in=("emergency", "normal")
+        ).first()
+        if not target:
+            return fail("Emergency dispatch not found.", status_code=status.HTTP_404_NOT_FOUND)
+        city_ids = _staff_city_ids(request.support_staff)
+        if city_ids is not None and target.city_id not in city_ids:
+            return fail("You do not have access to this city.", status_code=status.HTTP_403_FORBIDDEN)
+        if target.reminders_suppressed_at:
+            return fail("Reminders are suppressed for this store dispatch.")
+        policy = target.policy_snapshot or {}
+        cooldown = int(policy.get("manual_reminder_cooldown_seconds", 120))
+        if target.last_manual_reminder_at:
+            remaining = cooldown - int((timezone.now() - target.last_manual_reminder_at).total_seconds())
+            if remaining > 0:
+                return fail(f"Reminder cooldown active. Try again in {remaining} seconds.", code="REMINDER_COOLDOWN", status_code=status.HTTP_429_TOO_MANY_REQUESTS)
+        from prescription.models import AppNotification
+        sent_today = AppNotification.objects.filter(
+            recipient_store=target.store,
+            notification_type="MANUAL_QUOTE_REMINDER",
+            created_at__date=timezone.localdate(),
+        ).count()
+        if sent_today >= int(policy.get("manual_reminder_daily_limit", 10)):
+            return fail("This store has reached its daily manual reminder limit.", code="REMINDER_DAILY_LIMIT", status_code=status.HTTP_429_TOO_MANY_REQUESTS)
+        from prescription.tasks import monitor_emergency_store_response_task
+        monitor_emergency_store_response_task.delay(target.id, "manual")
+        ip, ua = _get_client_info(request)
+        audit_service.log_audit(
+            actor=request.support_staff, action="manual_store_reminder",
+            entity_type="prescription_dispatch", entity_id=target.id,
+            ip_address=ip, user_agent=ua,
+        )
+        return ok({"queued": True}, message="Store reminder queued.")
+
+
+class EmergencyMonitoringActionView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def post(self, request, target_id):
+        target = PrescriptionTargetStore.objects.filter(id=target_id).first()
+        if not target:
+            return fail("Dispatch not found.", status_code=status.HTTP_404_NOT_FOUND)
+        city_ids = _staff_city_ids(request.support_staff)
+        if city_ids is not None and target.city_id not in city_ids:
+            return fail("You do not have access to this city.", status_code=status.HTTP_403_FORBIDDEN)
+        action = request.data.get("action")
+        now = timezone.now()
+        if action == "mark_contacted":
+            target.support_contacted_at = now
+            target.support_contacted_by_id = request.support_staff.id
+            fields = ["support_contacted_at", "support_contacted_by_id"]
+        elif action == "suppress_reminders":
+            target.reminders_suppressed_at = now
+            target.reminders_suppressed_by_id = request.support_staff.id
+            fields = ["reminders_suppressed_at", "reminders_suppressed_by_id"]
+        elif action == "resume_reminders":
+            target.reminders_suppressed_at = None
+            target.reminders_suppressed_by_id = None
+            fields = ["reminders_suppressed_at", "reminders_suppressed_by_id"]
+        else:
+            return fail("Invalid monitoring action.")
+        target.save(update_fields=fields)
+        ip, ua = _get_client_info(request)
+        audit_service.log_audit(
+            actor=request.support_staff, action=action,
+            entity_type="prescription_dispatch", entity_id=target.id,
+            ip_address=ip, user_agent=ua,
+        )
+        return ok({"updated": True}, message="Monitoring action saved.")
+
+
+class EmergencyCityListView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def get(self, request):
+        qs = City.objects.filter(is_active=True).prefetch_related("service_zones")
+        city_ids = _staff_city_ids(request.support_staff)
+        if city_ids is not None:
+            qs = qs.filter(id__in=city_ids)
+        return ok([{
+            "id": city.id, "name": city.name, "state": city.state,
+            "zones": [{"id": zone.id, "name": zone.name} for zone in city.service_zones.filter(is_active=True)],
+        } for city in qs])
+
+
+class EmergencyPolicyView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+    policy_fields = (
+        "first_store_reminder_seconds", "second_store_reminder_seconds",
+        "support_escalation_seconds", "max_store_reminders",
+        "reminders_enabled", "support_escalation_enabled",
+        "manual_reminder_cooldown_seconds", "manual_reminder_daily_limit",
+    )
+
+    def get(self, request):
+        from emergency_services.services import get_effective_dispatch_policy
+        city = City.objects.filter(id=request.query_params.get("city")).first() if request.query_params.get("city") else None
+        zone = ServiceZone.objects.filter(id=request.query_params.get("service_zone"), city=city).first() if request.query_params.get("service_zone") else None
+        request_type = request.query_params.get("request_type", "emergency")
+        return ok(get_effective_dispatch_policy(city, zone, request_type))
+
+    def patch(self, request):
+        if request.support_staff.role != SupportStaff.ROLE_ADMIN:
+            return fail("Only support admins can change emergency policies.", status_code=status.HTTP_403_FORBIDDEN)
+        city_id = request.data.get("city")
+        zone_id = request.data.get("service_zone")
+        updates = {field: request.data[field] for field in self.policy_fields if field in request.data}
+        request_type = request.data.get("request_type", "emergency")
+        for field in (
+            "first_store_reminder_seconds", "second_store_reminder_seconds",
+            "support_escalation_seconds", "manual_reminder_cooldown_seconds",
+        ):
+            if field in updates and int(updates[field]) < 30:
+                return fail(f"{field} must be at least 30 seconds.")
+        if "manual_reminder_daily_limit" in updates and int(updates["manual_reminder_daily_limit"]) < 1:
+            return fail("manual_reminder_daily_limit must be at least 1.")
+        if not city_id:
+            policy = EmergencyFeePolicy.objects.filter(enabled=True).order_by("pk").first() or EmergencyFeePolicy.objects.create()
+        else:
+            city = City.objects.filter(id=city_id, is_active=True).first()
+            if not city:
+                return fail("City not found.")
+            zone = ServiceZone.objects.filter(id=zone_id, city=city).first() if zone_id else None
+            policy, _ = CityEmergencyPolicy.objects.get_or_create(city=city, service_zone=zone)
+        if request_type == "normal":
+            updates = {
+                f"normal_{field}" if field in {
+                    "first_store_reminder_seconds", "second_store_reminder_seconds", "support_escalation_seconds"
+                } else field: value
+                for field, value in updates.items()
+            }
+        for field, value in updates.items():
+            setattr(policy, field, value)
+        prefix = "normal_" if request_type == "normal" else ""
+        first = getattr(policy, f"{prefix}first_store_reminder_seconds")
+        second = getattr(policy, f"{prefix}second_store_reminder_seconds")
+        escalation = getattr(policy, f"{prefix}support_escalation_seconds")
+        if first is not None and second is not None and first >= second:
+            return fail("Second reminder must be later than the first reminder.")
+        if second is not None and escalation is not None and second > escalation:
+            return fail("Support escalation cannot occur before the second reminder.")
+        policy.save(update_fields=[*updates.keys(), "updated_at"])
+        return ok({"updated": True}, message="Emergency response policy updated.")
 
 
 # ---------------------------------------------------------------------------

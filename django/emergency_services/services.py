@@ -10,11 +10,14 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from .models import (
+    City,
+    CityEmergencyPolicy,
     EmergencyBroadcastCharge,
     EmergencyFeePolicy,
     EmergencyRewardLedger,
     EmergencyStoreRewardProfile,
     UserEmergencyEntitlement,
+    ServiceZone,
 )
 
 
@@ -23,6 +26,103 @@ def get_policy():
     if policy:
         return policy
     return EmergencyFeePolicy.objects.create()
+
+
+def get_default_city():
+    city = City.objects.filter(is_active=True, is_default=True).order_by("pk").first()
+    if city:
+        return city
+    city, _ = City.objects.get_or_create(
+        name="Default Service Area",
+        state="Unassigned",
+        defaults={"timezone": "Asia/Kolkata", "is_active": True, "is_default": True},
+    )
+    if not city.is_default:
+        city.is_default = True
+        city.save(update_fields=["is_default"])
+    return city
+
+
+def resolve_city_zone(point):
+    if point:
+        zone = ServiceZone.objects.filter(is_active=True, boundary__covers=point).select_related("city").first()
+        if zone:
+            return zone.city, zone
+        city = City.objects.filter(is_active=True, is_default=False, boundary__covers=point).first()
+        if city:
+            return city, None
+    return get_default_city(), None
+
+
+def backfill_geo_assignments(city=None, service_zone=None):
+    """Re-scope existing location records after an admin saves a boundary."""
+    from prescription.models import Prescription, PrescriptionTargetStore, Store
+    if service_zone and service_zone.boundary:
+        stores = Store.objects.filter(location__coveredby=service_zone.boundary)
+        prescriptions = Prescription.objects.filter(location__coveredby=service_zone.boundary)
+        stores.update(city=service_zone.city, service_zone=service_zone)
+        prescriptions.update(city=service_zone.city, service_zone=service_zone)
+        PrescriptionTargetStore.objects.filter(prescription__in=prescriptions).update(
+            city=service_zone.city, service_zone=service_zone
+        )
+        EmergencyBroadcastCharge.objects.filter(prescription__in=prescriptions).update(
+            city=service_zone.city, service_zone=service_zone
+        )
+        return
+    if city and city.boundary:
+        stores = Store.objects.filter(location__coveredby=city.boundary)
+        prescriptions = Prescription.objects.filter(location__coveredby=city.boundary)
+        stores.update(city=city, service_zone=None)
+        prescriptions.update(city=city, service_zone=None)
+        PrescriptionTargetStore.objects.filter(prescription__in=prescriptions).update(
+            city=city, service_zone=None
+        )
+        EmergencyBroadcastCharge.objects.filter(prescription__in=prescriptions).update(
+            city=city, service_zone=None
+        )
+
+
+def get_effective_dispatch_policy(city=None, service_zone=None, request_type="emergency"):
+    global_policy = get_policy()
+    values = {
+        "first_store_reminder_seconds": global_policy.first_store_reminder_seconds,
+        "second_store_reminder_seconds": global_policy.second_store_reminder_seconds,
+        "support_escalation_seconds": global_policy.support_escalation_seconds,
+        "max_store_reminders": global_policy.max_store_reminders,
+        "reminders_enabled": global_policy.reminders_enabled,
+        "support_escalation_enabled": global_policy.support_escalation_enabled,
+        "manual_reminder_cooldown_seconds": global_policy.manual_reminder_cooldown_seconds,
+        "manual_reminder_daily_limit": global_policy.manual_reminder_daily_limit,
+        "quote_wait_minutes": global_policy.quote_wait_minutes,
+    }
+    if request_type == "normal":
+        values.update({
+            "first_store_reminder_seconds": global_policy.normal_first_store_reminder_seconds,
+            "second_store_reminder_seconds": global_policy.normal_second_store_reminder_seconds,
+            "support_escalation_seconds": global_policy.normal_support_escalation_seconds,
+        })
+    override = None
+    if service_zone:
+        override = CityEmergencyPolicy.objects.filter(service_zone=service_zone, is_active=True).first()
+    if not override and city:
+        override = CityEmergencyPolicy.objects.filter(city=city, service_zone__isnull=True, is_active=True).first()
+    if override:
+        for key in (
+            "first_store_reminder_seconds", "second_store_reminder_seconds",
+            "support_escalation_seconds", "max_store_reminders",
+            "reminders_enabled", "support_escalation_enabled",
+            "manual_reminder_cooldown_seconds", "manual_reminder_daily_limit",
+        ):
+            source_key = f"normal_{key}" if request_type == "normal" and key in {
+                "first_store_reminder_seconds", "second_store_reminder_seconds", "support_escalation_seconds"
+            } else key
+            value = getattr(override, source_key)
+            if value is not None:
+                values[key] = value
+    values["city_id"] = city.id if city else None
+    values["service_zone_id"] = service_zone.id if service_zone else None
+    values["request_type"] = request_type
+    return values
 
 
 def razorpay_client():
@@ -181,12 +281,21 @@ def bind_charge(user, charge_id, prescription):
         if prescription.pk:
             prescription.delete()
         raise ValidationError({"emergency_charge_id": "Emergency broadcast authorization is no longer available."})
+    city, service_zone = prescription.city, prescription.service_zone
+    if not city and prescription.location:
+        city, service_zone = resolve_city_zone(prescription.location)
+        prescription.city, prescription.service_zone = city, service_zone
+        prescription.save(update_fields=["city", "service_zone"])
+    policy_snapshot = get_effective_dispatch_policy(city, service_zone, "emergency")
     charge.prescription = prescription
+    charge.city = city
+    charge.service_zone = service_zone
+    charge.policy_snapshot = policy_snapshot
     charge.status = EmergencyBroadcastCharge.Status.BROADCASTING
     charge.broadcast_started_at = timezone.now()
-    charge.save(update_fields=["prescription", "status", "broadcast_started_at", "updated_at"])
+    charge.save(update_fields=["prescription", "city", "service_zone", "policy_snapshot", "status", "broadcast_started_at", "updated_at"])
     from .tasks import finalize_or_refund_charge_task
-    delay = get_policy().quote_wait_minutes * 60
+    delay = policy_snapshot["quote_wait_minutes"] * 60
     transaction.on_commit(lambda: finalize_or_refund_charge_task.apply_async(args=[str(charge.id)], countdown=delay))
     return charge
 

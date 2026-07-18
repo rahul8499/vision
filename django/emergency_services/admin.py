@@ -1,18 +1,92 @@
 from django.contrib import admin
+from django.contrib.gis.admin import GISModelAdmin
 
 from .models import (
+    City,
+    CityEmergencyPolicy,
     EmergencyBroadcastCharge,
     EmergencyFeePolicy,
     EmergencyRewardLedger,
     EmergencyStoreRewardProfile,
     EmergencyWebhookEvent,
     UserEmergencyEntitlement,
+    ServiceZone,
 )
+from .forms import CityAdminForm, ServiceZoneAdminForm
+
+
+@admin.register(City)
+class CityAdmin(GISModelAdmin):
+    form = CityAdminForm
+    gis_widget_kwargs = {
+        "attrs": {
+            "default_lon": 73.8567,
+            "default_lat": 18.5204,
+            "default_zoom": 10,
+        },
+    }
+    list_display = ("name", "state", "timezone", "is_default", "is_active", "updated_at")
+    list_filter = ("state", "is_default", "is_active")
+    search_fields = ("name", "state")
+    fieldsets = (
+        ("City", {"fields": ("name", "state", "timezone", "is_active", "is_default")}),
+        ("Simple automatic service area", {
+            "fields": ("boundary_mode", "center_latitude", "center_longitude", "service_radius_km"),
+            "description": "Choose Automatic radius, enter the city center coordinates and radius, then Save. The boundary is generated for you.",
+        }),
+        ("Advanced manual boundary", {
+            "fields": ("boundary",),
+            "classes": ("collapse",),
+            "description": "Optional. Change Boundary mode to Advanced manual polygon before drawing a custom shape.",
+        }),
+    )
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from .services import backfill_geo_assignments
+        backfill_geo_assignments(city=obj)
+
+
+@admin.register(ServiceZone)
+class ServiceZoneAdmin(GISModelAdmin):
+    form = ServiceZoneAdminForm
+    gis_widget_kwargs = {
+        "attrs": {
+            "default_lon": 73.8567,
+            "default_lat": 18.5204,
+            "default_zoom": 12,
+        },
+    }
+    list_display = ("name", "city", "is_active", "updated_at")
+    list_filter = ("city", "is_active")
+    search_fields = ("name", "city__name")
+    fieldsets = (
+        ("Zone", {"fields": ("city", "name", "is_active")}),
+        ("Simple automatic service area", {
+            "fields": ("boundary_mode", "center_latitude", "center_longitude", "service_radius_km"),
+            "description": "Enter the zone center and radius. Saving generates the boundary automatically.",
+        }),
+        ("Advanced manual boundary", {
+            "fields": ("boundary",),
+            "classes": ("collapse",),
+        }),
+    )
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from .services import backfill_geo_assignments
+        backfill_geo_assignments(service_zone=obj)
+
+
+@admin.register(CityEmergencyPolicy)
+class CityEmergencyPolicyAdmin(admin.ModelAdmin):
+    list_display = ("city", "service_zone", "first_store_reminder_seconds", "support_escalation_seconds", "is_active", "updated_at")
+    list_filter = ("city", "is_active")
 
 
 @admin.register(EmergencyFeePolicy)
 class EmergencyFeePolicyAdmin(admin.ModelAdmin):
-    list_display = ("id", "amount_paise", "free_broadcasts_per_user", "quote_wait_minutes", "checkout_expiry_minutes", "enabled", "updated_at")
+    list_display = ("id", "amount_paise", "quote_wait_minutes", "first_store_reminder_seconds", "support_escalation_seconds", "enabled", "updated_at")
     list_filter = ("enabled",)
     readonly_fields = ("updated_at",)
 

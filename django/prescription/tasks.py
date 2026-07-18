@@ -164,6 +164,8 @@ def get_ranked_dispatch_candidates(
         latitude__isnull=False,
         longitude__isnull=False,
     )
+    if prescription.city_id:
+        stores = stores.filter(city_id=prescription.city_id)
     if exclude_store_ids:
         stores = stores.exclude(id__in=exclude_store_ids)
 
@@ -200,6 +202,8 @@ def get_ranked_dispatch_candidates(
                 latitude__isnull=False,
                 longitude__isnull=False,
             )
+            if prescription.city_id:
+                stores = stores.filter(city_id=prescription.city_id)
             if exclude_store_ids:
                 stores = stores.exclude(id__in=exclude_store_ids)
 
@@ -211,6 +215,8 @@ def get_ranked_dispatch_candidates(
             latitude__isnull=False,
             longitude__isnull=False,
         )
+        if prescription.city_id:
+            stores = stores.filter(city_id=prescription.city_id)
         if exclude_store_ids:
             stores = stores.exclude(id__in=exclude_store_ids)
 
@@ -359,6 +365,130 @@ def _broadcast_prescription_batch(prescription_id, store_ids):
             send_push_notification_batch(push_notifications)
         except Exception as exc:
             logger.error(f"Batch push dispatch failed rx={prescription.id}: {exc}")
+
+
+@shared_task(queue="notifications")
+def monitor_emergency_store_response_task(target_id, stage):
+    """Idempotent reminder/escalation task for one real store dispatch row."""
+    from django.db import transaction
+    from .models import PrescriptionResponse, PrescriptionTargetStore
+
+    with transaction.atomic():
+        target = PrescriptionTargetStore.objects.select_for_update(of=("self",)).select_related(
+            "prescription", "store", "city"
+        ).filter(id=target_id).first()
+        if not target:
+            return {"status": "dispatch_not_found"}
+        if target.status != "notified" or target.responded_at or PrescriptionResponse.objects.filter(
+            prescription=target.prescription, store=target.store
+        ).exists():
+            return {"status": "already_responded"}
+        if target.reminders_suppressed_at:
+            return {"status": "reminders_suppressed"}
+        if target.prescription.emergency_cancelled_at or target.prescription.dispatch_status in ("completed", "exhausted"):
+            return {"status": "broadcast_closed"}
+
+        policy = target.policy_snapshot or {}
+        if stage in ("first", "second", "manual"):
+            if not policy.get("reminders_enabled", True):
+                return {"status": "reminders_disabled"}
+            max_reminders = int(policy.get("max_store_reminders", 2))
+            if stage != "manual" and target.reminder_count >= max_reminders:
+                return {"status": "reminder_limit_reached"}
+            if stage == "manual":
+                cooldown = int(policy.get("manual_reminder_cooldown_seconds", 120))
+                if target.last_manual_reminder_at:
+                    remaining = cooldown - int((timezone.now() - target.last_manual_reminder_at).total_seconds())
+                    if remaining > 0:
+                        return {"status": "manual_cooldown", "retry_after_seconds": remaining}
+                from .models import AppNotification
+                today = timezone.localdate()
+                sent_today = AppNotification.objects.filter(
+                    recipient_store=target.store,
+                    notification_type="MANUAL_QUOTE_REMINDER",
+                    created_at__date=today,
+                ).count()
+                if sent_today >= int(policy.get("manual_reminder_daily_limit", 10)):
+                    return {"status": "manual_daily_limit"}
+            timestamp_field = "first_reminder_at" if stage == "first" else "second_reminder_at" if stage == "second" else None
+            if timestamp_field and getattr(target, timestamp_field):
+                return {"status": "already_sent"}
+            is_emergency = target.prescription.status == "emergency"
+            title = "Urgent: emergency quote reminder" if is_emergency else "Prescription quote reminder"
+            body = (
+                "An emergency medicine request is still waiting. Send availability and a quote now."
+                if is_emergency else
+                "A nearby prescription request is waiting for your response. Send a quote if you can fulfil it."
+            )
+            _send_store_notification(
+                target.store, title, body,
+                {
+                    "type": "MANUAL_QUOTE_REMINDER" if stage == "manual" else "EMERGENCY_QUOTE_REMINDER" if is_emergency else "PRESCRIPTION_QUOTE_REMINDER",
+                    "prescription_id": target.prescription_id,
+                    "priority": "high" if is_emergency else "normal",
+                },
+                dedupe_key=f"store:{target.store_id}:rx:{target.prescription_id}:reminder:{stage}:{target.manual_reminder_count + 1 if stage == 'manual' else 1}",
+            )
+            now = timezone.now()
+            if timestamp_field:
+                setattr(target, timestamp_field, now)
+            if stage == "manual":
+                target.manual_reminder_count += 1
+                target.last_manual_reminder_at = now
+                target.save(update_fields=["manual_reminder_count", "last_manual_reminder_at"])
+            else:
+                target.reminder_count += 1
+                target.save(update_fields=[timestamp_field, "reminder_count"])
+            return {"status": "reminder_sent", "stage": stage}
+
+        if stage == "escalate":
+            if not policy.get("support_escalation_enabled", True) or target.escalated_at:
+                return {"status": "escalation_skipped"}
+            target.escalated_at = timezone.now()
+            target.save(update_fields=["escalated_at"])
+            from support_admin.models import SupportNotification, SupportStaff
+            from django.db.models import Q
+            access_filter = Q(role=SupportStaff.ROLE_ADMIN) | Q(all_cities_access=True)
+            if target.city_id:
+                access_filter |= Q(cities=target.city)
+            staff = SupportStaff.objects.filter(is_active=True).filter(access_filter).distinct()
+            SupportNotification.objects.bulk_create([
+                SupportNotification(
+                    recipient=member,
+                    notification_type="store_no_response",
+                    title="Emergency response overdue" if target.prescription.status == "emergency" else "Prescription response overdue",
+                    message=f"{target.store.name} has not replied to {target.prescription.status} request #{target.prescription_id}.",
+                    entity_type="prescription_dispatch",
+                    entity_id=str(target.id),
+                )
+                for member in staff
+            ])
+            return {"status": "escalated", "recipients": staff.count()}
+    return {"status": "ignored"}
+
+
+def _schedule_store_response_monitoring(prescription_id, store_ids):
+    from .models import PrescriptionTargetStore
+    targets = PrescriptionTargetStore.objects.filter(
+        prescription_id=prescription_id, store_id__in=store_ids
+    ).values("id", "policy_snapshot")
+    for target in targets:
+        policy = target["policy_snapshot"] or {}
+        if policy.get("reminders_enabled", True):
+            monitor_emergency_store_response_task.apply_async(
+                args=[target["id"], "first"],
+                countdown=max(1, int(policy.get("first_store_reminder_seconds", 120))),
+            )
+            if int(policy.get("max_store_reminders", 2)) > 1:
+                monitor_emergency_store_response_task.apply_async(
+                    args=[target["id"], "second"],
+                    countdown=max(1, int(policy.get("second_store_reminder_seconds", 240))),
+                )
+        if policy.get("support_escalation_enabled", True):
+            monitor_emergency_store_response_task.apply_async(
+                args=[target["id"], "escalate"],
+                countdown=max(1, int(policy.get("support_escalation_seconds", 300))),
+            )
 
 
 def _broadcast_ai_analysis_update(prescription):
@@ -542,6 +672,10 @@ def notify_nearby_stores_task(self, prescription_id):
                 metrics["status"] = "exhausted_no_more_stores"
                 return metrics
 
+            from emergency_services.services import get_effective_dispatch_policy
+            policy_snapshot = get_effective_dispatch_policy(
+                prescription.city, prescription.service_zone, prescription.status
+            )
             targets = [
                 PrescriptionTargetStore(
                     prescription=prescription,
@@ -553,6 +687,11 @@ def notify_nearby_stores_task(self, prescription_id):
                     radius_max_km=Decimal(str(component["max_km"])) if component["max_km"] is not None else None,
                     notified_at=now,
                     status='notified',
+                    reminder_count=0,
+                    manual_reminder_count=0,
+                    city=prescription.city,
+                    service_zone=prescription.service_zone,
+                    policy_snapshot=policy_snapshot,
                 )
                 for score, store, distance_km, component in batch
             ]
@@ -580,6 +719,7 @@ def notify_nearby_stores_task(self, prescription_id):
             from emergency_services.services import record_stores_notified
             record_stores_notified(prescription_id, len(store_ids))
         _broadcast_prescription_batch(prescription_id, store_ids)
+        _schedule_store_response_monitoring(prescription_id, store_ids)
         if prescription.status == 'emergency' and prescription.user_id:
             from channels.layers import get_channel_layer
             from asgiref.sync import async_to_sync
