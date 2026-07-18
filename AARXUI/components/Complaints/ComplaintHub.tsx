@@ -1,16 +1,85 @@
 import { LocalizedText as Text } from '@/components/Language/LocalizedPrimitives';
-import React,{useCallback,useEffect,useState}from'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  TouchableOpacity,
-  View
-} from 'react-native';
-import{LinearGradient}from'expo-linear-gradient';
-import{MaterialCommunityIcons}from'@expo/vector-icons';
-import{useIsFocused}from'@react-navigation/native';
-import{useRouter}from'expo-router';
-import{getComplaintCounts}from'@/utils/complaintsApi';
-export function ComplaintHub({userType}:{userType:'user'|'store'}){const router=useRouter(),focused=useIsFocused();const[counts,setCounts]=useState({filed:0,against:0,open_against:0}),[loading,setLoading]=useState(true);const load=useCallback(async()=>{try{setCounts(await getComplaintCounts());}finally{setLoading(false);}},[]);useEffect(()=>{if(focused)load();},[focused,load]);
- const target=userType==='store'?'a patient/customer':'a pharmacy';
- return <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{paddingBottom:50}}><LinearGradient colors={['#020617','#0f172a','#064e3b']} className="px-6 pt-8 pb-8"><View className="w-12 h-12 rounded-2xl bg-white/10 items-center justify-center mb-5"><MaterialCommunityIcons name="hand-heart-outline" size={25} color="#6ee7b7"/></View><Text className="text-white text-2xl font-black">How can we help?</Text><Text className="text-slate-300 text-[12px] leading-5 mt-2 pr-8">Manage formal disputes, follow case updates, and continue conversations with support.</Text></LinearGradient><View className="px-4 -mt-3"><TouchableOpacity onPress={()=>router.push('/support/raise')} className="bg-emerald-600 rounded-3xl p-5 flex-row items-center shadow-xl shadow-emerald-200"><View className="w-12 h-12 rounded-2xl bg-white/15 items-center justify-center"><MaterialCommunityIcons name="plus-circle-outline" size={25} color="white"/></View><View className="flex-1 ml-4"><Text className="text-white font-black text-[16px]">Raise a complaint</Text><Text className="text-emerald-100 text-[11px] mt-1">Start a formal case against {target}</Text></View><MaterialCommunityIcons name="chevron-right" size={23} color="white"/></TouchableOpacity><Text className="text-slate-400 font-black text-[9px] uppercase tracking-[3px] mt-7 ml-2 mb-3">Your case centre</Text><TouchableOpacity onPress={()=>router.push('/support/filed')} className="bg-white border border-slate-200 rounded-3xl p-5 mb-3 flex-row items-center"><View className="w-12 h-12 rounded-2xl bg-blue-50 items-center justify-center"><MaterialCommunityIcons name="file-document-edit-outline" size={24} color="#2563eb"/></View><View className="flex-1 ml-4"><Text className="text-slate-950 font-black text-[15px]">Complaints raised by you</Text><Text className="text-slate-400 text-[11px] mt-1">Track status, messages and resolutions</Text></View>{loading?<ActivityIndicator color="#2563eb"/>:<View className="bg-blue-50 min-w-[34px] h-9 rounded-xl items-center justify-center px-2"><Text className="text-blue-700 font-black">{counts.filed}</Text></View>}</TouchableOpacity><TouchableOpacity onPress={()=>router.push('/support/against')} className="bg-white border border-slate-200 rounded-3xl p-5 mb-3 flex-row items-center"><View className="w-12 h-12 rounded-2xl bg-amber-50 items-center justify-center"><MaterialCommunityIcons name="account-alert-outline" size={24} color="#d97706"/></View><View className="flex-1 ml-4"><Text className="text-slate-950 font-black text-[15px]">Complaints against you</Text><Text className="text-slate-400 text-[11px] mt-1">Review and respond to incoming cases</Text></View>{loading?<ActivityIndicator color="#d97706"/>:<View className="bg-amber-50 min-w-[34px] h-9 rounded-xl items-center justify-center px-2"><Text className="text-amber-700 font-black">{counts.open_against||counts.against}</Text></View>}</TouchableOpacity><TouchableOpacity onPress={() => router.push('/platform-support')} className="bg-slate-950 rounded-3xl p-5 mt-4 mb-3 flex-row items-center"><View className="w-12 h-12 rounded-2xl bg-emerald-500/20 items-center justify-center"><MaterialCommunityIcons name="headset" size={24} color="#6ee7b7"/></View><View className="flex-1 ml-4"><Text className="text-white font-black text-[15px]">Contact AARX Support</Text><Text className="text-slate-400 text-[11px] mt-1">App, account, verification, subscription or technical issue</Text></View><MaterialCommunityIcons name="chevron-right" size={23} color="white"/></TouchableOpacity><View className="bg-slate-100 rounded-3xl p-5 mt-3 flex-row"><MaterialCommunityIcons name="shield-check-outline" size={22} color="#64748b"/><Text className="text-slate-500 text-[11px] leading-5 flex-1 ml-3">Complaints are formal cases with messaging and resolution. Safety reports remain private and are available separately in Settings.</Text></View></View></ScrollView>}
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, TouchableOpacity, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import { getComplaintCounts } from '@/utils/complaintsApi';
+
+export function ComplaintHub({ userType }: { userType: 'user' | 'store' }) {
+  const router = useRouter();
+  const focused = useIsFocused();
+  const [counts, setCounts] = useState({ filed: 0, against: 0, open_against: 0 });
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      setCounts(await getComplaintCounts());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (focused) load();
+  }, [focused, load]);
+
+  const isStore = userType === 'store';
+  const complaintSource = isStore ? 'customer order' : 'pharmacy offer or order';
+  const openTransactions = () => router.push((isStore ? '/(sellerTabs)/active-orders' : '/(tabs)/prescription') as any);
+
+  return (
+    <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ paddingBottom: 50 }}>
+      <LinearGradient colors={['#020617', '#0f172a', '#064e3b']} className="px-6 pt-8 pb-8">
+        <View className="w-12 h-12 rounded-2xl bg-white/10 items-center justify-center mb-5">
+          <MaterialCommunityIcons name="hand-heart-outline" size={25} color="#6ee7b7" />
+        </View>
+        <Text className="text-white text-2xl font-black">How can we help?</Text>
+        <Text className="text-slate-300 text-[12px] leading-5 mt-2 pr-8">Manage formal disputes, follow case updates, and continue conversations with support.</Text>
+      </LinearGradient>
+
+      <View className="px-4 -mt-3">
+        <TouchableOpacity onPress={openTransactions} className="bg-emerald-600 rounded-3xl p-5 flex-row items-center shadow-xl shadow-emerald-200">
+          <View className="w-12 h-12 rounded-2xl bg-white/15 items-center justify-center">
+            <MaterialCommunityIcons name={isStore ? 'clipboard-list-outline' : 'script-text-outline'} size={25} color="white" />
+          </View>
+          <View className="flex-1 ml-4">
+            <Text className="text-white font-black text-[16px]">Choose a {complaintSource}</Text>
+            <Text className="text-emerald-100 text-[11px] mt-1">Use Raise Complaint on the related card</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={23} color="white" />
+        </TouchableOpacity>
+
+        <View className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mt-3 flex-row">
+          <MaterialCommunityIcons name="link-variant" size={20} color="#b45309" />
+          <Text className="text-amber-800 text-[11px] leading-5 flex-1 ml-3">Complaints are linked to a real enquiry or order. The related {isStore ? 'customer' : 'pharmacy'} is selected automatically—no public user or store list is shown.</Text>
+        </View>
+
+        <Text className="text-slate-400 font-black text-[9px] uppercase tracking-[3px] mt-7 ml-2 mb-3">Your case centre</Text>
+        <TouchableOpacity onPress={() => router.push('/support/filed')} className="bg-white border border-slate-200 rounded-3xl p-5 mb-3 flex-row items-center">
+          <View className="w-12 h-12 rounded-2xl bg-blue-50 items-center justify-center"><MaterialCommunityIcons name="file-document-edit-outline" size={24} color="#2563eb" /></View>
+          <View className="flex-1 ml-4"><Text className="text-slate-950 font-black text-[15px]">Complaints raised by you</Text><Text className="text-slate-400 text-[11px] mt-1">Track status, messages and resolutions</Text></View>
+          {loading ? <ActivityIndicator color="#2563eb" /> : <View className="bg-blue-50 min-w-[34px] h-9 rounded-xl items-center justify-center px-2"><Text className="text-blue-700 font-black">{counts.filed}</Text></View>}
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push('/support/against')} className="bg-white border border-slate-200 rounded-3xl p-5 mb-3 flex-row items-center">
+          <View className="w-12 h-12 rounded-2xl bg-amber-50 items-center justify-center"><MaterialCommunityIcons name="account-alert-outline" size={24} color="#d97706" /></View>
+          <View className="flex-1 ml-4"><Text className="text-slate-950 font-black text-[15px]">Complaints against you</Text><Text className="text-slate-400 text-[11px] mt-1">Review and respond to incoming cases</Text></View>
+          {loading ? <ActivityIndicator color="#d97706" /> : <View className="bg-amber-50 min-w-[34px] h-9 rounded-xl items-center justify-center px-2"><Text className="text-amber-700 font-black">{counts.open_against || counts.against}</Text></View>}
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push('/platform-support')} className="bg-slate-950 rounded-3xl p-5 mt-4 mb-3 flex-row items-center">
+          <View className="w-12 h-12 rounded-2xl bg-emerald-500/20 items-center justify-center"><MaterialCommunityIcons name="headset" size={24} color="#6ee7b7" /></View>
+          <View className="flex-1 ml-4"><Text className="text-white font-black text-[15px]">Contact AARX Support</Text><Text className="text-slate-400 text-[11px] mt-1">App, account, verification, subscription or technical issue</Text></View>
+          <MaterialCommunityIcons name="chevron-right" size={23} color="white" />
+        </TouchableOpacity>
+
+        <View className="bg-slate-100 rounded-3xl p-5 mt-3 flex-row">
+          <MaterialCommunityIcons name="shield-check-outline" size={22} color="#64748b" />
+          <Text className="text-slate-500 text-[11px] leading-5 flex-1 ml-3">Complaints are formal cases with messaging and resolution. Safety reports remain private and are available separately in Settings.</Text>
+        </View>
+      </View>
+    </ScrollView>
+  );
+}

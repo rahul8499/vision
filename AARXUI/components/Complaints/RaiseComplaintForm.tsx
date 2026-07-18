@@ -1,5 +1,5 @@
 import { LocalizedText as Text, LocalizedTextInput as TextInput } from '@/components/Language/LocalizedPrimitives';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -11,9 +11,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as SecureStore from 'expo-secure-store';
-import axios from 'axios';
-import Constants from 'expo-constants';
 import {
   COMPLAINT_CATEGORIES,
   COMPLAINT_PRIORITIES,
@@ -22,10 +19,6 @@ import {
   type ComplaintParty,
   type LocalAttachment,
 } from '@/utils/complaintsApi';
-
-const BASE_URL = (Constants.expoConfig?.extra?.BASE_URL as string) || '';
-
-type Counterparty = { id: number; name: string };
 
 export function RaiseComplaintForm({
   userType,
@@ -44,13 +37,11 @@ export function RaiseComplaintForm({
   onSubmitted: (detail: ComplaintDetail) => void;
   onCancel?: () => void;
 }) {
-  const [respondentType, setRespondentType] = useState<ComplaintParty>(
-    prefill?.respondent_type || (userType === 'user' ? 'store' : 'user')
-  );
-  const [respondentId, setRespondentId] = useState<number | null>(prefill?.respondent_id ?? null);
-  const [respondentName, setRespondentName] = useState<string>(prefill?.respondent_name ?? '');
-  const [orderId, setOrderId] = useState<number | null>(prefill?.order_id ?? null);
-  const [orderLabel, setOrderLabel] = useState<string | null>(prefill?.order_label ?? null);
+  const respondentType = prefill?.respondent_type || (userType === 'user' ? 'store' : 'user');
+  const respondentId = prefill?.respondent_id ?? null;
+  const respondentName = prefill?.respondent_name || (respondentType === 'store' ? 'Selected pharmacy' : 'Selected customer');
+  const orderId = prefill?.order_id ?? null;
+  const orderLabel = prefill?.order_label || (orderId ? `Order #${orderId}` : null);
 
   const [subject, setSubject] = useState('');
   const [category, setCategory] = useState('');
@@ -58,50 +49,9 @@ export function RaiseComplaintForm({
   const [description, setDescription] = useState('');
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
 
-  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const [loadingCounterparties, setLoadingCounterparties] = useState(false);
-
   const [submitting, setSubmitting] = useState(false);
 
-  const targetLabel = respondentType === 'store' ? 'Pharmacy / Store' : 'Customer / User';
-  const lockedTarget = !!prefill?.respondent_id;
-
-  const loadCounterparties = useCallback(async (query?: string) => {
-    const token = await SecureStore.getItemAsync('authToken');
-    const headers = { Authorization: `Bearer ${token || ''}` };
-    try {
-      setLoadingCounterparties(true);
-      if (userType === 'user') {
-        const url = query
-          ? `${BASE_URL}/api/stores/?search=${encodeURIComponent(query)}`
-          : `${BASE_URL}/api/stores/`;
-        const res = await axios.get(url, { headers });
-        const list = (res.data?.results || res.data || []).map((s: any) => ({ id: s.id, name: s.name }));
-        setCounterparties(list.slice(0, 50));
-      } else {
-        const res = await axios.get(`${BASE_URL}/api/store/my-responses/`, { headers });
-        const responses: any[] = res.data?.results || res.data || [];
-        const map = new Map<number, string>();
-        responses.forEach((r) => {
-          const userId = r?.user_id || (typeof r?.user === 'object' ? r.user?.id : r?.user);
-          if (userId && r?.user_name) map.set(Number(userId), r.user_name);
-        });
-        setCounterparties(Array.from(map.entries()).map(([id, name]) => ({ id, name })).slice(0, 100));
-      }
-    } catch (e) {
-      setCounterparties([]);
-    } finally {
-      setLoadingCounterparties(false);
-    }
-  }, [userType]);
-
-  useEffect(() => {
-    if (!lockedTarget && pickerOpen) {
-      loadCounterparties(search);
-    }
-  }, [pickerOpen, search, loadCounterparties, lockedTarget]);
+  const hasComplaintContext = !!respondentId && !!orderId;
 
   const pickPhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -119,8 +69,12 @@ export function RaiseComplaintForm({
   };
 
   const handleSubmit = async () => {
+    if (!respondentId || !orderId) {
+      Alert.alert('Choose an order', 'Open the complaint from its related enquiry or order card.');
+      return;
+    }
+
     const missing: string[] = [];
-    if (!respondentId) missing.push(`Select ${targetLabel.toLowerCase()}`);
     if (!category) missing.push('Select a category');
     if (!subject.trim()) missing.push('Add a short subject');
     if (!description.trim()) missing.push('Describe the issue in detail');
@@ -158,7 +112,7 @@ export function RaiseComplaintForm({
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-      {orderLabel ? (
+      {hasComplaintContext && orderLabel ? (
         <View style={styles.orderBox}>
           <Ionicons name="receipt-outline" size={16} color="#0e7490" />
           <Text style={styles.orderText}>Regarding: {orderLabel}</Text>
@@ -167,54 +121,20 @@ export function RaiseComplaintForm({
 
       {/* Target */}
       <Text style={styles.label}>Complaint against</Text>
-      {lockedTarget ? (
+      {hasComplaintContext ? (
         <View style={styles.lockedTarget}>
           <Ionicons name={respondentType === 'store' ? 'storefront' : 'person'} size={18} color="#0e7490" />
           <Text style={styles.lockedTargetText}>{respondentName}</Text>
         </View>
       ) : (
-        <TouchableOpacity style={styles.targetBtn} onPress={() => setPickerOpen(true)}>
-          <Text style={styles.targetBtnText}>
-            {respondentId ? respondentName : `Select ${targetLabel}`}
-          </Text>
-          <Ionicons name="chevron-down" size={20} color="#64748b" />
-        </TouchableOpacity>
-      )}
-
-      {pickerOpen && !lockedTarget && (
-        <View style={styles.picker}>
-          {userType === 'user' && (
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search pharmacy by name…"
-              value={search}
-              onChangeText={setSearch}
-            />
-          )}
-          {loadingCounterparties ? (
-            <ActivityIndicator style={{ marginVertical: 10 }} color="#059669" />
-          ) : (
-            <ScrollView style={styles.pickerList} keyboardShouldPersistTaps="handled">
-              {counterparties.length === 0 ? (
-                <Text style={styles.empty}>No {targetLabel.toLowerCase()} found.</Text>
-              ) : (
-                counterparties.map((c) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={styles.pickerItem}
-                    onPress={() => {
-                      setRespondentId(c.id);
-                      setRespondentName(c.name);
-                      setPickerOpen(false);
-                    }}
-                  >
-                    <Text style={styles.pickerItemText}>{c.name}</Text>
-                    <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
-          )}
+        <View style={styles.contextWarning}>
+          <Ionicons name="information-circle-outline" size={20} color="#b45309" />
+          <View style={styles.contextWarningBody}>
+            <Text style={styles.contextWarningTitle}>Select the related transaction first</Text>
+            <Text style={styles.contextWarningText}>
+              Go back and use Raise Complaint on the specific enquiry or order card. The related {userType === 'user' ? 'pharmacy' : 'customer'} will be selected automatically.
+            </Text>
+          </View>
         </View>
       )}
 
@@ -293,7 +213,11 @@ export function RaiseComplaintForm({
             <Text style={styles.btnGhostText}>Cancel</Text>
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity style={[styles.btn, styles.btnPrimary, submitting && { opacity: 0.7 }]} onPress={handleSubmit}>
+        <TouchableOpacity
+          disabled={!hasComplaintContext || submitting}
+          style={[styles.btn, styles.btnPrimary, (!hasComplaintContext || submitting) && { opacity: 0.5 }]}
+          onPress={handleSubmit}
+        >
           {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnPrimaryText}>Submit Complaint</Text>}
         </TouchableOpacity>
       </View>
@@ -308,14 +232,10 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '800', color: '#334155', marginTop: 12, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
   lockedTarget: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' },
   lockedTargetText: { marginLeft: 8, fontSize: 15, fontWeight: '800', color: '#0f172a' },
-  targetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' },
-  targetBtnText: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
-  picker: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', marginTop: 8, padding: 8 },
-  searchInput: { backgroundColor: '#f1f5f9', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, marginBottom: 6 },
-  pickerList: { maxHeight: 220 },
-  pickerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#f1f5f9' },
-  pickerItemText: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
-  empty: { textAlign: 'center', color: '#94a3b8', paddingVertical: 16 },
+  contextWarning: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fffbeb', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#fde68a' },
+  contextWarningBody: { flex: 1, marginLeft: 10 },
+  contextWarningTitle: { fontSize: 14, fontWeight: '900', color: '#92400e' },
+  contextWarningText: { marginTop: 4, fontSize: 12, lineHeight: 18, fontWeight: '600', color: '#b45309' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
   chip: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8, margin: 4 },
   chipActive: { backgroundColor: '#059669', borderColor: '#059669' },

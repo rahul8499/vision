@@ -676,6 +676,23 @@ export default function OrdersScreen() {
     } as any);
   }, [router]);
 
+  const raiseComplaint = useCallback((item: OrderResponse) => {
+    if (!item.store) {
+      Alert.alert('Pharmacy unavailable', 'This order does not include a valid pharmacy reference.');
+      return;
+    }
+    router.push({
+      pathname: '/support/raise',
+      params: {
+        respondent_type: 'store',
+        respondent_id: String(item.store),
+        respondent_name: item.store_name || 'Pharmacy',
+        order_id: String(item.id),
+        order_label: `Order #${item.id}`,
+      },
+    } as any);
+  }, [router]);
+
   const openCancelModal = useCallback((item: OrderResponse) => {
     setCancelTargetId(item.id);
     setCancelStatus(normalizeStatus(item.user_status));
@@ -1168,17 +1185,20 @@ export default function OrdersScreen() {
                 </TouchableOpacity>
               </>
             )}
-            <TouchableOpacity
-              onPress={() => openReportModal(item)}
-              className="h-11 flex-1 flex-row items-center justify-center rounded-[1rem] border border-red-100 bg-red-50 px-3"
-            >
+            <TouchableOpacity onPress={() => openReportModal(item)} className="h-11 w-11 items-center justify-center rounded-[1rem] border border-red-100 bg-red-50">
               <MaterialCommunityIcons name="flag-outline" size={16} color="#ef4444" />
-              <Text className="ml-1.5 text-[9px] font-black uppercase tracking-[1.4px] text-red-500">Report</Text>
               {pharmacyReportCount > 0 && (
-                <View className="ml-2 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-100 items-center justify-center">
-                  <Text className="text-red-700 font-black text-[8px]">{pharmacyReportCount}</Text>
+                <View className="absolute -right-1 -top-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 items-center justify-center">
+                  <Text className="text-white font-black text-[8px]">{pharmacyReportCount}</Text>
                 </View>
               )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => raiseComplaint(item)}
+              className="h-11 flex-1 flex-row items-center justify-center rounded-[1rem] border border-amber-200 bg-amber-50 px-3"
+            >
+              <MaterialCommunityIcons name="alert-box-outline" size={16} color="#b45309" />
+              <Text className="ml-1.5 text-[9px] font-black uppercase tracking-[1.2px] text-amber-700">Raise Complaint</Text>
             </TouchableOpacity>
           </View>
 

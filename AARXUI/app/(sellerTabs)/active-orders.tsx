@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Linking,
@@ -319,6 +320,25 @@ export default function ActiveOrdersScreen() {
     } as any);
   }, [router]);
 
+  const raiseComplaint = useCallback((order: SellerOrder) => {
+    const respondentId = order.user_id || order.user;
+    if (!respondentId) {
+      Alert.alert('Customer unavailable', 'This order does not include a valid customer reference.');
+      return;
+    }
+    const orderId = order.response_id || order.id;
+    router.push({
+      pathname: '/support/raise',
+      params: {
+        respondent_type: 'user',
+        respondent_id: String(respondentId),
+        respondent_name: order.user_name || 'Customer',
+        order_id: String(orderId),
+        order_label: `Order #${orderId}`,
+      },
+    } as any);
+  }, [router]);
+
   const jumpToDate = useCallback((dateKey: string) => {
     setSelectedStartDateKey(null);
     setSelectedEndDateKey(null);
@@ -384,9 +404,10 @@ export default function ActiveOrdersScreen() {
       onChat={openChat}
       onViewRx={setSelectedImage}
       onOpenDetails={setSelectedOrder}
+      onRaiseComplaint={raiseComplaint}
       onCancel={handleStoreCancel}
     />
-  ), [BASE_URL, handleStoreCancel, openChat, sellerOrders.progressLoadingId, sellerOrders.updateProgress]);
+  ), [BASE_URL, handleStoreCancel, openChat, raiseComplaint, sellerOrders.progressLoadingId, sellerOrders.updateProgress]);
 
   const terminalStageActive = pipeline.activeStage === 'COMPLETED' || pipeline.activeStage === 'CANCELLED';
   const activeStageConfig = ORDER_STAGE_CONFIG[pipeline.activeStage];

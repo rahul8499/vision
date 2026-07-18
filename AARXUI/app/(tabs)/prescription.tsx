@@ -968,6 +968,23 @@ export default function Prescription() {
     } as any);
   };
 
+  const raiseComplaint = (item: ResponseItem) => {
+    if (!item.store) {
+      Alert.alert('Pharmacy unavailable', 'This offer does not include a valid pharmacy reference.');
+      return;
+    }
+    router.push({
+      pathname: '/support/raise',
+      params: {
+        respondent_type: 'store',
+        respondent_id: String(item.store),
+        respondent_name: item.store_name || 'Pharmacy',
+        order_id: String(item.id),
+        order_label: `Enquiry #${item.prescription} · Offer #${item.id}`,
+      },
+    } as any);
+  };
+
   const startDateRef = useRef<Date | null>(new Date());
   const endDateRef = useRef<Date | null>(new Date());
   const isFocused = useIsFocused();
@@ -1869,32 +1886,38 @@ export default function Prescription() {
             </View>
           )}
 
-          {/* 5. Report Problem Button */}
-          <TouchableOpacity
-            className="mt-4 flex-row items-center px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 justify-center"
-            onPress={() => {
-              const fallbackStoreReports = item.store_contact_note ? [{
-                note: item.store_contact_note,
-                created_at: item.updated_at || item.created_at,
-                store_name: item.store_name,
-              }] : [];
-              setReportModalVisible(true);
-              setSelectedReportId(item.id);
-              setUserReports([]);
-              setReportCount(0);
-              setStoreReports(fallbackStoreReports);
-              setStoreReportCount(pharmacyReportCount);
-              fetchUserNotes(item.id, fallbackStoreReports);
-            }}
-          >
-            <MaterialCommunityIcons name="flag-outline" size={12} color="#ef4444" />
-            <Text className="ml-1.5 text-red-500 font-bold text-[8.5px] uppercase tracking-widest">Report Problem</Text>
-            {pharmacyReportCount > 0 && (
-              <View className="ml-2 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-100 items-center justify-center">
-                <Text className="text-red-700 font-black text-[8px]">{pharmacyReportCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          {/* 5. Complaint and safety actions */}
+          <View className="mt-4 flex-row gap-2">
+            <TouchableOpacity onPress={() => raiseComplaint(item)} className="flex-1 flex-row items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+              <MaterialCommunityIcons name="alert-box-outline" size={14} color="#b45309" />
+              <Text className="ml-1.5 text-amber-700 font-black text-[8.5px] uppercase tracking-wider">Raise Complaint</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-1 flex-row items-center px-3 py-3 rounded-xl bg-gray-50 border border-gray-100 justify-center"
+              onPress={() => {
+                const fallbackStoreReports = item.store_contact_note ? [{
+                  note: item.store_contact_note,
+                  created_at: item.updated_at || item.created_at,
+                  store_name: item.store_name,
+                }] : [];
+                setReportModalVisible(true);
+                setSelectedReportId(item.id);
+                setUserReports([]);
+                setReportCount(0);
+                setStoreReports(fallbackStoreReports);
+                setStoreReportCount(pharmacyReportCount);
+                fetchUserNotes(item.id, fallbackStoreReports);
+              }}
+            >
+              <MaterialCommunityIcons name="flag-outline" size={12} color="#ef4444" />
+              <Text className="ml-1.5 text-red-500 font-bold text-[8.5px] uppercase tracking-wider">Safety Report</Text>
+              {pharmacyReportCount > 0 && (
+                <View className="ml-2 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-100 items-center justify-center">
+                  <Text className="text-red-700 font-black text-[8px]">{pharmacyReportCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
 
           {/* Capabilities Overlay */}
           {shouldShowOverlay(item.capabilities) && (

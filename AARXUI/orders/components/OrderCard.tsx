@@ -52,6 +52,7 @@ type Props = {
   onChat: (order: SellerOrder) => void;
   onViewRx: (url: string) => void;
   onOpenDetails: (order: SellerOrder) => void;
+  onRaiseComplaint: (order: SellerOrder) => void;
   onCancel?: (order: SellerOrder) => void;
 };
 
@@ -62,7 +63,7 @@ const FooterButton = ({ icon, label, onPress }: { icon: string; label: string; o
   </TouchableOpacity>
 );
 
-export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, progressLoadingId, onPrimaryAction, onCall, onChat, onViewRx, onOpenDetails, onCancel }: Props) {
+export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, progressLoadingId, onPrimaryAction, onCall, onChat, onViewRx, onOpenDetails, onRaiseComplaint, onCancel }: Props) {
   const primaryAction = getPrimaryAction(order);
   const id = getOrderId(order);
   const imageUrl = buildMediaUrl(baseUrl, order.image);
@@ -155,6 +156,11 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
           <FooterButton icon="chat-outline" label="Chat" onPress={() => onChat(order)} />
           <FooterButton icon="clipboard-text-outline" label="Details" onPress={() => onOpenDetails(order)} />
         </View>
+
+        <TouchableOpacity onPress={() => onRaiseComplaint(order)} className="mt-3 flex-row items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+          <MaterialCommunityIcons name="alert-box-outline" size={17} color="#b45309" />
+          <Text className="ml-2 text-[10px] font-black uppercase tracking-[1.4px] text-amber-700">Raise Complaint</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
