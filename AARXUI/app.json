@@ -64,7 +64,6 @@
       "typedRoutes": true
     },
     "extra": {
-      "BASE_URL": "http://10.74.195.72:8000",
       "router": {},
       "eas": {
         "projectId": "8e2581ac-1a42-46e5-819d-a34b95fe1c08"

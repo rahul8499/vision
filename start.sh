@@ -94,7 +94,7 @@ if port_is_open 8010; then
   ok "✓ AI service already running on port 8010"
 else
   launch_terminal "AARX AI Classifier" \
-    "cd '$AI_DIR' && AI_TIMEOUT_SECONDS=21 exec '$AI_VENV/bin/uvicorn' main:app --host 0.0.0.0 --port 8010 --reload"
+    "cd '$AI_DIR' && set -a; [ -f .env ] && source .env; set +a; exec '$AI_VENV/bin/uvicorn' main:app --host 0.0.0.0 --port 8010 --reload"
   wait_for_port "AI classifier" 8010 45
 fi
 

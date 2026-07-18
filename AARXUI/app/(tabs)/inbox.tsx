@@ -102,7 +102,7 @@ export default function InboxScreen() {
     const [loading, setLoading] = useState<boolean>(true);
     const [refreshing, setRefreshing] = useState<boolean>(false);
 
-    const BASE_URL = Constants.expoConfig?.extra?.BASE_URL || "http://localhost:8000";
+    const BASE_URL = Constants.expoConfig?.extra?.BASE_URL;
 
     // ✅ TOKEN LOAD ON FOCUS
     useEffect(() => {

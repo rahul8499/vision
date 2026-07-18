@@ -132,7 +132,7 @@ export default function SellerInboxScreen() {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
-    const BASE_URL = Constants.expoConfig?.extra?.BASE_URL || "http://localhost:8000";
+    const BASE_URL = Constants.expoConfig?.extra?.BASE_URL;
 
     // ✅ FETCH FUNCTION (Typed)
     const fetchInbox = useCallback(async (showLoading = true): Promise<void> => {
