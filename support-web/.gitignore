@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+support-web/node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

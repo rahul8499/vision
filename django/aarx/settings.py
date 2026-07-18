@@ -59,6 +59,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.gis',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'prescription',
     'rest_framework.authtoken',
     'corsheaders',
@@ -67,10 +69,7 @@ INSTALLED_APPS = [
     'emergency_services',
     'complaints',
     'storages',
-
-
-
-
+    'support_admin',
 ]
 # ============================================================
 # Celery — Production Scale Configuration

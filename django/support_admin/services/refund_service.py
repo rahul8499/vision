@@ -1,0 +1,74 @@
+from django.db import transaction
+from django.utils import timezone
+from emergency_services.models import EmergencyBroadcastCharge
+from ..models import RefundRequest, SupportStaff, SupportNotification
+from ..selectors.refund_selectors import get_refund_by_id, get_refund_queryset
+from emergency_services.models import EmergencyBroadcastCharge
+from prescription.models import PrescriptionResponse
+
+
+def create_refund_request(charge_id, amount, reason, requested_by, prescription_response_id=None, metadata=None):
+    try:
+        charge = EmergencyBroadcastCharge.objects.get(id=charge_id)
+    except EmergencyBroadcastCharge.DoesNotExist:
+        raise ValueError("Emergency broadcast charge not found.")
+
+    if prescription_response_id:
+        try:
+            prescription_response = PrescriptionResponse.objects.get(id=prescription_response_id)
+        except PrescriptionResponse.DoesNotExist:
+            raise ValueError("Prescription response not found.")
+    else:
+        prescription_response = None
+
+    refund = RefundRequest.objects.create(
+        charge=charge,
+        prescription_response=prescription_response,
+        requested_by=requested_by,
+        status="pending",
+        amount=amount,
+        reason=reason,
+        metadata=metadata or {},
+    )
+    return refund
+
+
+def review_refund(refund_id, action, admin, admin_note=None, payment_reference=None):
+    refund = get_refund_by_id(refund_id)
+    if not refund:
+        raise ValueError("Refund request not found.")
+
+    with transaction.atomic():
+        if action == "approve":
+            if refund.status != RefundRequest.STATUS_PENDING:
+                raise ValueError("Only pending refunds can be approved.")
+            refund.status = RefundRequest.STATUS_APPROVED
+            refund.approved_at = timezone.now()
+            refund.reviewed_by = admin
+            if admin_note:
+                refund.rejection_reason = admin_note
+        elif action == "reject":
+            if refund.status not in (RefundRequest.STATUS_PENDING, RefundRequest.STATUS_APPROVED):
+                raise ValueError("Cannot reject refund in current status.")
+            refund.status = RefundRequest.STATUS_REJECTED
+            refund.reviewed_by = admin
+            if admin_note:
+                refund.rejection_reason = admin_note
+        elif action == "process":
+            if refund.status != RefundRequest.STATUS_APPROVED:
+                raise ValueError("Only approved refunds can be processed.")
+            refund.status = RefundRequest.STATUS_PROCESSED
+            refund.processed_at = timezone.now()
+            refund.reviewed_by = admin
+            if payment_reference:
+                refund.payment_reference = payment_reference
+        elif action == "retry":
+            if refund.status != RefundRequest.STATUS_FAILED:
+                raise ValueError("Only failed refunds can be retried.")
+            refund.status = RefundRequest.STATUS_PENDING
+            refund.reviewed_by = admin
+        else:
+            raise ValueError("Invalid action.")
+
+        refund.save()
+    return refund

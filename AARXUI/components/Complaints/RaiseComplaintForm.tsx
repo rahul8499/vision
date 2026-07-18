@@ -119,14 +119,17 @@ export function RaiseComplaintForm({
   };
 
   const handleSubmit = async () => {
-    if (!respondentId) {
-      Alert.alert('Select a ' + targetLabel, `Please choose the ${targetLabel.toLowerCase()} you want to complain about.`);
+    const missing: string[] = [];
+    if (!respondentId) missing.push(`Select ${targetLabel.toLowerCase()}`);
+    if (!category) missing.push('Select a category');
+    if (!subject.trim()) missing.push('Add a short subject');
+    if (!description.trim()) missing.push('Describe the issue in detail');
+    if (submitting) return;
+
+    if (missing.length > 0) {
+      Alert.alert('More details needed', 'Please complete the following:\n\n• ' + missing.join('\n• '));
       return;
     }
-    if (!category) return Alert.alert('Category required', 'Please select a category.');
-    if (!subject.trim()) return Alert.alert('Subject required', 'Please add a short subject.');
-    if (!description.trim()) return Alert.alert('Details required', 'Please describe the issue.');
-    if (submitting) return;
 
     setSubmitting(true);
     try {
