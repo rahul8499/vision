@@ -333,6 +333,8 @@ class ComplaintMessageView(APIView):
         )
 
         serializer = ComplaintMessageSerializer(message, context={'request': request})
+        from .realtime import broadcast_complaint_event
+        broadcast_complaint_event(complaint.id, "complaint_message", serializer.data)
         return Response(serializer.data, status=201)
 
 
@@ -508,7 +510,7 @@ def _serialize_support_ticket(request, ticket, detail=False):
             'text': message.text,
             'attachment': _file_url(request, message.attachment),
             'is_read': message.is_read,
-            'created_at': message.created_at,
+            'created_at': message.created_at.isoformat(),
         } for message in ticket.messages.select_related('sender_user', 'sender_store').all()]
     return data
 
@@ -621,4 +623,19 @@ class PlatformSupportMessageView(APIView):
             ticket.status = 'open'
             ticket.resolved_at = None
         ticket.save(update_fields=['status', 'resolved_at', 'updated_at'])
+        message_data = {
+            'id': message.id,
+            'sender_type': message.sender_type,
+            'sender_name': (
+                message.sender_store.name if message.sender_store
+                else message.sender_user.name if message.sender_user
+                else 'AARX Support'
+            ),
+            'text': message.text,
+            'attachment': _file_url(request, message.attachment),
+            'is_read': message.is_read,
+            'created_at': message.created_at.isoformat(),
+        }
+        from .realtime import broadcast_support_ticket_event
+        broadcast_support_ticket_event(ticket.id, "support_ticket_message", message_data)
         return Response(_serialize_support_ticket(request, ticket, detail=True), status=201)

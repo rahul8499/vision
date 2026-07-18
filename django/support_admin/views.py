@@ -425,7 +425,10 @@ class ComplaintReplyView(APIView):
                 user_agent=ua,
             )
             from complaints.serializers import ComplaintMessageSerializer
-            return ok(ComplaintMessageSerializer(message, context={"request": request}).data, message="Reply sent.", status_code=status.HTTP_201_CREATED)
+            message_data = ComplaintMessageSerializer(message, context={"request": request}).data
+            from complaints.realtime import broadcast_complaint_event
+            broadcast_complaint_event(complaint_id, "complaint_message", message_data)
+            return ok(message_data, message="Reply sent.", status_code=status.HTTP_201_CREATED)
         except ValueError as exc:
             return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
 
@@ -566,6 +569,11 @@ class TicketListView(APIView):
                 "priority_display": ticket.get_priority_display(),
                 "status": ticket.status,
                 "status_display": ticket.get_status_display(),
+                "requester_type": ticket.requester_type,
+                "requester_name": (
+                    ticket.requester_store.name if ticket.requester_store else
+                    ticket.requester_user.name if ticket.requester_user else "Unknown requester"
+                ),
                 "assigned_to": ticket.assigned_to or None,
                 "resolution_note": ticket.resolution_note or None,
                 "resolved_at": ticket.resolved_at,
@@ -619,6 +627,11 @@ class TicketDetailView(APIView):
             "priority_display": ticket.get_priority_display(),
             "status": ticket.status,
             "status_display": ticket.get_status_display(),
+            "requester_type": ticket.requester_type,
+            "requester_name": (
+                ticket.requester_store.name if ticket.requester_store else
+                ticket.requester_user.name if ticket.requester_user else "Unknown requester"
+            ),
             "assigned_to": ticket.assigned_to or None,
             "resolution_note": ticket.resolution_note or None,
             "resolved_at": ticket.resolved_at,
@@ -664,11 +677,14 @@ class TicketReplyView(APIView):
             data = {
                 "id": message.id,
                 "sender_type": message.sender_type,
+                "sender_name": "AARX Support",
                 "text": message.text,
                 "attachment": message.attachment.url if message.attachment else None,
                 "is_read": message.is_read,
-                "created_at": message.created_at,
+                "created_at": message.created_at.isoformat(),
             }
+            from complaints.realtime import broadcast_support_ticket_event
+            broadcast_support_ticket_event(ticket.id, "support_ticket_message", data)
             return ok(data, message="Reply sent.", status_code=status.HTTP_201_CREATED)
         except ValueError as exc:
             return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
@@ -699,9 +715,11 @@ class TicketStatusUpdateView(APIView):
                 "status": ticket.status,
                 "status_display": ticket.get_status_display(),
                 "resolution_note": ticket.resolution_note,
-                "resolved_at": ticket.resolved_at,
-                "updated_at": ticket.updated_at,
+                "resolved_at": ticket.resolved_at.isoformat() if ticket.resolved_at else None,
+                "updated_at": ticket.updated_at.isoformat(),
             }
+            from complaints.realtime import broadcast_support_ticket_event
+            broadcast_support_ticket_event(ticket.id, "support_ticket_updated", data)
             return ok(data, message="Ticket status updated.", status_code=status.HTTP_200_OK)
         except ValueError as exc:
             return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)

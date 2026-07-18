@@ -1,1 +1,1 @@
-import React from 'react';import{SupportTicketDetail}from'@/components/PlatformSupport';export default function Page(){return <SupportTicketDetail/>}
+import React from 'react';import{SupportTicketRealtime}from'@/components/PlatformSupport/SupportTicketRealtime';export default function Page(){return <SupportTicketRealtime/>}

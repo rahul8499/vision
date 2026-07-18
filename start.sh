@@ -86,7 +86,7 @@ if port_is_open 8000; then
   ok "✓ Django already running on port 8000"
 else
   launch_terminal "AARX Django + WebSocket" \
-    "cd '$DJANGO_DIR' && exec '$DJANGO_VENV/bin/uvicorn' aarx.asgi:application --host 0.0.0.0 --port 8000 --reload"
+    "cd '$DJANGO_DIR' && exec '$DJANGO_VENV/bin/uvicorn' aarx.asgi:application --host 0.0.0.0 --port 8000 --ws websockets --reload"
   wait_for_port "Django + WebSocket" 8000 30
 fi
 

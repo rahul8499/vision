@@ -13,6 +13,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
+import * as SecureStore from 'expo-secure-store';
 import {
   getComplaintDetail,
   withdrawComplaint,
@@ -48,10 +49,55 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
     load();
   }, [load, isFocused]);
 
+  useEffect(() => {
+    if (!isFocused || !id || !BASE_URL) return;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+
+    const connect = async () => {
+      const token = await SecureStore.getItemAsync('authToken');
+      if (stopped || !token) return;
+      socket = new WebSocket(
+        `${BASE_URL.replace(/^http/, 'ws').replace(/\/$/, '')}/ws/complaints/${id}/?token=${encodeURIComponent(token)}`
+      );
+      socket.onmessage = (event) => {
+        try {
+          const incoming = JSON.parse(event.data);
+          if (incoming.type !== 'complaint_message' || !incoming.data) return;
+          setDetail((previous) => {
+            if (!previous || previous.messages.some((message) => message.id === incoming.data.id)) return previous;
+            return {
+              ...previous,
+              messages: [...previous.messages, incoming.data],
+              message_count: previous.message_count + 1,
+              updated_at: incoming.data.created_at || previous.updated_at,
+            };
+          });
+        } catch {
+          // Ignore malformed realtime frames; REST remains the source of truth.
+        }
+      };
+      socket.onclose = () => {
+        if (!stopped) reconnectTimer = setTimeout(connect, 1500);
+      };
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [id, isFocused]);
+
   const handleSend = async (text: string, attachment: LocalAttachment | null) => {
     const { addComplaintMessage } = await import('@/utils/complaintsApi');
     const msg = await addComplaintMessage(Number(id), { text, attachment });
-    setDetail((prev) => (prev ? { ...prev, messages: [...prev.messages, msg] } : prev));
+    setDetail((prev) => {
+      if (!prev || prev.messages.some((message) => message.id === msg.id)) return prev;
+      return { ...prev, messages: [...prev.messages, msg], message_count: prev.message_count + 1 };
+    });
   };
 
   const handleWithdraw = () => {

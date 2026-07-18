@@ -214,6 +214,8 @@ export default function ChatRoomScreen() {
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const ws = useRef<WebSocket | null>(null);
+    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const intentionalSocketCloseRef = useRef(false);
     const flatListRef = useRef<FlatList>(null);
     const userTypeRef = useRef(userType);
     const isFocusedRef = useRef(isFocused);
@@ -325,6 +327,7 @@ export default function ChatRoomScreen() {
         if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) return;
 
         console.log("Connecting to WebSocket...");
+        intentionalSocketCloseRef.current = false;
         const socket = new WebSocket(`${WS_URL}/ws/chat/${threadId}/?token=${token}`);
 
         socket.onopen = () => {
@@ -338,7 +341,26 @@ export default function ChatRoomScreen() {
         };
 
         socket.onerror = (e) => console.log("WebSocket Error:", e);
-        socket.onclose = () => console.log("WebSocket Disconnected");
+        socket.onclose = (event) => {
+            console.log("WebSocket Disconnected", {
+                code: event.code,
+                reason: event.reason,
+                clean: event.wasClean
+            });
+            if (ws.current !== socket) return;
+            ws.current = null;
+            if (
+                !intentionalSocketCloseRef.current
+                && isFocusedRef.current
+                && appStateRef.current === 'active'
+            ) {
+                if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = setTimeout(() => {
+                    reconnectTimerRef.current = null;
+                    connectWebSocket();
+                }, 1500);
+            }
+        };
 
         ws.current = socket;
     }, [threadId, token, BASE_URL, WS_URL, markRead, onMessageReceived]);
@@ -349,6 +371,12 @@ export default function ChatRoomScreen() {
             appStateRef.current = nextAppState;
             if (nextAppState === 'active' && isFocusedRef.current) {
                 connectWebSocket();
+            } else if (nextAppState !== 'active') {
+                intentionalSocketCloseRef.current = true;
+                if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = null;
+                ws.current?.close();
+                ws.current = null;
             }
         });
         return () => subscription.remove();
@@ -357,12 +385,23 @@ export default function ChatRoomScreen() {
     useEffect(() => {
         isFocusedRef.current = isFocused;
         if (isFocused) {
+            intentionalSocketCloseRef.current = false;
             connectWebSocket();
             markRead();
         } else {
+            intentionalSocketCloseRef.current = true;
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
             ws.current?.close();
             ws.current = null;
         }
+        return () => {
+            intentionalSocketCloseRef.current = true;
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+            ws.current?.close();
+            ws.current = null;
+        };
     }, [isFocused, connectWebSocket, markRead]);
 
     // 📅 Resolution + Initial Load + WS Initialization
@@ -435,10 +474,8 @@ export default function ChatRoomScreen() {
 
         handleInitialization();
 
-        return () => {
-            ws.current?.close();
-            ws.current = null;
-        };
+        // Socket ownership belongs to the focus/AppState lifecycle above.
+        // Closing it here races with the parallel connection effect.
     }, [token, threadId, BASE_URL, connectWebSocket]);
 
     // 🚀 LAZY THREAD INITIATOR

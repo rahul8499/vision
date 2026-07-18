@@ -34,3 +34,19 @@ export const formatOrderId = (id: string): string => {
 export const formatId = (id: string): string => {
   return `#${id.slice(0, 8).toUpperCase()}`
 }
+
+export const formatSafeDate = (
+  date?: string | null,
+  options?: Intl.DateTimeFormatOptions,
+): string => {
+  if (!date) return 'Not available'
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return 'Not available'
+  return new Intl.DateTimeFormat('en-IN', options || {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}

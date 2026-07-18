@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { CheckCheck, FileText } from 'lucide-react'
+import { formatSafeDate } from '@/utils/formatters'
 
 interface MessageBubbleProps {
   content: string
@@ -7,43 +8,53 @@ interface MessageBubbleProps {
   timestamp: string
   isInternal?: boolean
   attachments?: string[]
+  pending?: boolean
 }
 
-export const MessageBubble = ({ content, senderName, senderRole, timestamp, isInternal = false, attachments = [] }: MessageBubbleProps) => {
-  const isUser = senderRole === 'user'
+export const MessageBubble = ({
+  content,
+  senderName,
+  senderRole,
+  timestamp,
+  isInternal = false,
+  attachments = [],
+  pending = false,
+}: MessageBubbleProps) => {
+  const fromCustomer = senderRole === 'user'
 
   return (
-    <div className={`flex ${isUser ? 'justify-start' : 'justify-end'} mb-4`}>
-      <div className={`max-w-[70%] ${isUser ? 'order-2' : 'order-1'}`}>
-        {isInternal && (
-          <div className="mb-1 px-2">
-            <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded">INTERNAL NOTE</span>
-          </div>
-        )}
-        <div
-          className={`rounded-lg px-4 py-2.5 ${
-            isInternal
-              ? 'bg-amber-50 border border-amber-200'
-              : isUser
-                ? 'bg-gray-100 text-gray-900'
-                : 'bg-primary-600 text-white'
-          }`}
-        >
-          <p className="text-sm whitespace-pre-wrap">{content}</p>
-          {attachments.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {attachments.map((att, i) => (
-                <span key={i} className="text-xs bg-black/10 px-2 py-1 rounded">
-                  {att}
-                </span>
-              ))}
-            </div>
-          )}
+    <div className={`group flex gap-3 ${fromCustomer ? 'justify-start' : 'justify-end'}`}>
+      {fromCustomer && (
+        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+          {(senderName || 'U').slice(0, 1).toUpperCase()}
         </div>
-        <div className="mt-1 px-1 flex items-center gap-2">
-          <span className="text-xs text-gray-500">{senderName}</span>
-          <span className="text-xs text-gray-400">•</span>
-          <span className="text-xs text-gray-400">{new Date(timestamp).toLocaleString()}</span>
+      )}
+      <div className={`max-w-[82%] sm:max-w-[70%] ${fromCustomer ? '' : 'items-end'}`}>
+        <div className={`mb-1 flex items-center gap-2 text-xs ${fromCustomer ? '' : 'justify-end'}`}>
+          <span className="font-medium text-slate-700">{senderName}</span>
+          <span className="text-slate-400">{formatSafeDate(timestamp, { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+        <div className={[
+          'rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm',
+          isInternal
+            ? 'border border-amber-200 bg-amber-50 text-amber-950'
+            : fromCustomer
+              ? 'rounded-tl-md border border-slate-200 bg-white text-slate-800'
+              : 'rounded-tr-md bg-slate-900 text-white',
+          pending ? 'opacity-60' : '',
+        ].join(' ')}>
+          {isInternal && <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">Internal note</p>}
+          <p className="whitespace-pre-wrap break-words">{content}</p>
+          {attachments.map((attachment) => (
+            <a key={attachment} href={attachment} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-2 rounded-lg bg-black/5 px-3 py-2 text-xs underline">
+              <FileText className="h-4 w-4" /> View attachment
+            </a>
+          ))}
+          {!fromCustomer && !isInternal && (
+            <span className="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-300">
+              <CheckCheck className="h-3 w-3" /> {pending ? 'Sending…' : 'Sent'}
+            </span>
+          )}
         </div>
       </div>
     </div>

@@ -1,148 +1,258 @@
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { complaintsApi } from '@/api/complaintsApi'
 import { useParams, useNavigate } from 'react-router-dom'
+import {
+  ArrowLeft, User, Store, ShoppingBag, CalendarDays, Clock3, MessagesSquare,
+  ExternalLink, CircleDot, Paperclip, Activity, ShieldCheck,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import { complaintsApi, normalizeComplaintMessage } from '@/api/complaintsApi'
 import { MessageThread } from '@/components/threads/MessageThread'
 import { InternalNotesPanel } from '@/components/threads/InternalNotesPanel'
-import { Card } from '@/components/common/Card'
 import { Badge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
-import { ReplyForm } from '@/components/forms/ReplyForm'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
-import { ArrowLeft, User, Store, Tag } from 'lucide-react'
-import toast from 'react-hot-toast'
-import type { Complaint, ComplaintStatus, ComplaintPriority } from '@/types/complaints'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { useAuthStore } from '@/store/authStore'
+import { formatSafeDate } from '@/utils/formatters'
+import type { Complaint, ComplaintStatus } from '@/types/complaints'
 import { COMPLAINT_STATUS_COLORS, COMPLAINT_PRIORITY_COLORS } from '@/types/complaints'
+
+const STATUS_OPTIONS: Array<{ value: ComplaintStatus; label: string }> = [
+  { value: 'open', label: 'Open' },
+  { value: 'under_review', label: 'Under review' },
+  { value: 'awaiting_info', label: 'Awaiting info' },
+  { value: 'resolved', label: 'Resolved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'closed', label: 'Closed' },
+]
+
+const labelize = (value?: string) => value?.replace(/_/g, ' ') || 'Not available'
 
 export const ComplaintDetail = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [status, setStatus] = useState<ComplaintStatus | ''>('')
+  const token = useAuthStore((state) => state.accessToken)
+  const wsBase = (import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000').replace(/\/$/, '')
+  const { subscribe, isConnected } = useWebSocket(`${wsBase}/ws/complaints/${id}/?token=${encodeURIComponent(token || '')}`)
 
-  const { data: complaint, isLoading, error } = useQuery({
+  const complaintQuery = useQuery({
     queryKey: ['complaint', id],
     queryFn: () => complaintsApi.getOne(id!),
     enabled: !!id,
-    staleTime: 30000,
+    staleTime: 10_000,
+    refetchInterval: isConnected ? false : 5_000,
   })
+
+  const notesQuery = useQuery({
+    queryKey: ['complaint-notes', id],
+    queryFn: () => complaintsApi.getInternalNotes(id!),
+    enabled: !!id,
+    staleTime: 10_000,
+  })
+
+  useEffect(() => {
+    const receiveMessage = (payload: unknown) => {
+      const incoming = normalizeComplaintMessage(payload as Record<string, unknown>)
+      queryClient.setQueryData<Complaint>(['complaint', id], (current) => {
+        if (!current || current.messages.some((message) => message.id === incoming.id)) return current
+        return {
+          ...current,
+          messages: [...current.messages, incoming],
+          messageCount: current.messageCount + 1,
+          updatedAt: incoming.createdAt,
+        }
+      })
+      queryClient.invalidateQueries({ queryKey: ['complaints'] })
+    }
+    return subscribe('complaint_message', receiveMessage)
+  }, [id, queryClient, subscribe])
 
   const replyMutation = useMutation({
-    mutationFn: (text: string) => complaintsApi.reply(id!, { text }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['complaint', id] })
+    mutationFn: (message: string) => complaintsApi.reply(id!, { text: message }),
+    onMutate: async (message) => {
+      await queryClient.cancelQueries({ queryKey: ['complaint', id] })
+      const previous = queryClient.getQueryData<Complaint>(['complaint', id])
+      if (previous) {
+        queryClient.setQueryData<Complaint>(['complaint', id], {
+          ...previous,
+          messageCount: previous.messageCount + 1,
+          messages: [...previous.messages, {
+            id: -Date.now(),
+            senderType: 'platform',
+            senderName: 'Support team',
+            text: message,
+            isRead: true,
+            createdAt: new Date().toISOString(),
+          }],
+        })
+      }
+      return { previous }
+    },
+    onError: (_error, _message, context) => {
+      if (context?.previous) queryClient.setQueryData(['complaint', id], context.previous)
+      toast.error('Reply could not be sent. Your message has been restored.')
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData<Complaint>(['complaint', id], (current) => {
+        if (!current) return current
+        const confirmed = current.messages.filter((item) => item.id >= 0 && item.id !== saved.id)
+        return { ...current, messages: [...confirmed, saved] }
+      })
+      queryClient.invalidateQueries({ queryKey: ['complaints'] })
+      toast.success('Reply sent')
     },
   })
 
-  const addNoteMutation = useMutation({
+  const noteMutation = useMutation({
     mutationFn: (content: string) => complaintsApi.addInternalNote(id!, content),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['complaint', id] })
+    onSuccess: (note) => {
+      queryClient.setQueryData(['complaint-notes', id], (current: unknown) => [note, ...((current as unknown[]) || [])])
+      toast.success('Internal note added')
     },
+    onError: () => toast.error('Internal note could not be added'),
   })
 
-  const handleReply = async (text: string) => {
-    await replyMutation.mutateAsync(text)
-  }
+  const statusMutation = useMutation({
+    mutationFn: (nextStatus: ComplaintStatus) => complaintsApi.updateStatus(id!, nextStatus),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['complaint', id], updated)
+      queryClient.invalidateQueries({ queryKey: ['complaints'] })
+      setStatus('')
+      toast.success(`Complaint marked ${updated.statusDisplay.toLowerCase()}`)
+    },
+    onError: () => toast.error('This status transition is not allowed'),
+  })
 
-  const handleAddNote = async (content: string) => {
-    await addNoteMutation.mutateAsync(content)
-  }
+  const complaint = complaintQuery.data
+  const messages = useMemo(() => (complaint?.messages || []).map((message) => ({
+    id: message.id,
+    content: message.text,
+    senderName: message.senderName,
+    senderRole: message.senderType === 'platform' ? 'support' as const : 'user' as const,
+    createdAt: message.createdAt,
+    attachments: message.attachmentUrl ? [message.attachmentUrl] : [],
+    pending: message.id < 0,
+  })), [complaint?.messages])
 
-  if (isLoading) return <Loading />
-  if (error) return <ErrorState />
+  if (complaintQuery.isLoading) return <Loading />
+  if (complaintQuery.error) return <ErrorState />
   if (!complaint) return <ErrorState title="Complaint not found" />
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="mx-auto max-w-[1500px] space-y-5">
       <Breadcrumbs />
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => navigate('/complaints')}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-        >
-          <ArrowLeft className="h-5 w-5 text-gray-600" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">{complaint.subject}</h1>
-          <p className="text-gray-500 mt-1">Complaint #{String(complaint.id).slice(0, 8)}</p>
-        </div>
-        <Badge className={COMPLAINT_STATUS_COLORS[complaint.status as ComplaintStatus]}>
-          {complaint.statusDisplay || complaint.status.replace('_', ' ')}
-        </Badge>
-        <Badge className={COMPLAINT_PRIORITY_COLORS[complaint.priority as ComplaintPriority]}>
-          {complaint.priorityDisplay || complaint.priority}
-        </Badge>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 space-y-4">
-          <Card title="Messages" subtitle={`${complaint.messages?.length || 0} messages`}>
-            <MessageThread
-              messages={(complaint.messages || []).map((m) => ({
-                id: m.id,
-                content: m.text,
-                senderName: m.senderName,
-                senderRole: m.senderType === 'platform' ? 'support' : 'user',
-                createdAt: m.createdAt,
-                attachments: m.attachments || [],
-              }))}
-              onReply={handleReply}
-              replyPlaceholder="Write a reply..."
-            />
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          <Card title="Details" subtitle="">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{complaint.complainantName}</p>
-                  <p className="text-xs text-gray-500 capitalize">{complaint.complainantType}</p>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <button onClick={() => navigate('/complaints')} className="mt-0.5 rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50" aria-label="Back to complaints">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-0">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+                  <span>Complaint #{complaint.id}</span><span>•</span>
+                  <span className="capitalize">{complaint.categoryDisplay}</span>
+                  <span className={`flex items-center gap-1 ${isConnected ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    <CircleDot className="h-3 w-3" /> {isConnected ? 'Live' : 'Refreshing'}
+                  </span>
                 </div>
+                <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{complaint.subject}</h1>
               </div>
-              <div className="flex items-center gap-2">
-                <Store className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{complaint.respondentName}</p>
-                  <p className="text-xs text-gray-500 capitalize">{complaint.respondentType}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Tag className="h-4 w-4 text-gray-400" />
-                <Badge variant="default">{complaint.categoryDisplay || complaint.category.replace('_', ' ')}</Badge>
-              </div>
-              {complaint.orderId && (
-                <div>
-                  <p className="text-xs text-gray-500">Order ID</p>
-                  <p className="text-sm font-mono">{complaint.orderId}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-xs text-gray-500">Created</p>
-                <p className="text-sm text-gray-900">{new Date(complaint.createdAt).toLocaleString()}</p>
-              </div>
-              {complaint.assignedTo && (
-                <div>
-                  <p className="text-xs text-gray-500">Assigned to</p>
-                  <p className="text-sm text-gray-900">Staff ID: {complaint.assignedTo}</p>
-                </div>
-              )}
             </div>
-          </Card>
-          <InternalNotesPanel
-            notes={(complaint.internalNotes || []).map((n) => ({
-              id: n.id,
-              content: n.content,
-              authorName: n.authorName,
-              createdAt: n.createdAt,
-            }))}
-            onAddNote={handleAddNote}
-          />
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className={COMPLAINT_PRIORITY_COLORS[complaint.priority]}>{complaint.priorityDisplay} priority</Badge>
+              <Badge className={COMPLAINT_STATUS_COLORS[complaint.status]}>{complaint.statusDisplay}</Badge>
+              <select value={status} onChange={(event) => setStatus(event.target.value as ComplaintStatus)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-primary-200">
+                <option value="">Change status…</option>
+                {STATUS_OPTIONS.filter((option) => option.value !== complaint.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <Button size="sm" disabled={!status} loading={statusMutation.isPending} onClick={() => status && statusMutation.mutate(status)}>Update</Button>
+            </div>
+          </div>
         </div>
+
+        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
+          <Metric icon={<MessagesSquare />} label="Messages" value={String(complaint.messageCount)} />
+          <Metric icon={<Paperclip />} label="Attachments" value={String(complaint.attachmentCount)} />
+          <Metric icon={<Clock3 />} label="Last updated" value={formatSafeDate(complaint.updatedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} />
+          <Metric icon={<ShieldCheck />} label="Ownership" value={complaint.assignedTo || 'Unassigned'} />
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div><h2 className="font-semibold text-slate-900">Customer conversation</h2><p className="text-xs text-slate-500">Messages are visible to the complainant immediately</p></div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{complaint.messageCount} messages</span>
+          </div>
+          <MessageThread messages={messages} onReply={async (content) => { await replyMutation.mutateAsync(content) }} isSending={replyMutation.isPending} />
+        </section>
+
+        <aside className="space-y-5">
+          <Panel title="Complaint details">
+            {complaint.description && (
+              <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Original complaint</p>
+                <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{complaint.description}</p>
+              </div>
+            )}
+            <div className="space-y-4">
+              <Party icon={complaint.complainantType === 'store' ? <Store /> : <User />} eyebrow="Filed by" name={complaint.complainantName} type={complaint.complainantType} />
+              <div className="ml-4 h-5 border-l border-dashed border-slate-300" />
+              <Party danger icon={complaint.respondentType === 'store' ? <Store /> : <User />} eyebrow="Complaint against" name={complaint.respondentName} type={complaint.respondentType} />
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <Detail icon={<Activity />} label="Category" value={complaint.categoryDisplay} />
+              <Detail icon={<CalendarDays />} label="Created" value={formatSafeDate(complaint.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })} />
+              <Detail icon={<ShoppingBag />} label="Order" value={complaint.orderId ? `#${complaint.orderId}` : 'Not linked'} />
+              <Detail icon={<ShieldCheck />} label="Assigned to" value={complaint.assignedTo || 'Unassigned'} />
+            </div>
+            {complaint.orderId && <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">View linked order <ExternalLink className="h-3.5 w-3.5" /></button>}
+          </Panel>
+
+          <InternalNotesPanel notes={notesQuery.data || []} onAddNote={async (content) => { await noteMutation.mutateAsync(content) }} />
+
+          <Panel title="Activity">
+            {complaint.statusHistory.length === 0 ? <p className="text-sm text-slate-500">No status changes recorded yet.</p> : (
+              <div className="space-y-4">
+                {complaint.statusHistory.map((event) => (
+                  <div key={event.id} className="flex gap-3">
+                    <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-primary-500 ring-4 ring-primary-50" />
+                    <div><p className="text-sm text-slate-700"><span className="font-medium capitalize">{labelize(event.fromStatus)}</span> → <span className="font-medium capitalize">{labelize(event.toStatus)}</span></p>{event.note && <p className="mt-0.5 text-xs text-slate-500">{event.note}</p>}<p className="mt-1 text-xs text-slate-400">{formatSafeDate(event.createdAt)}</p></div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </aside>
       </div>
     </div>
   )
 }
+
+const Metric = ({ icon, label, value }: { icon: React.ReactElement; label: string; value: string }) => (
+  <div className="flex min-w-0 items-center gap-3 px-5 py-4 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:text-slate-400">
+    <div className="rounded-lg bg-slate-50 p-2">{icon}</div><div className="min-w-0"><p className="text-xs text-slate-500">{label}</p><p className="truncate text-sm font-semibold text-slate-800">{value}</p></div>
+  </div>
+)
+
+const Panel = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <section className="rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-200 px-5 py-4"><h2 className="font-semibold text-slate-900">{title}</h2></div><div className="p-5">{children}</div></section>
+)
+
+const Party = ({ icon, eyebrow, name, type, danger }: { icon: React.ReactElement; eyebrow: string; name: string; type: string; danger?: boolean }) => (
+  <div className="flex items-center gap-3">
+    <div className={`rounded-xl p-2.5 [&_svg]:h-5 [&_svg]:w-5 ${danger ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>{icon}</div>
+    <div><p className="text-xs text-slate-500">{eyebrow}</p><p className="font-semibold text-slate-900">{name}</p><p className="text-xs capitalize text-slate-400">{type}</p></div>
+  </div>
+)
+
+const Detail = ({ icon, label, value }: { icon: React.ReactElement; label: string; value: string }) => (
+  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3"><div className="mb-1 flex items-center gap-1.5 text-xs text-slate-500 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{label}</div><p className="truncate text-sm font-medium capitalize text-slate-800">{value}</p></div>
+)

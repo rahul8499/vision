@@ -7,37 +7,42 @@ import { BulkActions } from '@/components/tables/BulkActions'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { SearchInput } from '@/components/filters/SearchInput'
 import { SelectFilter } from '@/components/filters/SelectFilter'
-import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
-import { Button } from '@/components/common/Button'
 import { Badge } from '@/components/common/Badge'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Loading } from '@/components/common/Loading'
 import { useNavigate } from 'react-router-dom'
-import { Plus, MessageSquare } from 'lucide-react'
+import { MessageSquare, ArrowUpRight, Clock3 } from 'lucide-react'
 import { useDebounce } from '@/hooks/useDebounce'
 import type { Complaint, ComplaintStatus, ComplaintPriority, ComplaintCategory } from '@/types/complaints'
 import { COMPLAINT_STATUS_COLORS, COMPLAINT_PRIORITY_COLORS } from '@/types/complaints'
+import { formatSafeDate } from '@/utils/formatters'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' },
-  { value: 'in_progress', label: 'In Progress' },
+  { value: 'under_review', label: 'Under Review' },
+  { value: 'awaiting_info', label: 'Awaiting Info' },
   { value: 'resolved', label: 'Resolved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'withdrawn', label: 'Withdrawn' },
   { value: 'closed', label: 'Closed' },
-  { value: 'escalated', label: 'Escalated' },
 ]
 
 const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
-  { value: 'critical', label: 'Critical' },
+  { value: 'urgent', label: 'Urgent' },
 ]
 
 const CATEGORY_OPTIONS = [
-  { value: 'food_quality', label: 'Food Quality' },
-  { value: 'delivery', label: 'Delivery' },
-  { value: 'app_issue', label: 'App Issue' },
-  { value: 'billing', label: 'Billing' },
+  { value: 'delivery_issue', label: 'Delivery Issue' },
+  { value: 'wrong_or_expired_medicine', label: 'Wrong / Expired Medicine' },
+  { value: 'overcharging', label: 'Overcharging / Billing' },
+  { value: 'rude_behavior', label: 'Rude Behavior' },
+  { value: 'fake_order', label: 'Fake / Spam Order' },
+  { value: 'non_delivery', label: 'Non-Delivery' },
+  { value: 'product_quality', label: 'Product Quality' },
+  { value: 'payment_issue', label: 'Payment Issue' },
   { value: 'other', label: 'Other' },
 ]
 
@@ -80,40 +85,52 @@ export const ComplaintList = () => {
   }
 
   const columns = [
-    { key: 'id', header: 'ID', render: (item: Complaint) => (
-      <span className="font-mono text-xs text-gray-500">#{String(item.id).slice(0, 8)}</span>
-    )},
-    { key: 'subject', header: 'Subject', render: (item: Complaint) => (
-      <div>
-        <p className="font-medium text-gray-900 truncate max-w-[200px]">{item.subject}</p>
-        <p className="text-xs text-gray-500">{item.complainantName}</p>
+    { key: 'subject', header: 'Complaint', render: (item: Complaint) => (
+      <div className="min-w-[230px]">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] font-medium text-slate-400">#{item.id}</span>
+          {item.unreadCount > 0 && <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{item.unreadCount} new</span>}
+        </div>
+        <p className="mt-1 max-w-[280px] truncate font-semibold text-slate-900">{item.subject}</p>
+        <p className="mt-0.5 text-xs capitalize text-slate-500">{item.categoryDisplay}</p>
       </div>
     )},
-    { key: 'respondentName', header: 'Respondent', render: (item: Complaint) => item.respondentName },
+    { key: 'complainantName', header: 'Filed by', render: (item: Complaint) => (
+      <div><p className="font-medium text-slate-800">{item.complainantName}</p><p className="text-xs capitalize text-slate-400">{item.complainantType}</p></div>
+    )},
+    { key: 'respondentName', header: 'Against', render: (item: Complaint) => (
+      <div><p className="font-medium text-slate-800">{item.respondentName}</p><p className="text-xs capitalize text-slate-400">{item.respondentType}</p></div>
+    )},
     { key: 'status', header: 'Status', sortable: true, render: (item: Complaint) => (
-      <Badge variant={COMPLAINT_STATUS_COLORS[item.status] || 'default'}>
+      <Badge className={COMPLAINT_STATUS_COLORS[item.status]}>
         {item.statusDisplay || item.status.replace('_', ' ')}
       </Badge>
     )},
     { key: 'priority', header: 'Priority', sortable: true, render: (item: Complaint) => (
-      <Badge variant={COMPLAINT_PRIORITY_COLORS[item.priority] || 'default'}>
+      <Badge className={COMPLAINT_PRIORITY_COLORS[item.priority]}>
         {item.priorityDisplay || item.priority}
       </Badge>
     )},
-    { key: 'categoryDisplay', header: 'Category', render: (item: Complaint) => item.categoryDisplay || item.category.replace('_', ' ') },
-    { key: 'createdAt', header: 'Created', sortable: true, render: (item: Complaint) => new Date(item.createdAt).toLocaleDateString() },
+    { key: 'messageCount', header: 'Conversation', render: (item: Complaint) => (
+      <div className="flex items-center gap-1.5 text-slate-600"><MessageSquare className="h-3.5 w-3.5" /><span>{item.messageCount}</span></div>
+    )},
+    { key: 'createdAt', header: 'Created', sortable: true, render: (item: Complaint) => (
+      <div className="min-w-[125px]"><p className="text-sm text-slate-700">{formatSafeDate(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}</p><p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400"><Clock3 className="h-3 w-3" />{formatSafeDate(item.createdAt, { hour: '2-digit', minute: '2-digit' })}</p></div>
+    )},
+    { key: 'action', header: '', render: () => <ArrowUpRight className="h-4 w-4 text-slate-400" /> },
   ]
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-[1500px] space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Complaints</h1>
-          <p className="text-gray-500 mt-1">Manage and resolve customer complaints</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Complaint inbox</h1>
+          <p className="mt-1 text-sm text-slate-500">Investigate, respond and resolve customer complaints from one place.</p>
         </div>
-        <Button leftIcon={<Plus className="h-4 w-4" />}>
-          New Complaint
-        </Button>
+        <div className="hidden rounded-xl border border-slate-200 bg-white px-4 py-2 text-right shadow-sm sm:block">
+          <p className="text-xs text-slate-500">Total complaints</p>
+          <p className="text-lg font-bold text-slate-900">{pagination?.total_count ?? 0}</p>
+        </div>
       </div>
 
       <FilterBar onReset={handleResetFilters} activeFiltersCount={activeFilterCount}>

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class RedisSafeAsyncWebsocketConsumer(AsyncWebsocketConsumer):
 
+    @staticmethod
     def _consume_fixed_window(key: str, limit: int, window: int) -> bool:
         bucket = int(timezone.now().timestamp()) / window
         cache_key = f"{key}:{bucket}"
@@ -620,4 +621,3 @@ class StoreFulfillmentConsumer(RedisSafeAsyncWebsocketConsumer):
             'action': event.get('action', 'status_change'),
             'data': data
         }))
-

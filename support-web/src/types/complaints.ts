@@ -1,13 +1,53 @@
-export type ComplaintStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'escalated' | 'under_review' | 'awaiting_info'
-export type ComplaintPriority = 'low' | 'medium' | 'high' | 'critical'
-export type ComplaintCategory = 'food_quality' | 'delivery' | 'app_issue' | 'billing' | 'other'
-export type ComplaintSource = 'app' | 'call_center' | 'email' | 'social_media'
-export type ComplainantType = 'user' | 'store'
-export type RespondentType = 'user' | 'store'
+export type ComplaintStatus = 'open' | 'under_review' | 'awaiting_info' | 'resolved' | 'rejected' | 'withdrawn' | 'closed'
+export type ComplaintPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type ComplaintCategory =
+  | 'delivery_issue'
+  | 'wrong_or_expired_medicine'
+  | 'overcharging'
+  | 'rude_behavior'
+  | 'fake_order'
+  | 'non_delivery'
+  | 'product_quality'
+  | 'payment_issue'
+  | 'other'
+export type PartyType = 'user' | 'store'
+
+export interface ComplaintAttachment {
+  id: number
+  url: string
+  createdAt: string
+}
+
+export interface ComplaintMessage {
+  id: number
+  senderType: 'user' | 'store' | 'platform'
+  senderName: string
+  text: string
+  attachmentUrl?: string
+  isRead: boolean
+  createdAt: string
+}
+
+export interface ComplaintStatusEvent {
+  id: number
+  fromStatus: string
+  toStatus: string
+  changedBy?: string
+  note?: string
+  createdAt: string
+}
+
+export interface InternalNote {
+  id: number
+  content: string
+  authorName: string
+  createdAt: string
+  isPinned?: boolean
+}
 
 export interface Complaint {
   id: number
-  category: string
+  category: ComplaintCategory
   categoryDisplay: string
   subject: string
   description?: string
@@ -15,64 +55,23 @@ export interface Complaint {
   statusDisplay: string
   priority: ComplaintPriority
   priorityDisplay: string
-  complainantType: ComplainantType
+  complainantType: PartyType
   complainantName: string
-  respondentType: RespondentType
+  respondentType: PartyType
   respondentName: string
   orderId?: number
-  assignedTo?: number
+  assignedTo?: string
   resolutionNotes?: string
   resolvedAt?: string
   unreadCount: number
   messageCount: number
   attachmentCount: number
-  attachments?: Array<{ id: number; url: string; filename?: string; uploaded_at: string }>
-  messages?: Array<{
-    id: number
-    senderType: 'user' | 'store' | 'platform'
-    senderUserId?: number
-    senderStoreId?: number
-    senderName: string
-    text: string
-    attachmentUrl?: string
-    isRead: boolean
-    createdAt: string
-  }>
-  statusHistory?: Array<{
-    id: number
-    fromStatus: string
-    toStatus: string
-    changedBy?: string
-    note?: string
-    createdAt: string
-  }>
+  attachments: ComplaintAttachment[]
+  messages: ComplaintMessage[]
+  statusHistory: ComplaintStatusEvent[]
   canWithdraw: boolean
-  internalNotes?: Array<{
-    id: number
-    content: string
-    authorName: string
-    createdAt: string
-  }>
   createdAt: string
   updatedAt: string
-}
-
-export interface ComplaintMessage {
-  id: number
-  senderId: string
-  senderName: string
-  senderRole: 'user' | 'support'
-  content: string
-  attachments: string[]
-  createdAt: string
-}
-
-export interface InternalNote {
-  id: number
-  authorId: string
-  authorName: string
-  content: string
-  createdAt: string
 }
 
 export interface ComplaintListParams {
@@ -90,7 +89,7 @@ export interface ComplaintListParams {
 }
 
 export interface ComplaintCreateRequest {
-  respondentType: 'user' | 'store'
+  respondentType: PartyType
   respondentId: number
   category: ComplaintCategory
   subject: string
@@ -108,22 +107,21 @@ export interface ComplaintUpdateRequest {
   status?: ComplaintStatus
   priority?: ComplaintPriority
   assignedToId?: string
-  tags?: string[]
 }
 
 export const COMPLAINT_STATUS_COLORS: Record<ComplaintStatus, string> = {
-  open: 'bg-red-100 text-red-800',
-  in_progress: 'bg-yellow-100 text-yellow-800',
-  resolved: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-800',
-  escalated: 'bg-purple-100 text-purple-800',
-  under_review: 'bg-blue-100 text-blue-800',
-  awaiting_info: 'bg-orange-100 text-orange-800',
+  open: 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200',
+  under_review: 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200',
+  awaiting_info: 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200',
+  resolved: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200',
+  rejected: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
+  withdrawn: 'bg-gray-100 text-gray-600 ring-1 ring-inset ring-gray-200',
+  closed: 'bg-gray-100 text-gray-700 ring-1 ring-inset ring-gray-200',
 }
 
 export const COMPLAINT_PRIORITY_COLORS: Record<ComplaintPriority, string> = {
-  low: 'bg-blue-100 text-blue-800',
-  medium: 'bg-yellow-100 text-yellow-800',
-  high: 'bg-orange-100 text-orange-800',
-  critical: 'bg-red-100 text-red-800',
+  low: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200',
+  medium: 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200',
+  high: 'bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200',
+  urgent: 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200',
 }

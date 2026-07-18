@@ -1,45 +1,37 @@
-export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'escalated'
-export type TicketPriority = 'low' | 'medium' | 'high' | 'critical'
-export type TicketType = 'technical' | 'billing' | 'account' | 'general' | 'escalation'
-export type TicketChannel = 'email' | 'phone' | 'chat' | 'app' | 'web'
+export type TicketStatus = 'open' | 'in_progress' | 'waiting_for_user' | 'resolved' | 'closed'
+export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TicketCategory = 'app_bug' | 'account' | 'verification' | 'subscription' | 'technical' | 'feature' | 'other'
+
+export interface TicketMessage {
+  id: number
+  senderType: 'user' | 'store' | 'platform'
+  senderName: string
+  text: string
+  attachment?: string
+  isRead: boolean
+  createdAt: string
+}
 
 export interface Ticket {
   id: number
-  category: string
+  category: TicketCategory
   categoryDisplay: string
   subject: string
   description: string
+  requesterType: 'user' | 'store'
+  requesterName: string
   status: TicketStatus
   statusDisplay: string
   priority: TicketPriority
   priorityDisplay: string
-  assignedTo?: number
+  assignedTo?: string
   resolutionNote?: string
   resolvedAt?: string
   messageCount: number
   unreadCount: number
-  messages: Array<{
-    id: number
-    senderType: 'user' | 'store' | 'platform'
-    senderName: string
-    text: string
-    attachment?: string
-    isRead: boolean
-    createdAt: string
-  }>
+  messages: TicketMessage[]
   createdAt: string
   updatedAt: string
-}
-
-export interface TicketMessage {
-  id: number
-  senderId: string
-  senderName: string
-  senderRole: 'user' | 'support'
-  content: string
-  attachments: string[]
-  isInternal: boolean
-  createdAt: string
 }
 
 export interface TicketListParams {
@@ -48,42 +40,24 @@ export interface TicketListParams {
   search?: string
   status?: TicketStatus | ''
   priority?: TicketPriority | ''
-  type?: TicketType | ''
-  channel?: TicketChannel | ''
-  assignedToId?: string
-  dateFrom?: string
-  dateTo?: string
-  sortBy?: 'createdAt' | 'priority' | 'status' | 'slaDeadline'
-  sortOrder?: 'asc' | 'desc'
-}
-
-export interface TicketCreateRequest {
-  userId: string
-  subject: string
-  description: string
-  type: TicketType
-  priority?: TicketPriority
-  channel: TicketChannel
-  tags?: string[]
+  category?: TicketCategory | ''
 }
 
 export interface TicketReplyRequest {
   text: string
-  attachments?: string[]
-  isInternal?: boolean
 }
 
 export const TICKET_STATUS_COLORS: Record<TicketStatus, string> = {
-  open: 'bg-red-100 text-red-800',
-  in_progress: 'bg-yellow-100 text-yellow-800',
-  resolved: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-800',
-  escalated: 'bg-purple-100 text-purple-800',
+  open: 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200',
+  in_progress: 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200',
+  waiting_for_user: 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200',
+  resolved: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200',
+  closed: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
 }
 
 export const TICKET_PRIORITY_COLORS: Record<TicketPriority, string> = {
-  low: 'bg-blue-100 text-blue-800',
-  medium: 'bg-yellow-100 text-yellow-800',
-  high: 'bg-orange-100 text-orange-800',
-  critical: 'bg-red-100 text-red-800',
+  low: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200',
+  medium: 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200',
+  high: 'bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200',
+  urgent: 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200',
 }

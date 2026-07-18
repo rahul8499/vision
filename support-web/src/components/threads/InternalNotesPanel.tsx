@@ -2,10 +2,11 @@ import type { ReactNode } from 'react'
 import { Input } from '@/components/common/Input'
 import { InternalNoteForm } from '@/components/forms/InternalNoteForm'
 import { Button } from '@/components/common/Button'
+import { formatSafeDate } from '@/utils/formatters'
 
 interface InternalNotesPanelProps {
   notes: Array<{
-    id: string
+    id: string | number
     content: string
     authorName: string
     createdAt: string
@@ -31,7 +32,7 @@ export const InternalNotesPanel = ({ notes, onAddNote, title = 'Internal Notes',
               <div className="mt-1 flex items-center gap-2">
                 <span className="text-xs text-gray-500">{note.authorName}</span>
                 <span className="text-xs text-gray-400">•</span>
-                <span className="text-xs text-gray-400">{new Date(note.createdAt).toLocaleString()}</span>
+                <span className="text-xs text-gray-400">{formatSafeDate(note.createdAt)}</span>
               </div>
             </div>
           ))

@@ -2,11 +2,11 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
-const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000'
+const WS_BASE_URL = (import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000').replace(/\/$/, '')
 
 export const supportWebSocket = () => {
   const accessToken = useAuthStore.getState().accessToken
-  const wsUrl = `${WS_BASE_URL}/support?token=${accessToken}`
+  const wsUrl = `${WS_BASE_URL}/ws/support/?token=${encodeURIComponent(accessToken || '')}`
 
   const { connect, disconnect, subscribe, send, isConnected } = useWebSocket(wsUrl)
 
@@ -30,7 +30,7 @@ export const supportWebSocket = () => {
 
   const unsubNotification = subscribe('notification', notificationHandler)
   const unsubTicket = subscribe('ticket_update', ticketUpdateHandler)
-  const unsubComplaint = subscribe('complaint_update', complaintUpdateHandler)
+  const unsubComplaint = subscribe('complaint_updated', complaintUpdateHandler)
 
   return {
     disconnect,

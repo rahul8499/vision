@@ -1,5 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
-import toast from 'react-hot-toast'
+import { useEffect, useRef, useCallback, useState } from 'react'
 
 type MessageHandler = (data: unknown) => void
 
@@ -8,6 +7,8 @@ export const useWebSocket = (url: string) => {
   const handlersRef = useRef<Map<string, MessageHandler[]>>(new Map())
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttemptsRef = useRef(0)
+  const manuallyClosedRef = useRef(false)
+  const [isConnected, setIsConnected] = useState(false)
   const maxReconnectAttempts = 5
   const reconnectDelay = 3000
 
@@ -21,13 +22,14 @@ export const useWebSocket = (url: string) => {
 
       wsRef.current.onopen = () => {
         reconnectAttemptsRef.current = 0
-        toast.success('Connected to live updates')
+        setIsConnected(true)
       }
 
       wsRef.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
-          const { type, payload } = message
+          const { type } = message
+          const payload = message.payload ?? message.data ?? message
           const handlers = handlersRef.current.get(type) || []
           handlers.forEach((handler) => handler(payload))
         } catch {
@@ -35,12 +37,11 @@ export const useWebSocket = (url: string) => {
         }
       }
 
-      wsRef.current.onerror = () => {
-        toast.error('WebSocket connection error')
-      }
+      wsRef.current.onerror = () => setIsConnected(false)
 
       wsRef.current.onclose = () => {
-        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+        setIsConnected(false)
+        if (!manuallyClosedRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current += 1
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect()
@@ -49,11 +50,12 @@ export const useWebSocket = (url: string) => {
       }
     } catch (error) {
       console.error('Failed to create WebSocket:', error)
-      toast.error('Failed to connect to live updates')
+      setIsConnected(false)
     }
   }, [url])
 
   const disconnect = useCallback(() => {
+    manuallyClosedRef.current = true
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
@@ -83,6 +85,7 @@ export const useWebSocket = (url: string) => {
   }, [])
 
   useEffect(() => {
+    manuallyClosedRef.current = false
     connect()
     return () => disconnect()
   }, [connect, disconnect])
@@ -92,6 +95,6 @@ export const useWebSocket = (url: string) => {
     disconnect,
     subscribe,
     send,
-    isConnected: wsRef.current?.readyState === WebSocket.OPEN,
+    isConnected,
   }
 }
