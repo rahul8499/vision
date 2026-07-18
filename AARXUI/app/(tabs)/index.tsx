@@ -126,6 +126,7 @@ export default function HomeScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStage, setUploadStage] = useState('Preparing your request');
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [emergencyOffer, setEmergencyOffer] = useState<{ free: boolean; waitMinutes: number } | null>(null);
   const emergencyOfferResolver = useRef<((approved: boolean) => void) | null>(null);
 
@@ -376,6 +377,7 @@ export default function HomeScreen() {
       Alert.alert('Error', 'Please provide either a prescription photo or type a medicine name.');
       return;
     }
+    setSubmitError(null);
     setSubmitting(true);
     setUploadProgress(5);
     setUploadStage('Preparing your request');
@@ -446,34 +448,37 @@ export default function HomeScreen() {
       }
     }
 
-    // ✅ Check file existence on native platforms if image is provided
-    if (image && Platform.OS !== 'web') {
-      const fileInfo = await FileSystem.getInfoAsync(image.uri);
-      if (!fileInfo.exists) {
-        Alert.alert('Error', 'File not found');
-        setSubmitting(false);
-        return;
-      }
-    }
-
-    // Upload the binary directly to S3, then send only its verified object key
-    // to Django with the remaining prescription data.
     const formData = new FormData();
-    if (image) {
-      const uploadFile = getUploadFileMeta(image);
-      setUploadProgress(35);
-      setUploadStage('Uploading prescription securely');
-      const imageKey = await uploadFileToS3(
-        { uri: image.uri, name: uploadFile.name, type: uploadFile.type },
-        'prescriptions',
-        token || '',
-      );
-      formData.append('image_key', imageKey);
-      setUploadProgress(72);
-      setUploadStage('Prescription uploaded');
-      formData.append('upload_type', uploadType);
-    } else {
-      formData.append('upload_type', 'text_only');
+    try {
+      // Check the file and upload it inside a guarded block. Previously an S3
+      // failure escaped before the final cleanup and left the progress modal stuck.
+      if (image && Platform.OS !== 'web') {
+        const fileInfo = await FileSystem.getInfoAsync(image.uri);
+        if (!fileInfo.exists) throw new Error('Selected prescription photo is no longer available.');
+      }
+
+      if (image) {
+        const uploadFile = getUploadFileMeta(image);
+        setUploadProgress(35);
+        setUploadStage('Uploading prescription securely');
+        const imageKey = await uploadFileToS3(
+          { uri: image.uri, name: uploadFile.name, type: uploadFile.type },
+          'prescriptions',
+          token || '',
+        );
+        formData.append('image_key', imageKey);
+        setUploadProgress(72);
+        setUploadStage('Prescription uploaded');
+        formData.append('upload_type', uploadType);
+      } else {
+        formData.append('upload_type', 'text_only');
+      }
+    } catch (error: any) {
+      console.error('Prescription attachment upload failed:', error);
+      setSubmitting(false);
+      setUploadProgress(0);
+      setSubmitError(error?.message || 'Prescription upload failed. Please check your network and retry.');
+      return;
     }
 
     if (medicineName.trim()) {
@@ -564,6 +569,11 @@ export default function HomeScreen() {
         console.error('🔵 Other Error:', error.message);
       }
       console.log("Full error:", error);
+      setSubmitError(
+        error?.response?.data?.error ||
+        error?.message ||
+        'Request could not be sent. Please check your network and retry.',
+      );
     }
     finally {
       setSubmitting(false);
@@ -756,6 +766,33 @@ export default function HomeScreen() {
             <View className="mt-7 h-3 overflow-hidden rounded-full bg-black/25"><View className="h-full rounded-full bg-emerald-300" style={{ width: `${uploadProgress}%` }} /></View>
             <View className="mt-5 flex-row items-center"><ActivityIndicator size="small" color="#a7f3d0" /><RNText className="ml-3 flex-1 text-[10px] font-bold uppercase tracking-[1.5px] text-emerald-100">Please keep this screen open</RNText></View>
           </LinearGradient>
+        </View>
+      </Modal>
+      <Modal visible={!!submitError && !submitting} transparent animationType="fade" statusBarTranslucent>
+        <View className="flex-1 items-center justify-center bg-slate-950/75 px-6">
+          <View className="w-full max-w-sm rounded-[28px] bg-white p-6">
+            <View className="h-14 w-14 items-center justify-center rounded-2xl bg-rose-100">
+              <MaterialCommunityIcons name="cloud-upload-outline" size={30} color="#e11d48" />
+            </View>
+            <RNText className="mt-5 text-xl font-black text-slate-900">Request paused</RNText>
+            <RNText className="mt-2 text-sm font-semibold leading-5 text-slate-500">
+              {submitError} Your prescription is still here and nothing needs to be selected again.
+            </RNText>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              activeOpacity={0.8}
+              className="mt-6 items-center rounded-2xl bg-emerald-600 py-4"
+            >
+              <RNText className="font-black text-white">Retry sending</RNText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setSubmitError(null)}
+              activeOpacity={0.8}
+              className="mt-3 items-center rounded-2xl bg-slate-100 py-4"
+            >
+              <RNText className="font-black text-slate-600">Not now</RNText>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
       {/* ── Zomato/Swiggy-style Sticky Header ── */}

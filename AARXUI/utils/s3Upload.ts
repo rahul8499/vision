@@ -8,6 +8,26 @@ export type UploadableFile = {
   type: string;
 };
 
+const REQUEST_TIMEOUT_MS = 20_000;
+const MAX_UPLOAD_ATTEMPTS = 3;
+
+async function fetchWithTimeout(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+  timeoutMs = REQUEST_TIMEOUT_MS,
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
 export async function uploadFileToS3(
   file: UploadableFile,
   folder: string,
@@ -15,9 +35,9 @@ export async function uploadFileToS3(
 ): Promise<string> {
   let lastError: unknown;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_UPLOAD_ATTEMPTS; attempt += 1) {
     try {
-      const presignResponse = await fetch(`${BASE_URL}/api/s3/presigned-upload/`, {
+      const presignResponse = await fetchWithTimeout(`${BASE_URL}/api/s3/presigned-upload/`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -35,14 +55,14 @@ export async function uploadFileToS3(
       }
 
       const { upload_url, key } = await presignResponse.json();
-      const localResponse = await fetch(file.uri);
+      const localResponse = await fetchWithTimeout(file.uri);
       if (!localResponse.ok) throw new Error('Selected file could not be opened.');
       const body = await localResponse.blob();
-      const uploadResponse = await fetch(upload_url, {
+      const uploadResponse = await fetchWithTimeout(upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': file.type },
         body,
-      });
+      }, 45_000);
 
       if (!uploadResponse.ok) {
         throw new Error(`S3 upload failed (${uploadResponse.status}).`);
@@ -50,6 +70,9 @@ export async function uploadFileToS3(
       return key as string;
     } catch (error) {
       lastError = error;
+      if (attempt < MAX_UPLOAD_ATTEMPTS - 1) {
+        await wait(750 * (attempt + 1));
+      }
     }
   }
 
