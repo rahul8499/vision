@@ -11,6 +11,7 @@ export type ComplaintCategory =
   | 'payment_issue'
   | 'other'
 export type PartyType = 'user' | 'store'
+export type ComplaintMessageVisibility = 'USER_SUPPORT' | 'STORE_SUPPORT' | 'SHARED' | 'INTERNAL'
 
 export interface ComplaintAttachment {
   id: number
@@ -22,6 +23,7 @@ export interface ComplaintMessage {
   id: number
   senderType: 'user' | 'store' | 'platform'
   senderName: string
+  visibility: ComplaintMessageVisibility
   text: string
   attachmentUrl?: string
   isRead: boolean
@@ -100,6 +102,7 @@ export interface ComplaintCreateRequest {
 
 export interface ComplaintReplyRequest {
   text: string
+  visibility: ComplaintMessageVisibility
   attachments?: string[]
 }
 

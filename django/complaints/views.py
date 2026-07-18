@@ -263,9 +263,16 @@ class ComplaintDetailView(APIView):
             return Response({"error": "You are not authorized to view this complaint."}, status=403)
 
         # Mark counterparty messages as read for this viewer
-        ComplaintMessage.objects.filter(complaint=complaint, is_read=False).exclude(
-            sender_type=actor_type
-        ).update(is_read=True)
+        visible = [
+            ComplaintMessage.VISIBILITY_USER_SUPPORT if actor_type == 'user'
+            else ComplaintMessage.VISIBILITY_STORE_SUPPORT,
+            ComplaintMessage.VISIBILITY_SHARED,
+        ]
+        ComplaintMessage.objects.filter(
+            complaint=complaint,
+            visibility__in=visible,
+            is_read=False,
+        ).exclude(sender_type=actor_type).update(is_read=True)
 
         serializer = ComplaintDetailSerializer(
             complaint, context={'request': request, 'viewer': actor_type}
@@ -310,6 +317,11 @@ class ComplaintMessageView(APIView):
         message = ComplaintMessage.objects.create(
             complaint=complaint,
             sender_type=actor_type,
+            visibility=(
+                ComplaintMessage.VISIBILITY_USER_SUPPORT
+                if actor_type == 'user'
+                else ComplaintMessage.VISIBILITY_STORE_SUPPORT
+            ),
             text=text or None,
             attachment=attachment,
             is_read=False,
@@ -322,19 +334,11 @@ class ComplaintMessageView(APIView):
             message.sender_store = actor
         message.save()
 
-        # Notify the other party
-        o_type, o_party = _other_party(complaint, actor_type)
-        notify_party(
-            o_type, o_party,
-            title="New reply on your complaint",
-            body=text[:120] if text else "Sent you an attachment",
-            data={"complaint_id": complaint.id, "type": "COMPLAINT_REPLY"},
-            dedupe_key=f"complaint:{complaint.id}:reply:{o_type}:{getattr(o_party, 'id', 0)}:{message.id}",
-        )
-
         serializer = ComplaintMessageSerializer(message, context={'request': request})
         from .realtime import broadcast_complaint_event
-        broadcast_complaint_event(complaint.id, "complaint_message", serializer.data)
+        broadcast_complaint_event(
+            complaint.id, "complaint_message", serializer.data, visibility=message.visibility
+        )
         return Response(serializer.data, status=201)
 
 

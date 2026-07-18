@@ -59,6 +59,7 @@ export type ComplaintMessage = {
   id: number;
   sender_type: 'user' | 'store' | 'platform';
   sender_name: string;
+  visibility: 'USER_SUPPORT' | 'STORE_SUPPORT' | 'SHARED' | 'INTERNAL';
   text: string | null;
   attachment_url: string | null;
   is_read: boolean;

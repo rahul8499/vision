@@ -32,7 +32,7 @@ class ComplaintMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ComplaintMessage
         fields = [
-            'id', 'sender_type', 'sender_name', 'text', 'attachment_url',
+            'id', 'sender_type', 'sender_name', 'visibility', 'text', 'attachment_url',
             'is_read', 'created_at',
         ]
 
@@ -109,7 +109,7 @@ class ComplaintListSerializer(_BaseComplaintSerializer):
         viewer = self.context.get('viewer')
         if not viewer:
             return 0
-        qs = obj.messages.filter(is_read=False).exclude(sender_type=viewer)
+        qs = self._visible_messages(obj, viewer).filter(is_read=False).exclude(sender_type=viewer)
         if viewer == 'user':
             qs = qs.exclude(sender_user__isnull=False)
         elif viewer == 'store':
@@ -117,7 +117,22 @@ class ComplaintListSerializer(_BaseComplaintSerializer):
         return qs.count()
 
     def get_message_count(self, obj):
-        return obj.messages.count()
+        viewer = self.context.get('viewer')
+        return self._visible_messages(obj, viewer).count()
+
+    def _visible_messages(self, obj, viewer):
+        qs = obj.messages.all()
+        if viewer == 'user':
+            return qs.filter(visibility__in=[
+                ComplaintMessage.VISIBILITY_USER_SUPPORT,
+                ComplaintMessage.VISIBILITY_SHARED,
+            ])
+        if viewer == 'store':
+            return qs.filter(visibility__in=[
+                ComplaintMessage.VISIBILITY_STORE_SUPPORT,
+                ComplaintMessage.VISIBILITY_SHARED,
+            ])
+        return qs
 
     def get_attachment_count(self, obj):
         return obj.attachments.count()
@@ -127,7 +142,7 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
     order_id = serializers.IntegerField(source='order.id', read_only=True, allow_null=True)
     description = serializers.CharField(read_only=True)
     attachments = ComplaintAttachmentSerializer(many=True, read_only=True)
-    messages = ComplaintMessageSerializer(many=True, read_only=True)
+    messages = serializers.SerializerMethodField()
     status_history = ComplaintStatusHistorySerializer(many=True, read_only=True)
     can_withdraw = serializers.SerializerMethodField()
 
@@ -146,6 +161,21 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
         if viewer != obj.complainant_type:
             return False
         return obj.status in ('open', 'under_review', 'awaiting_info')
+
+    def get_messages(self, obj):
+        viewer = self.context.get('viewer')
+        messages = obj.messages.select_related('sender_user', 'sender_store').all()
+        if viewer == 'user':
+            messages = messages.filter(visibility__in=[
+                ComplaintMessage.VISIBILITY_USER_SUPPORT,
+                ComplaintMessage.VISIBILITY_SHARED,
+            ])
+        elif viewer == 'store':
+            messages = messages.filter(visibility__in=[
+                ComplaintMessage.VISIBILITY_STORE_SUPPORT,
+                ComplaintMessage.VISIBILITY_SHARED,
+            ])
+        return ComplaintMessageSerializer(messages, many=True, context=self.context).data
 
 
 class ComplaintCreateSerializer(serializers.Serializer):

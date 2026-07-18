@@ -19,6 +19,7 @@ export const normalizeComplaintMessage = (raw: Raw): ComplaintMessage => ({
   id: Number(raw.id),
   senderType: value(raw, 'senderType', 'sender_type') || 'platform',
   senderName: text(raw, 'senderName', 'sender_name', 'Unknown sender'),
+  visibility: raw.visibility || 'SHARED',
   text: String(raw.text ?? ''),
   attachmentUrl: value(raw, 'attachmentUrl', 'attachment_url') || undefined,
   isRead: Boolean(value(raw, 'isRead', 'is_read')),

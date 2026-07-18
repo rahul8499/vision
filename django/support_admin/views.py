@@ -411,10 +411,13 @@ class ComplaintReplyView(APIView):
 
     def post(self, request, complaint_id):
         text = request.data.get("text")
+        visibility = request.data.get("visibility", ComplaintMessage.VISIBILITY_SHARED)
         if not text:
             return fail("text is required.", status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            message = complaint_service.reply_to_complaint(complaint_id, text, request.support_staff)
+            message = complaint_service.reply_to_complaint(
+                complaint_id, text, request.support_staff, visibility=visibility
+            )
             ip, ua = _get_client_info(request)
             audit_service.log_audit(
                 actor=request.support_staff,
@@ -427,7 +430,9 @@ class ComplaintReplyView(APIView):
             from complaints.serializers import ComplaintMessageSerializer
             message_data = ComplaintMessageSerializer(message, context={"request": request}).data
             from complaints.realtime import broadcast_complaint_event
-            broadcast_complaint_event(complaint_id, "complaint_message", message_data)
+            broadcast_complaint_event(
+                complaint_id, "complaint_message", message_data, visibility=message.visibility
+            )
             return ok(message_data, message="Reply sent.", status_code=status.HTTP_201_CREATED)
         except ValueError as exc:
             return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)

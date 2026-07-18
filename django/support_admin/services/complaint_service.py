@@ -38,17 +38,22 @@ def assign_complaint(complaint_id, assigned_to_id, assigned_by):
     return complaint, assignment
 
 
-def reply_to_complaint(complaint_id, text, actor, actor_type="staff", attachment=None):
+def reply_to_complaint(
+    complaint_id, text, actor, actor_type="staff", attachment=None,
+    visibility=ComplaintMessage.VISIBILITY_SHARED,
+):
     complaint = get_complaint_by_id(complaint_id)
     if not complaint:
         raise ValueError("Complaint not found.")
 
     if complaint.status in ("resolved", "rejected", "withdrawn", "closed"):
         raise ValueError("This complaint is closed. No further replies allowed.")
-
+    if visibility not in dict(ComplaintMessage.VISIBILITY_CHOICES):
+        raise ValueError("Invalid message visibility.")
     message = ComplaintMessage.objects.create(
         complaint=complaint,
         sender_type="platform",
+        visibility=visibility,
         text=text or None,
         attachment=attachment,
         is_read=False,

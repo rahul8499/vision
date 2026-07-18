@@ -128,11 +128,27 @@ class ComplaintMessage(models.Model):
         ('store', 'Store'),
         ('platform', 'Platform'),
     ]
+    VISIBILITY_USER_SUPPORT = 'USER_SUPPORT'
+    VISIBILITY_STORE_SUPPORT = 'STORE_SUPPORT'
+    VISIBILITY_SHARED = 'SHARED'
+    VISIBILITY_INTERNAL = 'INTERNAL'
+    VISIBILITY_CHOICES = [
+        (VISIBILITY_USER_SUPPORT, 'User and support'),
+        (VISIBILITY_STORE_SUPPORT, 'Store and support'),
+        (VISIBILITY_SHARED, 'All complaint parties'),
+        (VISIBILITY_INTERNAL, 'Support only'),
+    ]
 
     complaint = models.ForeignKey(Complaint, on_delete=models.CASCADE, related_name='messages')
     sender_type = models.CharField(max_length=10, choices=SENDER_CHOICES)
     sender_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     sender_store = models.ForeignKey(Store, on_delete=models.SET_NULL, null=True, blank=True)
+    visibility = models.CharField(
+        max_length=20,
+        choices=VISIBILITY_CHOICES,
+        default=VISIBILITY_SHARED,
+        db_index=True,
+    )
     text = models.TextField(null=True, blank=True)
     attachment = models.FileField(upload_to='complaints/', null=True, blank=True)
     is_read = models.BooleanField(default=False)

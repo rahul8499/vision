@@ -17,7 +17,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/store/authStore'
 import { formatSafeDate } from '@/utils/formatters'
-import type { Complaint, ComplaintStatus } from '@/types/complaints'
+import type { Complaint, ComplaintMessageVisibility, ComplaintStatus } from '@/types/complaints'
 import { COMPLAINT_STATUS_COLORS, COMPLAINT_PRIORITY_COLORS } from '@/types/complaints'
 
 const STATUS_OPTIONS: Array<{ value: ComplaintStatus; label: string }> = [
@@ -36,6 +36,7 @@ export const ComplaintDetail = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<ComplaintStatus | ''>('')
+  const [conversation, setConversation] = useState<ComplaintMessageVisibility>('USER_SUPPORT')
   const token = useAuthStore((state) => state.accessToken)
   const wsBase = (import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000').replace(/\/$/, '')
   const { subscribe, isConnected } = useWebSocket(`${wsBase}/ws/complaints/${id}/?token=${encodeURIComponent(token || '')}`)
@@ -73,7 +74,7 @@ export const ComplaintDetail = () => {
   }, [id, queryClient, subscribe])
 
   const replyMutation = useMutation({
-    mutationFn: (message: string) => complaintsApi.reply(id!, { text: message }),
+    mutationFn: (message: string) => complaintsApi.reply(id!, { text: message, visibility: conversation }),
     onMutate: async (message) => {
       await queryClient.cancelQueries({ queryKey: ['complaint', id] })
       const previous = queryClient.getQueryData<Complaint>(['complaint', id])
@@ -85,6 +86,7 @@ export const ComplaintDetail = () => {
             id: -Date.now(),
             senderType: 'platform',
             senderName: 'Support team',
+            visibility: conversation,
             text: message,
             isRead: true,
             createdAt: new Date().toISOString(),
@@ -129,7 +131,9 @@ export const ComplaintDetail = () => {
   })
 
   const complaint = complaintQuery.data
-  const messages = useMemo(() => (complaint?.messages || []).map((message) => ({
+  const messages = useMemo(() => (complaint?.messages || [])
+    .filter((message) => message.visibility === conversation)
+    .map((message) => ({
     id: message.id,
     content: message.text,
     senderName: message.senderName,
@@ -137,7 +141,8 @@ export const ComplaintDetail = () => {
     createdAt: message.createdAt,
     attachments: message.attachmentUrl ? [message.attachmentUrl] : [],
     pending: message.id < 0,
-  })), [complaint?.messages])
+    isInternal: message.visibility === 'INTERNAL',
+  })), [complaint?.messages, conversation])
 
   if (complaintQuery.isLoading) return <Loading />
   if (complaintQuery.error) return <ErrorState />
@@ -188,10 +193,44 @@ export const ComplaintDetail = () => {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <div><h2 className="font-semibold text-slate-900">Customer conversation</h2><p className="text-xs text-slate-500">Messages are visible to the complainant immediately</p></div>
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{complaint.messageCount} messages</span>
+            <div><h2 className="font-semibold text-slate-900">Case conversations</h2><p className="text-xs text-slate-500">Each channel has a separate audience</p></div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{messages.length} messages</span>
           </div>
-          <MessageThread messages={messages} onReply={async (content) => { await replyMutation.mutateAsync(content) }} isSending={replyMutation.isPending} />
+          <div className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-4 pt-3">
+            {([
+              ['USER_SUPPORT', 'User ↔ Support'],
+              ['STORE_SUPPORT', 'Store ↔ Support'],
+              ['SHARED', 'Shared updates'],
+              ['INTERNAL', 'Internal'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setConversation(value)}
+                className={`whitespace-nowrap rounded-t-lg px-4 py-2.5 text-sm font-medium transition ${
+                  conversation === value
+                    ? 'border border-b-white border-slate-200 bg-white text-slate-950'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className={`border-b px-5 py-2.5 text-xs font-medium ${
+            conversation === 'SHARED'
+              ? 'border-violet-100 bg-violet-50 text-violet-700'
+              : conversation === 'INTERNAL'
+                ? 'border-amber-100 bg-amber-50 text-amber-700'
+              : 'border-blue-100 bg-blue-50 text-blue-700'
+          }`}>
+            Reply recipient: {conversation === 'USER_SUPPORT' ? 'User only' : conversation === 'STORE_SUPPORT' ? 'Store only' : conversation === 'SHARED' ? 'User and store' : 'Support team only'}
+          </div>
+          <MessageThread
+            messages={messages}
+            onReply={async (content) => { await replyMutation.mutateAsync(content) }}
+            isSending={replyMutation.isPending}
+            replyPlaceholder={conversation === 'INTERNAL' ? 'Write an internal support message…' : `Reply to ${conversation === 'USER_SUPPORT' ? 'user' : conversation === 'STORE_SUPPORT' ? 'store' : 'both parties'}…`}
+          />
         </section>
 
         <aside className="space-y-5">

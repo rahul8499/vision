@@ -10,11 +10,12 @@ class ComplaintConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         self.complaint_id = int(self.scope["url_route"]["kwargs"]["complaint_id"])
         token = parse_qs(self.scope.get("query_string", b"").decode()).get("token", [""])[0]
-        if not await self._can_view_complaint(self.scope.get("user"), token):
+        self.audience = await self._complaint_audience(self.scope.get("user"), token)
+        if not self.audience:
             await self.close(code=4003)
             return
 
-        self.group_name = f"complaint_{self.complaint_id}"
+        self.group_name = f"complaint_{self.complaint_id}_{self.audience}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         await self.send_json({"type": "connected", "complaint_id": self.complaint_id})
@@ -34,7 +35,7 @@ class ComplaintConsumer(AsyncJsonWebsocketConsumer):
         })
 
     @database_sync_to_async
-    def _can_view_complaint(self, actor, token):
+    def _complaint_audience(self, actor, token):
         from rest_framework_simplejwt.tokens import AccessToken
         from rest_framework_simplejwt.exceptions import TokenError
         from django.contrib.auth import get_user_model
@@ -44,19 +45,19 @@ class ComplaintConsumer(AsyncJsonWebsocketConsumer):
 
         complaint = Complaint.objects.filter(id=self.complaint_id).first()
         if not complaint:
-            return False
+            return None
 
         if isinstance(actor, User):
-            return actor.id in (complaint.complainant_user_id, complaint.respondent_user_id)
+            return 'user' if actor.id in (complaint.complainant_user_id, complaint.respondent_user_id) else None
         if isinstance(actor, Store):
-            return actor.id in (complaint.complainant_store_id, complaint.respondent_store_id)
+            return 'store' if actor.id in (complaint.complainant_store_id, complaint.respondent_store_id) else None
 
         try:
             user_id = AccessToken(token).get("user_id")
             auth_user = get_user_model().objects.get(id=user_id, is_active=True)
-            return SupportStaff.objects.filter(user=auth_user, is_active=True).exists()
+            return 'support' if SupportStaff.objects.filter(user=auth_user, is_active=True).exists() else None
         except (TokenError, get_user_model().DoesNotExist, TypeError, ValueError):
-            return False
+            return None
 
 
 class SupportTicketConsumer(AsyncJsonWebsocketConsumer):
