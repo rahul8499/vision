@@ -30,12 +30,12 @@ def create_safety_report_action(report_id, action, admin, note, target_user_id=N
     except SafetyReport.DoesNotExist:
         raise ValueError("Safety report not found.")
 
-    target_user = None
-    target_store = None
-    if target_user_id:
-        target_user = get_user_by_id(target_user_id)
-    if target_store_id:
-        target_store = get_store_by_id(target_store_id)
+    target_user = report.reported_user
+    target_store = report.reported_store
+    if target_user_id and target_user_id != report.reported_user_id:
+        raise ValueError("Action target must match the user in this safety report.")
+    if target_store_id and target_store_id != report.reported_store_id:
+        raise ValueError("Action target must match the pharmacy in this safety report.")
 
     action_obj = SafetyReportAction.objects.create(
         report=report,
@@ -45,6 +45,31 @@ def create_safety_report_action(report_id, action, admin, note, target_user_id=N
         target_user=target_user,
         target_store=target_store,
     )
+
+    if action == "reviewed":
+        report.status = "under_review"
+    elif action == "escalated":
+        report.status = "escalated"
+    elif action == "closed":
+        report.status = "closed"
+        report.resolution_note = note
+    elif action in ("warning_sent", "account_suspended", "account_restored"):
+        report.status = "action_taken"
+    if action == "account_suspended":
+        if target_user:
+            target_user.is_active = False
+            target_user.save(update_fields=["is_active"])
+        if target_store:
+            target_store.is_active = False
+            target_store.save(update_fields=["is_active"])
+    elif action == "account_restored":
+        if target_user:
+            target_user.is_active = True
+            target_user.save(update_fields=["is_active"])
+        if target_store:
+            target_store.is_active = True
+            target_store.save(update_fields=["is_active"])
+    report.save(update_fields=["status", "resolution_note", "updated_at"])
 
     if action in ("account_suspended", "account_restored", "escalated"):
         if target_user:

@@ -11,7 +11,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
 
 from .authentication import SupportJWTAuthentication
-from .models import SupportStaff, SupportSession, InternalNote
+from .models import SupportStaff, SupportSession, InternalNote, SafetyReportAction
 from .permissions import (
     IsSupportStaff, IsSupportAgent, IsSupportSupervisor, IsSupportAdmin,
     CanApproveRefund, CanProcessRefund, CanManageStaff, CanBulkAssign, CanViewAuditLogs
@@ -44,7 +44,7 @@ from complaints.models import (
     Complaint, ComplaintMessage, ComplaintStatusHistory, ComplaintAttachment,
     PlatformSupportTicket, PlatformSupportMessage,
 )
-from prescription.models import User, Store
+from prescription.models import User, Store, SafetyReport
 from emergency_services.models import (
     City, CityEmergencyPolicy, EmergencyBroadcastCharge, EmergencyFeePolicy, ServiceZone,
 )
@@ -1477,12 +1477,20 @@ class RefundReviewView(APIView):
 
 class SafetyReportActionView(APIView):
     authentication_classes = [SupportJWTAuthentication]
-    permission_classes = [IsSupportAdmin]
+    permission_classes = [IsSupportStaff]
 
     def post(self, request, report_id):
+        report = safety_selectors.get_safety_report_by_id(report_id)
+        if not report or not _can_access_scope(report, request.support_staff):
+            return fail("Safety report not found.", status_code=status.HTTP_404_NOT_FOUND)
         serializer = SafetyReportActionCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return fail("Validation failed.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+        requested_action = serializer.validated_data["action"]
+        if requested_action in {"account_suspended", "account_restored"} and request.support_staff.role != SupportStaff.ROLE_ADMIN:
+            return fail("Only support admins can change account access.", status_code=status.HTTP_403_FORBIDDEN)
+        if request.support_staff.role == SupportStaff.ROLE_AGENT and requested_action != "reviewed":
+            return fail("Agents can mark reports under review; a supervisor/admin must take further action.", status_code=status.HTTP_403_FORBIDDEN)
         try:
             action_obj = safety_service.create_safety_report_action(
                 report_id=report_id,
@@ -1514,7 +1522,18 @@ class SafetyReportListView(APIView):
     def get(self, request):
         status_filter = request.query_params.get("status")
         category_filter = request.query_params.get("category")
+        severity_filter = request.query_params.get("severity")
+        assigned_to_filter = request.query_params.get("assigned_to")
+        reporter_type = request.query_params.get("reporter_type")
+        target_type = request.query_params.get("target_type")
+        scope_filter = request.query_params.get("scope")
         query = request.query_params.get("q")
+        try:
+            city_id = _requested_city(request, request.support_staff)
+        except ValueError as exc:
+            return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return fail(str(exc), status_code=status.HTTP_403_FORBIDDEN)
         page = int(request.query_params.get("page", 1))
         page_size = int(request.query_params.get("page_size", 20))
 
@@ -1522,6 +1541,15 @@ class SafetyReportListView(APIView):
             query=query,
             status=status_filter,
             category=category_filter,
+            severity=severity_filter,
+            assigned_to=assigned_to_filter,
+            reporter_type=reporter_type,
+            target_type=target_type,
+            scope=scope_filter,
+            city_id=city_id,
+            allowed_city_ids=_staff_city_ids(request.support_staff),
+            date_from=request.query_params.get("date_from"),
+            date_to=request.query_params.get("date_to"),
             page=page,
             page_size=page_size,
         )
@@ -1546,8 +1574,63 @@ class SafetyReportDetailView(APIView):
         report = safety_selectors.get_safety_report_by_id(pk)
         if not report:
             return fail("Safety report not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not _can_access_scope(report, request.support_staff):
+            return fail("Safety report not found.", status_code=status.HTTP_404_NOT_FOUND)
         serializer = SafetyReportSerializer(report)
         return ok(serializer.data, status_code=status.HTTP_200_OK)
+
+
+class SafetyReportAssignView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def post(self, request, report_id):
+        report = safety_selectors.get_safety_report_by_id(report_id)
+        if not report or not _can_access_scope(report, request.support_staff):
+            return fail("Safety report not found.", status_code=status.HTTP_404_NOT_FOUND)
+        requested_id = request.data.get("assigned_to_id") or request.support_staff.id
+        try:
+            requested_id = int(requested_id)
+        except (TypeError, ValueError):
+            return fail("Invalid assignee.")
+        if request.support_staff.role == SupportStaff.ROLE_AGENT and requested_id != request.support_staff.id:
+            return fail("Agents can only assign safety reports to themselves.", status_code=status.HTTP_403_FORBIDDEN)
+        assignee = SupportStaff.objects.filter(id=requested_id, is_active=True).first()
+        if not assignee:
+            return fail("Support staff member not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if report.scope == SafetyReport.SCOPE_CITY and not _can_access_city_id(report.city_id, assignee):
+            return fail("Assignee does not have access to this report city.")
+        report.assigned_to_id = assignee.id
+        if report.status == "submitted":
+            report.status = "under_review"
+        report.save(update_fields=["assigned_to_id", "status", "updated_at"])
+        SafetyReportAction.objects.create(
+            report=report, action="assigned", admin=request.support_staff,
+            note=f"Assigned to {assignee.user.get_full_name() or assignee.user.username}.",
+        )
+        return ok(SafetyReportSerializer(report).data, message="Safety report assigned.")
+
+
+class SafetyReportInternalNoteView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def post(self, request, report_id):
+        report = safety_selectors.get_safety_report_by_id(report_id)
+        if not report or not _can_access_scope(report, request.support_staff):
+            return fail("Safety report not found.", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = InternalNoteCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return fail("Validation failed.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+        from django.contrib.contenttypes.models import ContentType
+        note = InternalNote.objects.create(
+            content_type=ContentType.objects.get_for_model(SafetyReport),
+            object_id=report.id,
+            body=serializer.validated_data["body"],
+            is_pinned=serializer.validated_data.get("is_pinned", False),
+            created_by=request.support_staff,
+        )
+        return ok(InternalNoteSerializer(note).data, message="Internal note added.", status_code=status.HTTP_201_CREATED)
 
 
 # ---------------------------------------------------------------------------
@@ -1562,10 +1645,22 @@ class UserLookupView(APIView):
         query = request.query_params.get("q")
         user_id = request.query_params.get("user_id")
         users = lookup_service.lookup_users(query=query, user_id=user_id)
+        city_ids = _staff_city_ids(request.support_staff)
+        if city_ids is not None and hasattr(users, "filter"):
+            users = users.filter(
+                Q(prescriptions__city_id__in=city_ids) |
+                Q(complaints_filed__city_id__in=city_ids) |
+                Q(complaints_against__city_id__in=city_ids) |
+                Q(platform_support_tickets__scope="GLOBAL") |
+                Q(platform_support_tickets__city_id__in=city_ids) |
+                Q(safety_reports_filed__scope="GLOBAL") |
+                Q(safety_reports_filed__city_id__in=city_ids) |
+                Q(safety_reports_received__scope="GLOBAL") |
+                Q(safety_reports_received__city_id__in=city_ids)
+            ).distinct()
         if not users:
-            return ok({"results": []}, status_code=status.HTTP_200_OK)
-        serializer = UserSerializer(users, many=True)
-        return ok({"results": serializer.data}, status_code=status.HTTP_200_OK)
+            return ok({"results": [], "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_count": 0}}, status_code=status.HTTP_200_OK)
+        return paginated(users, request, UserSerializer)
 
 
 class UserDetailView(APIView):
@@ -1576,7 +1671,19 @@ class UserDetailView(APIView):
         user = lookup_selectors.get_user_by_id(user_id)
         if not user:
             return fail("User not found.", status_code=status.HTTP_404_NOT_FOUND)
-        serializer = UserProfileSerializer(user)
+        city_ids = _staff_city_ids(request.support_staff)
+        if city_ids is not None:
+            has_access = (
+                user.prescriptions.filter(city_id__in=city_ids).exists() or
+                user.complaints_filed.filter(city_id__in=city_ids).exists() or
+                user.complaints_against.filter(city_id__in=city_ids).exists() or
+                user.platform_support_tickets.filter(Q(scope="GLOBAL") | Q(city_id__in=city_ids)).exists() or
+                user.safety_reports_filed.filter(Q(scope="GLOBAL") | Q(city_id__in=city_ids)).exists() or
+                user.safety_reports_received.filter(Q(scope="GLOBAL") | Q(city_id__in=city_ids)).exists()
+            )
+            if not has_access:
+                return fail("User not found.", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = UserProfileSerializer(user, context={"allowed_city_ids": city_ids})
         return ok(serializer.data, status_code=status.HTTP_200_OK)
 
 
@@ -1592,10 +1699,15 @@ class StoreLookupView(APIView):
         query = request.query_params.get("q")
         store_id = request.query_params.get("store_id")
         stores = lookup_service.lookup_stores(query=query, store_id=store_id)
+        city_ids = _staff_city_ids(request.support_staff)
+        if city_ids is not None:
+            if hasattr(stores, "filter"):
+                stores = stores.filter(city_id__in=city_ids)
+            else:
+                stores = [store for store in stores if store.city_id in city_ids]
         if not stores:
-            return ok({"results": []}, status_code=status.HTTP_200_OK)
-        serializer = StoreSerializer(stores, many=True)
-        return ok({"results": serializer.data}, status_code=status.HTTP_200_OK)
+            return ok({"results": [], "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_count": 0}}, status_code=status.HTTP_200_OK)
+        return paginated(stores, request, StoreSerializer)
 
 
 class StoreDetailView(APIView):
@@ -1605,6 +1717,8 @@ class StoreDetailView(APIView):
     def get(self, request, store_id):
         store = lookup_selectors.get_store_by_id(store_id)
         if not store:
+            return fail("Store not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not _can_access_city_id(store.city_id, request.support_staff):
             return fail("Store not found.", status_code=status.HTTP_404_NOT_FOUND)
         serializer = StoreProfileSerializer(store)
         return ok(serializer.data, status_code=status.HTTP_200_OK)

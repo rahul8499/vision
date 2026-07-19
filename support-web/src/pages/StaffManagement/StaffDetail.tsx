@@ -67,9 +67,13 @@ export const StaffDetail = () => {
         </Card>
         <Card title="Permissions">
           <div className="flex flex-wrap gap-2">
-            {staff.permissions.map((perm) => (
-              <span key={perm} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">{perm}</span>
-            ))}
+            {staff.permissions.length > 0 ? (
+              staff.permissions.map((perm) => (
+                <span key={perm} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">{perm}</span>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500">Access is determined by the staff role.</p>
+            )}
           </div>
         </Card>
       </div>

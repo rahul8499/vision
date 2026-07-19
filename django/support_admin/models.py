@@ -219,6 +219,7 @@ class SafetyReportAction(models.Model):
         ("account_restored", "Account Restored"),
         ("escalated", "Escalated"),
         ("closed", "Closed"),
+        ("assigned", "Assigned"),
     ]
 
     report = models.ForeignKey(

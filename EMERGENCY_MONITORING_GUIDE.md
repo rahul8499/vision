@@ -785,3 +785,48 @@ Existing complaints/tickets migration ke waqt safely backfill hue. Location unav
 City selector change karne par complaints, tickets, payments, refunds aur monitoring ki queries
 selected authorized city ke liye automatically reload hoti hain. Global tickets selected city ke
 saath bhi visible rehte hain because unka issue platform-wide hota hai.
+
+## 22. Safety Reports workflow
+
+Safety Reports user–pharmacy disputes se alag high-trust investigation queue hai.
+
+### Categories
+
+- Fake or spam request
+- Invalid contact information
+- Wrong information
+- Suspicious behavior
+- Medicine safety concern
+- Abusive behavior
+- Other
+
+### Required filters
+
+- Search: report ID, prescription/order ID, person/pharmacy name, description
+- Status: Submitted, Under review, Action taken, Escalated, Closed
+- Severity: Low, Medium, High, Critical
+- Category
+- Reporter type: User or Pharmacy
+- Reported party: User or Pharmacy
+- Scope: City operational or Global platform
+- Assignment: Unassigned
+- Date range
+- Navbar selected authorized city
+
+### City and global behavior
+
+Linked prescription/order/pharmacy wala report creation-time city snapshot use karta hai.
+Operational source unavailable ho to report global hota hai. City agents sirf assigned city
+plus global reports dekhte hain. Backend list, detail, assignment, notes aur action endpoints
+par permission independently enforce karta hai.
+
+### Investigation actions
+
+- Agent: Assign to me, Mark under review, internal notes.
+- Supervisor/Admin: warning, escalation and closure workflow.
+- Admin only: reported account suspend/restore.
+- Every action audit history mein actor, time aur required evidence note ke saath save hota hai.
+- Suspension/restoration arbitrary entered ID par nahi; action hamesha report ke actual
+  reported user/pharmacy par apply hota hai.
+
+Account-changing action se pehle evidence verify karna aur confirmation checkbox mandatory hai.

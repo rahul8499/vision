@@ -143,7 +143,7 @@ export const StoreProfile = () => {
                   <tr key={order.id} className="border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{order.id}</td>
                     <td className="py-2 px-3">{order.userName}</td>
-                    <td className="py-2 px-3">${order.totalAmount?.toFixed(2)}</td>
+                    <td className="py-2 px-3">₹{order.totalAmount?.toFixed(2)}</td>
                     <td className="py-2 px-3">
                       <span className={`px-2 py-1 rounded-full text-xs ${statusColors[order.userStatus] || 'bg-gray-100 text-gray-800'}`}>
                         {order.userStatus}
@@ -203,7 +203,7 @@ export const StoreProfile = () => {
                   <tr key={order.id} className="border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{order.id}</td>
                     <td className="py-2 px-3">{order.userName}</td>
-                    <td className="py-2 px-3">${order.totalAmount?.toFixed(2)}</td>
+                    <td className="py-2 px-3">₹{order.totalAmount?.toFixed(2)}</td>
                     <td className="py-2 px-3">
                       <span className={`px-2 py-1 rounded-full text-xs ${statusColors[order.userStatus] || 'bg-gray-100 text-gray-800'}`}>
                         {order.userStatus}
@@ -233,7 +233,7 @@ export const StoreProfile = () => {
               </thead>
               <tbody>
                 {store.complaints.slice(0, 20).map((c) => (
-                  <tr key={c.id} className="border-b hover:bg-gray-50">
+                  <tr key={c.id} onClick={() => navigate(`/complaints/${c.id}`)} className="cursor-pointer border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{c.id}</td>
                     <td className="py-2 px-3">{c.category}</td>
                     <td className="py-2 px-3">{c.subject}</td>
@@ -264,7 +264,7 @@ export const StoreProfile = () => {
               </thead>
               <tbody>
                 {store.safetyReports.slice(0, 20).map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
+                  <tr key={r.id} onClick={() => navigate(`/safety-reports/${r.id}`)} className="cursor-pointer border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{r.id}</td>
                     <td className="py-2 px-3">{r.reason}</td>
                     <td className="py-2 px-3">
@@ -295,9 +295,9 @@ export const StoreProfile = () => {
               </thead>
               <tbody>
                 {store.refunds.slice(0, 20).map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
+                  <tr key={r.id} onClick={() => navigate(`/refunds/${r.id}`)} className="cursor-pointer border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{r.id}</td>
-                    <td className="py-2 px-3">${r.amount.toFixed(2)}</td>
+                    <td className="py-2 px-3">₹{r.amount.toFixed(2)}</td>
                     <td className="py-2 px-3">
                       <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800">{r.status}</span>
                     </td>

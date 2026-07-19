@@ -24,7 +24,9 @@ def search_users(query, page=1, page_size=20):
             Q(email__icontains=query) |
             Q(mobile__icontains=query)
         )
-    return qs.order_by("-created_at"), qs.count()
+    # The legacy User model has no created_at column. Primary-key ordering is
+    # deterministic and keeps the newest-created records first.
+    return qs.order_by("-id"), qs.count()
 
 
 def search_stores(query, page=1, page_size=20):

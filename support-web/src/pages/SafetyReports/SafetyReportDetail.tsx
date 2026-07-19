@@ -1,6 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate, useParams } from 'react-router-dom'
+import { AlertTriangle, ArrowLeft, CheckCircle2, MapPin, ShieldAlert, Store, User } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { safetyReportsApi } from '@/api/safetyReportsApi'
-import { useParams, useNavigate } from 'react-router-dom'
 import { Card } from '@/components/common/Card'
 import { Badge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
@@ -8,240 +11,164 @@ import { Modal } from '@/components/common/Modal'
 import { InternalNotesPanel } from '@/components/threads/InternalNotesPanel'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
-import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
-import { ArrowLeft, ShieldAlert, User, Store, FileText, AlertTriangle } from 'lucide-react'
-import { useState } from 'react'
-import toast from 'react-hot-toast'
-import type { SafetyReport } from '@/types/safety'
+import { useCurrentUser } from '@/store/authStore'
+import type { SafetyAction } from '@/types/safety'
 import { SAFETY_REPORT_STATUS_COLORS, SAFETY_REPORT_SEVERITY_COLORS } from '@/types/safety'
+
+const actionLabels: Record<SafetyAction, string> = {
+  reviewed: 'Mark under review',
+  warning_sent: 'Record warning sent',
+  account_suspended: 'Suspend reported account',
+  account_restored: 'Restore reported account',
+  escalated: 'Escalate',
+  closed: 'Close with resolution',
+}
+const label = (value: string) => value.replace(/_/g, ' ')
 
 export const SafetyReportDetail = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const user = useCurrentUser()
   const queryClient = useQueryClient()
-
-  const [showActionModal, setShowActionModal] = useState(false)
-  const [selectedAction, setSelectedAction] = useState('')
+  const [selectedAction, setSelectedAction] = useState<SafetyAction>()
   const [actionNote, setActionNote] = useState('')
-  const [targetUserId, setTargetUserId] = useState('')
-  const [targetStoreId, setTargetStoreId] = useState('')
-  const [confirmAction, setConfirmAction] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
 
-  const { data: report, isLoading, error } = useQuery({
+  const reportQuery = useQuery({
     queryKey: ['safety-report', id],
     queryFn: () => safetyReportsApi.getOne(id!),
     enabled: !!id,
-    staleTime: 30000,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
   })
-
-  const addNoteMutation = useMutation({
-    mutationFn: (content: string) => safetyReportsApi.addInternalNote(id!, content),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['safety-report', id] }),
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['safety-report', id] })
+    queryClient.invalidateQueries({ queryKey: ['safety-reports'] })
+  }
+  const assignMutation = useMutation({
+    mutationFn: () => safetyReportsApi.assignToMe(id!),
+    onSuccess: () => { refresh(); toast.success('Assigned to you') },
+    onError: () => toast.error('Could not assign this report'),
   })
-
+  const noteMutation = useMutation({
+    mutationFn: (body: string) => safetyReportsApi.addInternalNote(id!, body),
+    onSuccess: () => { refresh(); toast.success('Internal note added') },
+    onError: () => toast.error('Internal note could not be added'),
+  })
   const actionMutation = useMutation({
-    mutationFn: () => safetyReportsApi.assign(id!, selectedAction, actionNote, targetUserId ? Number(targetUserId) : undefined, targetStoreId ? Number(targetStoreId) : undefined),
+    mutationFn: () => safetyReportsApi.action(id!, selectedAction!, actionNote.trim()),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['safety-report', id] })
-      queryClient.invalidateQueries({ queryKey: ['safety-reports'] })
-      toast.success('Action recorded')
-      setShowActionModal(false)
-      setActionNote('')
-      setSelectedAction('')
-      setConfirmAction(false)
+      refresh(); toast.success('Safety action recorded'); setSelectedAction(undefined)
+      setActionNote(''); setConfirmed(false)
     },
+    onError: () => toast.error('Safety action failed'),
   })
 
-  if (isLoading) return <Loading />
-  if (error) return <ErrorState />
-  if (!report) return <ErrorState title="Safety report not found" />
+  if (reportQuery.isLoading) return <Loading />
+  if (reportQuery.error || !reportQuery.data) return <ErrorState title="Safety report not found" />
+  const report = reportQuery.data
+  const isClosed = report.status === 'closed'
+  const canResolve = user?.role === 'supervisor' || user?.role === 'admin'
+  const isAdmin = user?.role === 'admin'
+  const highRisk = selectedAction === 'account_suspended' || selectedAction === 'account_restored'
+  const openAction = (action: SafetyAction) => { setSelectedAction(action); setActionNote(''); setConfirmed(false) }
 
-  const highRiskActions = ['permanent_block', 'suspend']
-  const isHighRisk = highRiskActions.includes(selectedAction)
-
-  return (
-    <div className="space-y-4 max-w-4xl">
-      <Breadcrumbs />
-      <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/safety-reports')} className="p-2 rounded-lg hover:bg-gray-100">
-          <ArrowLeft className="h-5 w-5 text-gray-600" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">{report.category.replace('_', ' ')}</h1>
-          <p className="text-gray-500 mt-1">Report #{String(report.id).slice(0, 8)}</p>
-        </div>
-        <Badge variant={SAFETY_REPORT_SEVERITY_COLORS[report.severity] || 'default'}>{report.severity}</Badge>
-        <Badge variant={SAFETY_REPORT_STATUS_COLORS[report.status] || 'default'}>{report.status.replace('_', ' ')}</Badge>
+  return <div className="mx-auto max-w-6xl space-y-5">
+    <div className="flex flex-wrap items-start gap-3">
+      <button onClick={() => navigate('/safety-reports')} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"><ArrowLeft className="h-5 w-5" /></button>
+      <div className="min-w-0 flex-1">
+        <p className="font-mono text-xs text-slate-400">Safety report #{report.id}</p>
+        <h1 className="mt-1 text-2xl font-bold capitalize text-slate-950">{label(report.category)}</h1>
+        <p className="mt-1 flex items-center gap-1 text-sm text-slate-500"><MapPin className="h-4 w-4" />{report.scope === 'GLOBAL' ? 'Global platform report' : report.cityName || 'Unassigned city'}</p>
       </div>
+      <Badge className={SAFETY_REPORT_SEVERITY_COLORS[report.severity]}>{report.severity}</Badge>
+      <Badge className={SAFETY_REPORT_STATUS_COLORS[report.status]}>{label(report.status)}</Badge>
+    </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <Button onClick={() => { setSelectedAction('under_review'); setShowActionModal(true); }}>Mark Under Review</Button>
-        <Button variant="secondary" onClick={() => { setSelectedAction('request_info'); setShowActionModal(true); }}>Request More Info</Button>
-        <Button variant="secondary" onClick={() => { setSelectedAction('warn'); setShowActionModal(true); }}>Warn User/Store</Button>
-        <Button variant="secondary" onClick={() => { setSelectedAction('suspend'); setShowActionModal(true); }}>Temporarily Suspend</Button>
-        <Button variant="danger" onClick={() => { setSelectedAction('permanent_block'); setShowActionModal(true); }}>Permanently Block</Button>
-        <Button variant="danger" onClick={() => { setSelectedAction('escalate'); setShowActionModal(true); }}>Escalate to Admin</Button>
-        <Button variant="secondary" onClick={() => { setSelectedAction('close'); setShowActionModal(true); }}>Close</Button>
+    {isClosed ? <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
+      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+      <div><p className="font-semibold">Report resolved and closed</p><p className="mt-0.5 text-sm text-emerald-700">Resolution and full audit history are retained below.</p></div>
+    </div> : <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="mr-auto text-sm font-semibold text-slate-900">Case actions</p>
+        {!report.assignedToId && <Button onClick={() => assignMutation.mutate()} loading={assignMutation.isPending}>Assign to me</Button>}
+        {report.status === 'submitted' && <Button variant="secondary" onClick={() => openAction('reviewed')}>Start review</Button>}
+        {canResolve && <>
+          <Button variant="secondary" onClick={() => openAction('warning_sent')}>Record warning</Button>
+          <Button variant="secondary" onClick={() => openAction('escalated')}>Escalate</Button>
+          <Button onClick={() => openAction('closed')}>Resolve & close</Button>
+        </>}
+        {isAdmin && <>
+          <Button variant="danger" onClick={() => openAction('account_suspended')}>Suspend account</Button>
+          <Button variant="ghost" onClick={() => openAction('account_restored')}>Restore account</Button>
+        </>}
       </div>
+      <p className="mt-2 text-xs text-slate-500">Every action requires evidence and is added to the permanent audit trail.</p>
+    </div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 space-y-4">
-          <Card title="Report Details">
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs text-gray-500">Description</p>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{report.description}</p>
-              </div>
-              {report.resolutionNote && (
-                <div>
-                  <p className="text-xs text-gray-500">Resolution Note</p>
-                  <p className="text-sm text-gray-700">{report.resolutionNote}</p>
-                </div>
-              )}
-              {report.prescriptionId && (
-                <div>
-                  <p className="text-xs text-gray-500">Related Prescription</p>
-                  <p className="text-sm font-mono">Prescription #{report.prescriptionId}</p>
-                </div>
-              )}
-              {report.responseId && (
-                <div>
-                  <p className="text-xs text-gray-500">Related Prescription Response</p>
-                  <p className="text-sm font-mono">Response #{report.responseId}</p>
-                </div>
-              )}
-            </div>
-          </Card>
-
-          <Card title="Reporter">
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center">
-                <User className="h-5 w-5 text-primary-600" />
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">{report.reporterName}</p>
-                <p className="text-sm text-gray-500 capitalize">{report.reporterType}</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card title="Reported Entity">
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-                <Store className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">{report.reportedName}</p>
-                <p className="text-sm text-gray-500 capitalize">{report.targetType}</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card title="Action History">
-            <div className="space-y-3">
-              {(report.actionHistory || []).length === 0 ? (
-                <p className="text-sm text-gray-500">No actions recorded yet.</p>
-              ) : (
-                (report.actionHistory || []).map((action) => (
-                  <div key={action.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
-                    <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                      <AlertTriangle className="h-4 w-4 text-gray-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-900">
-                        <span className="font-medium">{action.adminName}</span> performed{' '}
-                        <span className="font-medium">{action.action.replace('_', ' ')}</span>
-                      </p>
-                      {action.note && <p className="text-xs text-gray-500 mt-0.5">{action.note}</p>}
-                      <p className="text-xs text-gray-400 mt-1">{new Date(action.createdAt).toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          <Card title="Report Info">
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-gray-500">Category</p>
-                <p className="text-sm">{report.category.replace('_', ' ')}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Assigned To</p>
-                <p className="text-sm">{report.assignedToName || 'Unassigned'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Created</p>
-                <p className="text-sm">{new Date(report.createdAt).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Last Updated</p>
-                <p className="text-sm">{new Date(report.updatedAt).toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-
-          <InternalNotesPanel
-            notes={report.internalNotes?.map((n) => ({ id: n.id, content: n.body, authorName: n.createdByName, createdAt: n.createdAt })) || []}
-            onAddNote={async (content) => { await addNoteMutation.mutateAsync(content); toast.success('Note added') }}
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+      <div className="space-y-5">
+        <Card title="Incident details">
+          <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{report.description}</p>
+          {report.resolutionNote && <div className="mt-4 rounded-lg bg-emerald-50 p-3"><p className="text-xs font-semibold uppercase text-emerald-700">Resolution</p><p className="mt-1 text-sm text-emerald-900">{report.resolutionNote}</p></div>}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Info label="Prescription" value={report.prescriptionId ? `#${report.prescriptionId}` : 'Not linked'} />
+            <Info label="Order/response" value={report.responseId ? `#${report.responseId}` : 'Not linked'} />
+          </div>
+        </Card>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Party icon={<User />} title="Reported by" name={report.reporterName} type={report.reporterType} />
+          <Party
+            icon={report.targetType === 'store' ? <Store /> : <User />}
+            title="Reported party"
+            name={report.reportedName}
+            type={report.targetType}
+            danger
+            onOpen={(report.targetType === 'store' ? report.reportedStoreId : report.reportedUserId)
+              ? () => navigate(`/${report.targetType === 'store' ? 'store' : 'user'}-lookup/${report.targetType === 'store' ? report.reportedStoreId : report.reportedUserId}`)
+              : undefined}
           />
         </div>
+        <Card title="Action history">
+          {!report.actionHistory.length ? <p className="text-sm text-slate-500">No actions recorded yet.</p> : <div className="space-y-3">{report.actionHistory.map((action) => <div key={action.id} className="flex gap-3 border-b border-slate-100 pb-3 last:border-0"><div className="rounded-lg bg-slate-100 p-2"><AlertTriangle className="h-4 w-4 text-slate-600" /></div><div><p className="text-sm"><strong>{action.adminName}</strong> · {label(action.action)}</p><p className="mt-0.5 text-sm text-slate-600">{action.note}</p><p className="mt-1 text-xs text-slate-400">{new Date(action.createdAt).toLocaleString()}</p></div></div>)}</div>}
+        </Card>
       </div>
-
-      {/* Action Modal */}
-      <Modal isOpen={showActionModal} onClose={() => { setShowActionModal(false); setConfirmAction(false); }} title={`${selectedAction.replace('_', ' ')}`}>
-        <div className="space-y-4">
-          {isHighRisk && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-sm text-red-800 font-medium">High-risk action</p>
-              <p className="text-sm text-red-700 mt-1">This action may permanently affect the user/store. A reason is required.</p>
-            </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Note {isHighRisk && <span className="text-red-500">*</span>}
-            </label>
-            <textarea
-              value={actionNote}
-              onChange={(e) => setActionNote(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg p-2 text-sm"
-              rows={3}
-              placeholder={isHighRisk ? 'Reason for this action (required)...' : 'Optional note...'}
-            />
+      <div className="space-y-5">
+        <Card title="Resolution workflow" subtitle="Recommended order for a safe, auditable decision">
+          <div className="space-y-3">
+            <WorkflowStep done={!!report.assignedToId} number="1" title="Own the case" description={report.assignedToName ? `Assigned to ${report.assignedToName}` : 'Assign the report before investigation.'} />
+            <WorkflowStep done={report.status !== 'submitted'} number="2" title="Verify evidence" description="Review the incident, linked order, both parties and add internal findings." />
+            <WorkflowStep done={['action_taken', 'escalated', 'closed'].includes(report.status)} number="3" title="Record decision" description="Warning, escalation or account action must include evidence." />
+            <WorkflowStep done={isClosed} number="4" title="Resolve & close" description="Close with a clear resolution note for future audit." />
           </div>
-          {isHighRisk && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Target User ID (optional)</label>
-              <input
-                type="text"
-                value={targetUserId}
-                onChange={(e) => setTargetUserId(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg p-2 text-sm"
-                placeholder="User ID"
-              />
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="confirmAction"
-              checked={confirmAction}
-              onChange={(e) => setConfirmAction(e.target.checked)}
-              className="rounded"
-            />
-            <label htmlFor="confirmAction" className="text-sm text-gray-700">I confirm this action</label>
+        </Card>
+        <Card title="Case information">
+          <div className="space-y-3">
+            <Info label="Severity" value={report.severity} />
+            <Info label="Status" value={label(report.status)} />
+            <Info label="Owner" value={report.assignedToName || 'Unassigned'} />
+            <Info label="Created" value={new Date(report.createdAt).toLocaleString()} />
+            <Info label="Last updated" value={new Date(report.updatedAt).toLocaleString()} />
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => { setShowActionModal(false); setConfirmAction(false); }}>Cancel</Button>
-            <Button onClick={() => actionMutation.mutate()} loading={actionMutation.isPending} disabled={!confirmAction || (isHighRisk && !actionNote)}>
-              Confirm
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        </Card>
+        <InternalNotesPanel
+          notes={report.internalNotes.map((note) => ({ id: note.id, content: note.body, authorName: note.createdByName, createdAt: note.createdAt }))}
+          onAddNote={(content) => noteMutation.mutateAsync(content).then(() => undefined)}
+        />
+      </div>
     </div>
-  )
+
+    <Modal isOpen={!!selectedAction} onClose={() => setSelectedAction(undefined)} title={selectedAction ? actionLabels[selectedAction] : 'Safety action'}>
+      <div className="space-y-4">
+        {highRisk && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><strong>High-risk action:</strong> this changes the reported account’s active state. Verify evidence before confirming.</div>}
+        <label className="block text-sm font-medium text-slate-700">Reason / evidence note<textarea value={actionNote} onChange={(event) => setActionNote(event.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="Required audit note…" /></label>
+        <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" />I verified the report evidence and confirm this action.</label>
+        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setSelectedAction(undefined)}>Cancel</Button><Button variant={highRisk ? 'danger' : 'primary'} disabled={!confirmed || actionNote.trim().length < 5} loading={actionMutation.isPending} onClick={() => actionMutation.mutate()}>Confirm action</Button></div>
+      </div>
+    </Modal>
+  </div>
 }
+
+const Info = ({ label: title, value }: { label: string; value: string }) => <div><p className="text-xs text-slate-500">{title}</p><p className="mt-0.5 text-sm font-medium capitalize text-slate-800">{value}</p></div>
+const Party = ({ icon, title, name, type, danger = false, onOpen }: { icon: React.ReactElement; title: string; name: string; type: string; danger?: boolean; onOpen?: () => void }) => <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><div className={`rounded-lg p-2 [&_svg]:h-5 [&_svg]:w-5 ${danger ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>{icon}</div><div className="min-w-0 flex-1"><p className="text-xs uppercase tracking-wide text-slate-500">{title}</p><p className="truncate font-semibold text-slate-900">{name}</p><p className="text-xs capitalize text-slate-500">{type}</p></div>{onOpen && <button type="button" onClick={onOpen} className="text-xs font-semibold text-primary-600 hover:text-primary-700">View profile</button>}</div></div>
+const WorkflowStep = ({ done, number, title, description }: { done: boolean; number: string; title: string; description: string }) => <div className="flex gap-3"><div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{done ? <CheckCircle2 className="h-4 w-4" /> : number}</div><div><p className="text-sm font-semibold text-slate-800">{title}</p><p className="text-xs leading-5 text-slate-500">{description}</p></div></div>

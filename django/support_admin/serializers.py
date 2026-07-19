@@ -82,12 +82,15 @@ class RefundReviewSerializer(serializers.Serializer):
 
 
 class SafetyReportActionSerializer(serializers.ModelSerializer):
-    admin_name = serializers.CharField(source="admin.user.name", read_only=True)
+    admin_name = serializers.SerializerMethodField()
 
     class Meta:
         model = SafetyReportAction
         fields = ["id", "report", "action", "admin", "admin_name", "note", "target_user", "target_store", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+    def get_admin_name(self, obj):
+        return obj.admin.user.get_full_name() or obj.admin.user.username
 
 
 class SafetyReportActionCreateSerializer(serializers.Serializer):
@@ -107,9 +110,10 @@ class SafetyReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = SafetyReport
         fields = [
-            "id", "reporter_type", "reporter_name", "reported_name",
-            "category", "description", "status", "resolution_note",
-            "prescription", "response", "assigned_to_name",
+            "id", "reporter_type", "reporter_name", "target_type", "reported_name",
+            "reported_user", "reported_store", "category", "severity", "scope",
+            "city", "city_name", "service_zone", "description", "status", "resolution_note",
+            "prescription", "response", "assigned_to_id", "assigned_to_name",
             "action_history", "internal_notes",
             "created_at", "updated_at",
         ]
@@ -130,7 +134,12 @@ class SafetyReportSerializer(serializers.ModelSerializer):
         return "Unknown"
 
     def get_assigned_to_name(self, obj):
-        return None
+        if not obj.assigned_to_id:
+            return None
+        staff = SupportStaff.objects.select_related("user").filter(id=obj.assigned_to_id).first()
+        return (staff.user.get_full_name() or staff.user.username) if staff else "Former staff member"
+
+    city_name = serializers.CharField(source="city.name", read_only=True, allow_null=True)
 
     def get_action_history(self, obj):
         actions = SafetyReportAction.objects.filter(report=obj).select_related("admin__user").order_by("-created_at")
@@ -177,6 +186,7 @@ class UserOrderSerializer(serializers.ModelSerializer):
 
 class UserPrescriptionSerializer(serializers.ModelSerializer):
     target_stores = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(source="uploaded_at", read_only=True)
 
     class Meta:
         model = Prescription
@@ -219,6 +229,7 @@ class UserRefundSerializer(serializers.ModelSerializer):
 
 
 class UserSafetyReportSerializer(serializers.ModelSerializer):
+    reason = serializers.CharField(source="description", read_only=True)
     reported_by = serializers.SerializerMethodField()
     reported_against = serializers.SerializerMethodField()
 
@@ -263,31 +274,52 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_orders(self, obj):
         qs = PrescriptionResponse.objects.filter(user=obj).select_related("store", "prescription").order_by("-created_at")[:50]
+        allowed = self.context.get("allowed_city_ids")
+        if allowed is not None:
+            qs = PrescriptionResponse.objects.filter(user=obj, prescription__city_id__in=allowed).select_related("store", "prescription").order_by("-created_at")[:50]
         return UserOrderSerializer(qs, many=True).data
 
     def get_prescriptions(self, obj):
-        qs = Prescription.objects.filter(user=obj).prefetch_related("target_stores__store").order_by("-created_at")[:50]
-        return UserPrescriptionSerializer(qs, many=True).data
+        qs = Prescription.objects.filter(user=obj).prefetch_related("target_stores__store").order_by("-uploaded_at")
+        allowed = self.context.get("allowed_city_ids")
+        if allowed is not None:
+            qs = qs.filter(city_id__in=allowed)
+        return UserPrescriptionSerializer(qs[:50], many=True).data
 
     def get_complaints(self, obj):
-        qs = Complaint.objects.filter(complainant_user=obj).select_related("respondent_user", "respondent_store").order_by("-created_at")[:50]
-        return UserComplaintSerializer(qs, many=True).data
+        qs = Complaint.objects.filter(complainant_user=obj).select_related("respondent_user", "respondent_store").order_by("-created_at")
+        allowed = self.context.get("allowed_city_ids")
+        if allowed is not None:
+            qs = qs.filter(Q(scope="GLOBAL") | Q(city_id__in=allowed))
+        return UserComplaintSerializer(qs[:50], many=True).data
 
     def get_tickets(self, obj):
-        qs = PlatformSupportTicket.objects.filter(requester_user=obj).order_by("-created_at")[:50]
-        return UserTicketSerializer(qs, many=True).data
+        qs = PlatformSupportTicket.objects.filter(requester_user=obj).order_by("-created_at")
+        allowed = self.context.get("allowed_city_ids")
+        if allowed is not None:
+            qs = qs.filter(Q(scope="GLOBAL") | Q(city_id__in=allowed))
+        return UserTicketSerializer(qs[:50], many=True).data
 
     def get_refunds(self, obj):
-        qs = RefundRequest.objects.filter(prescription_response__user=obj).select_related("prescription_response").order_by("-created_at")[:50]
-        return UserRefundSerializer(qs, many=True).data
+        qs = RefundRequest.objects.filter(prescription_response__user=obj).select_related("prescription_response").order_by("-created_at")
+        allowed = self.context.get("allowed_city_ids")
+        if allowed is not None:
+            qs = qs.filter(prescription_response__prescription__city_id__in=allowed)
+        return UserRefundSerializer(qs[:50], many=True).data
 
     def get_safety_reports_filed(self, obj):
-        qs = SafetyReport.objects.filter(reporter_user=obj).order_by("-created_at")[:50]
-        return UserSafetyReportSerializer(qs, many=True).data
+        qs = SafetyReport.objects.filter(reporter_user=obj).order_by("-created_at")
+        allowed = self.context.get("allowed_city_ids")
+        if allowed is not None:
+            qs = qs.filter(Q(scope="GLOBAL") | Q(city_id__in=allowed))
+        return UserSafetyReportSerializer(qs[:50], many=True).data
 
     def get_safety_reports_against(self, obj):
-        qs = SafetyReport.objects.filter(reported_user=obj).order_by("-created_at")[:50]
-        return UserSafetyReportSerializer(qs, many=True).data
+        qs = SafetyReport.objects.filter(reported_user=obj).order_by("-created_at")
+        allowed = self.context.get("allowed_city_ids")
+        if allowed is not None:
+            qs = qs.filter(Q(scope="GLOBAL") | Q(city_id__in=allowed))
+        return UserSafetyReportSerializer(qs[:50], many=True).data
 
 
 class StoreOrderSerializer(serializers.ModelSerializer):
@@ -326,6 +358,7 @@ class StoreComplaintSerializer(serializers.ModelSerializer):
 
 
 class StoreSafetyReportSerializer(serializers.ModelSerializer):
+    reason = serializers.CharField(source="description", read_only=True)
     reported_by = serializers.SerializerMethodField()
     reported_against = serializers.SerializerMethodField()
 

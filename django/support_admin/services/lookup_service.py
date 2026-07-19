@@ -10,7 +10,8 @@ def lookup_users(query=None, user_id=None, page=1, page_size=20):
             return []
         return [user]
     if query:
-        return search_users(query, page, page_size)
+        queryset, _ = search_users(query, page, page_size)
+        return queryset
     return []
 
 
@@ -21,5 +22,6 @@ def lookup_stores(query=None, store_id=None, page=1, page_size=20):
             return []
         return [store]
     if query:
-        return search_stores(query, page, page_size)
+        queryset, _ = search_stores(query, page, page_size)
+        return queryset
     return []

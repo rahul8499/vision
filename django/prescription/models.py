@@ -620,6 +620,12 @@ class StoreReportNote(models.Model):
         return f"{self.store.name} - {self.note[:20]}"
 
 class SafetyReport(models.Model):
+    SCOPE_CITY = 'CITY'
+    SCOPE_GLOBAL = 'GLOBAL'
+    SCOPE_CHOICES = [(SCOPE_CITY, 'City'), (SCOPE_GLOBAL, 'Global')]
+    SEVERITY_CHOICES = [
+        ('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('critical', 'Critical'),
+    ]
     REPORTER_CHOICES = [('user', 'User'), ('store', 'Pharmacy')]
     TARGET_CHOICES = [('user', 'User'), ('store', 'Pharmacy')]
     CATEGORY_CHOICES = [
@@ -635,6 +641,7 @@ class SafetyReport(models.Model):
         ('submitted', 'Submitted'),
         ('under_review', 'Under Review'),
         ('action_taken', 'Action Taken'),
+        ('escalated', 'Escalated'),
         ('closed', 'Closed'),
     ]
 
@@ -647,6 +654,17 @@ class SafetyReport(models.Model):
     prescription = models.ForeignKey(Prescription, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports')
     response = models.ForeignKey(PrescriptionResponse, null=True, blank=True, on_delete=models.SET_NULL, related_name='safety_reports')
     category = models.CharField(max_length=40, choices=CATEGORY_CHOICES, default='other', db_index=True)
+    severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default='medium', db_index=True)
+    scope = models.CharField(max_length=10, choices=SCOPE_CHOICES, default=SCOPE_GLOBAL, db_index=True)
+    city = models.ForeignKey(
+        'emergency_services.City', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='safety_reports',
+    )
+    service_zone = models.ForeignKey(
+        'emergency_services.ServiceZone', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='safety_reports',
+    )
+    assigned_to_id = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
     description = models.TextField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted', db_index=True)
     resolution_note = models.TextField(blank=True, null=True)
@@ -659,6 +677,29 @@ class SafetyReport(models.Model):
 
     def __str__(self):
         return f'Safety Report #{self.pk} ({self.reporter_type} → {self.target_type})'
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            source = self.prescription
+            if not source and self.response_id:
+                source = self.response.prescription
+            source = source or self.reported_store or self.reporter_store
+            if source:
+                self.scope = self.SCOPE_CITY
+                self.city = getattr(source, 'city', None)
+                self.service_zone = getattr(source, 'service_zone', None)
+                if not self.city_id:
+                    from emergency_services.services import get_default_city
+                    self.city = get_default_city()
+            else:
+                self.scope = self.SCOPE_GLOBAL
+                self.city = None
+                self.service_zone = None
+            if self.severity == 'medium' and self.category in {'medicine_safety', 'suspicious_behavior'}:
+                self.severity = 'high'
+            elif self.severity == 'medium' and self.category == 'invalid_contact':
+                self.severity = 'low'
+        super().save(*args, **kwargs)
 
 
 class PrescriptionResponseStatusHistory(models.Model):
