@@ -27,14 +27,14 @@ export const AuditLogList = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
-          <p className="text-gray-500 mt-1">Track all support actions</p>
+          <h1 className="text-2xl font-bold text-gray-900">Activity History</h1>
+          <p className="text-gray-500 mt-1">See who changed, assigned or closed each support case and when it happened.</p>
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {logs.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">No audit logs available</div>
+          <div className="p-12 text-center text-gray-500">No staff activity has been recorded yet.</div>
         ) : (
           <div className="divide-y divide-gray-200">
             {logs.map((log: unknown) => {

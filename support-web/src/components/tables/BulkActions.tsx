@@ -27,7 +27,7 @@ export const BulkActions = ({
       <div className="h-4 w-px bg-primary-200" />
       {onAssign && (
         <Button variant="primary" size="sm" leftIcon={<UserPlus className="h-4 w-4" />} onClick={onAssign}>
-          Assign
+          Assign staff
         </Button>
       )}
       {onClose && (

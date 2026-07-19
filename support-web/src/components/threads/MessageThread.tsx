@@ -61,8 +61,8 @@ export const MessageThread = ({
         {messages.length === 0 && (
           <div className="flex h-72 flex-col items-center justify-center text-center">
             <div className="mb-3 rounded-full bg-white p-3 shadow-sm"><MessageCircle className="h-6 w-6 text-slate-400" /></div>
-            <p className="font-medium text-slate-700">No conversation yet</p>
-            <p className="mt-1 text-sm text-slate-500">Send the first response to this complaint.</p>
+            <p className="font-medium text-slate-700">No messages yet</p>
+            <p className="mt-1 text-sm text-slate-500">Send the first reply for this case.</p>
           </div>
         )}
         {messages.map((message) => <MessageBubble key={message.id} {...message} timestamp={message.createdAt} />)}
@@ -85,7 +85,7 @@ export const MessageThread = ({
             className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-primary-400 focus:ring-4 focus:ring-primary-100"
           />
           <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center gap-3"><p className="text-xs text-slate-400">Enter to send · Shift + Enter for new line</p>{repliesQuery.data?.length > 0 && <select aria-label="Insert saved reply" defaultValue="" onChange={event => { const selected = repliesQuery.data.find((item: any) => String(item.id) === event.target.value); if (selected) setReplyText(current => current ? `${current}\n${selected.body}` : selected.body); event.target.value = '' }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600"><option value="" disabled>Insert saved reply…</option>{repliesQuery.data.map((item: any) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>}</div>
+            <div className="flex items-center gap-3"><p className="text-xs text-slate-400">Press Enter to send · Shift + Enter for a new line</p>{repliesQuery.data?.length > 0 && <select aria-label="Use a ready reply" defaultValue="" onChange={event => { const selected = repliesQuery.data.find((item: any) => String(item.id) === event.target.value); if (selected) setReplyText(current => current ? `${current}\n${selected.body}` : selected.body); event.target.value = '' }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600"><option value="" disabled>Use a ready reply…</option>{repliesQuery.data.map((item: any) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>}</div>
             <Button type="submit" size="sm" loading={isSending} disabled={!replyText.trim()} rightIcon={<Send className="h-3.5 w-3.5" />}>
               {replyButtonLabel}
             </Button>

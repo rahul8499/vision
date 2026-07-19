@@ -120,10 +120,10 @@ export const ComplaintList = () => {
         <p className="mt-0.5 text-xs capitalize text-slate-500">{item.categoryDisplay}</p>
       </div>
     )},
-    { key: 'complainantName', header: 'Filed by', render: (item: Complaint) => (
+    { key: 'complainantName', header: 'Complaint from', render: (item: Complaint) => (
       <div><p className="font-medium text-slate-800">{item.complainantName}</p><p className="text-xs capitalize text-slate-400">{item.complainantType}</p></div>
     )},
-    { key: 'respondentName', header: 'Against', render: (item: Complaint) => (
+    { key: 'respondentName', header: 'Complaint about', render: (item: Complaint) => (
       <div><p className="font-medium text-slate-800">{item.respondentName}</p><p className="text-xs capitalize text-slate-400">{item.respondentType}</p></div>
     )},
     { key: 'city', header: 'City', render: (item: Complaint) => item.scope === 'GLOBAL' ? 'Global' : (item.cityName || 'Unassigned') },
@@ -137,7 +137,7 @@ export const ComplaintList = () => {
         {item.priorityDisplay || item.priority}
       </Badge>
     )},
-    { key: 'messageCount', header: 'Conversation', render: (item: Complaint) => (
+    { key: 'messageCount', header: 'Messages', render: (item: Complaint) => (
       <div className="flex items-center gap-1.5 text-slate-600"><MessageSquare className="h-3.5 w-3.5" /><span>{item.messageCount}</span></div>
     )},
     { key: 'createdAt', header: 'Created', sortable: true, render: (item: Complaint) => (
@@ -150,8 +150,8 @@ export const ComplaintList = () => {
     <div className="mx-auto max-w-[1500px] space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Complaint inbox</h1>
-          <p className="mt-1 text-sm text-slate-500">Investigate, respond and resolve customer complaints from one place.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Customer Complaints</h1>
+          <p className="mt-1 text-sm text-slate-500">Read customer complaints, reply to the people involved, assign staff and close solved cases.</p>
         </div>
         <div className="hidden rounded-xl border border-slate-200 bg-white px-4 py-2 text-right shadow-sm sm:block">
           <p className="text-xs text-slate-500">Total complaints</p>

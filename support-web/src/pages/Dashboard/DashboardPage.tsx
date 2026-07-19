@@ -68,7 +68,7 @@ export const DashboardPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Support Overview</h1>
         <p className="text-gray-500 mt-1">Overview of support metrics</p>
       </div>
 
@@ -81,19 +81,19 @@ export const DashboardPage = () => {
           trend={{ value: 12, label: 'vs last week' }}
         />
         <StatsCard
-          title="Open Tickets"
+          title="Open Help Requests"
           value={stats.openTickets}
-          subtitle={`Avg response: ${stats.avgTicketResponseTimeMinutes ?? 'N/A'}m`}
+          subtitle={`Average first reply: ${stats.avgTicketResponseTimeMinutes ?? 'N/A'} min`}
           icon={<Ticket className="h-5 w-5" />}
         />
         <StatsCard
-          title="Pending Refunds"
+          title="Refunds Waiting for Action"
           value={stats.pendingRefunds}
-          subtitle={`${stats.refundApprovalRate ?? 'N/A'}% approval rate`}
+          subtitle={`${stats.refundApprovalRate ?? 'N/A'}% approved`}
           icon={<Wallet className="h-5 w-5" />}
         />
         <StatsCard
-          title="Safety Reports"
+          title="Open Safety Issues"
           value={stats.openSafetyReports}
           subtitle={`${stats.criticalSafetyReports} critical`}
           icon={<ShieldAlert className="h-5 w-5" />}
@@ -107,7 +107,7 @@ export const DashboardPage = () => {
           trend={{ value: 8, label: 'vs last month' }}
         />
         <StatsCard
-          title="Total Tickets"
+          title="Total Help Requests"
           value={stats.totalTickets}
           trend={{ value: -3, label: 'vs last month' }}
         />
@@ -117,7 +117,7 @@ export const DashboardPage = () => {
           trend={{ value: 15, label: 'vs last month' }}
         />
         <StatsCard
-          title="Avg Resolution Time"
+          title="Average Time to Close"
           value={stats.avgResolutionTimeHours !== null ? `${stats.avgResolutionTimeHours}h` : 'N/A'}
           subtitle="For complaints"
         />

@@ -32,7 +32,7 @@ export const InternalNoteForm = ({ onSubmit, submitLabel = 'Add Note' }: Interna
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="flex gap-2">
       <Input
-        placeholder="Add an internal note..."
+        placeholder="Add a private note for the support team..."
         className="flex-1"
         {...register('content', { required: 'Note content is required' })}
       />

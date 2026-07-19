@@ -44,9 +44,9 @@ export const SettingsPage = () => {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+      <h1 className="text-2xl font-bold text-gray-900">My Account Settings</h1>
 
-      <Card title="Profile Information">
+      <Card title="My details">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input label="Full Name" {...register('name')} />
           <Input label="Email" type="email" {...register('email')} />

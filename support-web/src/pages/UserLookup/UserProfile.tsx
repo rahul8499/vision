@@ -54,7 +54,7 @@ export const UserProfile = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card title="Basic Information">
+        <Card title="User details">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-gray-400" />
@@ -75,7 +75,7 @@ export const UserProfile = () => {
           </div>
         </Card>
 
-        <Card title="Stats">
+        <Card title="Quick summary">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <ShoppingBag className="h-4 w-4 text-gray-400" />
@@ -131,14 +131,14 @@ export const UserProfile = () => {
       )}
 
       {profile.prescriptions.length > 0 && (
-        <Card title="Prescriptions">
+        <Card title="Medicine requests">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b">
                   <th className="text-left py-2 px-3">ID</th>
                   <th className="text-left py-2 px-3">Medicine</th>
-                  <th className="text-left py-2 px-3">Target Stores</th>
+                  <th className="text-left py-2 px-3">Stores asked</th>
                   <th className="text-left py-2 px-3">Date</th>
                 </tr>
               </thead>
@@ -189,7 +189,7 @@ export const UserProfile = () => {
       )}
 
       {profile.tickets.length > 0 && (
-        <Card title="Support Tickets">
+        <Card title="Help Requests">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -251,7 +251,7 @@ export const UserProfile = () => {
       )}
 
       {profile.safetyReportsFiled.length > 0 && (
-        <Card title="Safety Reports Filed">
+        <Card title="Safety issues reported by this user">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -280,7 +280,7 @@ export const UserProfile = () => {
       )}
 
       {profile.safetyReportsAgainst.length > 0 && (
-        <Card title="Safety Reports Against User">
+        <Card title="Safety issues reported against this user">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>

@@ -49,7 +49,7 @@ export const BulkAssignModal = ({ isOpen, onClose, onAssign, selectedIds, assign
     >
       <div className="mt-4">
         <SelectFilter
-          label="Select Agent"
+          label="Select staff member"
           value={selectedAgent}
           onChange={setSelectedAgent}
           options={assignees.map((a) => ({ value: a.id, label: a.name }))}

@@ -65,10 +65,10 @@ export const StaffDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="Role Information">
+        <Card title="Staff details">
           <div className="space-y-3">
             <div>
-              <p className="text-xs text-gray-500">Role</p>
+              <p className="text-xs text-gray-500">Access level</p>
               <p className="text-sm font-medium">{ROLE_LABELS[staff.role] || staff.role}</p>
             </div>
             <div>
@@ -87,18 +87,18 @@ export const StaffDetail = () => {
             )}
           </div>
         </Card>
-        <Card title="Permissions">
+        <Card title="What this person can access">
           <div className="flex flex-wrap gap-2">
             {staff.permissions.length > 0 ? (
               staff.permissions.map((perm) => (
                 <span key={perm} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">{perm}</span>
               ))
             ) : (
-              <p className="text-sm text-gray-500">Access is determined by the staff role.</p>
+              <p className="text-sm text-gray-500">Available actions are based on this person's access level.</p>
             )}
           </div>
         </Card>
-        <Card title="City access">
+        <Card title="Cities this person can work in">
           <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={allCities} onChange={e => setAllCities(e.target.checked)} />All cities</label>
           {!allCities && <div className="mt-3 grid grid-cols-2 gap-2">{(citiesQuery.data || []).map(city => <label key={city.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cityIds.includes(city.id)} onChange={e => setCityIds(e.target.checked ? [...cityIds, city.id] : cityIds.filter(value => value !== city.id))} />{city.name}</label>)}</div>}
           <Button size="sm" className="mt-3" disabled={!allCities && cityIds.length === 0} loading={cityMutation.isPending} onClick={() => cityMutation.mutate()}>Save city access</Button>

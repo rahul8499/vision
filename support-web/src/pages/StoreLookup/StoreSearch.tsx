@@ -24,7 +24,7 @@ export const StoreSearch = () => {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Store Lookup</h1>
+      <h1 className="text-2xl font-bold text-gray-900">Find a Store</h1>
       <Card>
         <div className="flex items-center gap-3">
           <div className="relative flex-1">

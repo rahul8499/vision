@@ -82,8 +82,8 @@ export const EmergencyMonitoringPage = () => {
     { key: 'request', header: 'Request', render: (item: EmergencyDispatchRow) => <div><span className="font-mono text-xs">#{item.prescriptionId}</span><p className={`text-[11px] font-semibold uppercase ${item.requestType === 'emergency' ? 'text-red-600' : 'text-slate-500'}`}>{item.requestType}</p></div> },
     { key: 'distance', header: 'Distance', render: (item: EmergencyDispatchRow) => item.distanceKm == null ? '—' : `${item.distanceKm.toFixed(1)} km` },
     { key: 'waiting', header: 'Waiting', render: (item: EmergencyDispatchRow) => <span className={item.escalatedAt ? 'font-semibold text-red-600' : ''}>{duration(item.waitingSeconds)}</span> },
-    { key: 'engagement', header: 'Engagement', render: (item: EmergencyDispatchRow) => <div className="flex gap-1"><Badge variant={item.openedAt ? 'info' : 'default'}>{item.openedAt ? 'Opened' : 'Not opened'}</Badge><Badge variant={item.pushAvailable ? 'success' : 'warning'}>{item.pushAvailable ? 'Push ready' : 'No push'}</Badge></div> },
-    { key: 'reminders', header: 'Reminders', render: (item: EmergencyDispatchRow) => <div><p>{item.reminderCount} auto · {item.manualReminderCount} manual</p>{item.remindersSuppressedAt && <p className="text-xs font-medium text-amber-600">Suppressed</p>}</div> },
+    { key: 'engagement', header: 'Store activity', render: (item: EmergencyDispatchRow) => <div className="flex gap-1"><Badge variant={item.openedAt ? 'info' : 'default'}>{item.openedAt ? 'Request opened' : 'Not opened'}</Badge><Badge variant={item.pushAvailable ? 'success' : 'warning'}>{item.pushAvailable ? 'App alert working' : 'App alert unavailable'}</Badge></div> },
+    { key: 'reminders', header: 'Alerts sent', render: (item: EmergencyDispatchRow) => <div><p>{item.reminderCount} automatic · {item.manualReminderCount} manual</p>{item.remindersSuppressedAt && <p className="text-xs font-medium text-amber-600">Alerts paused</p>}</div> },
     { key: 'contact', header: 'Contact', render: (item: EmergencyDispatchRow) => <a href={`tel:${item.storeMobile}`} className="inline-flex items-center gap-1 text-primary-700"><Phone className="h-3.5 w-3.5" />{item.storeMobile}</a> },
     { key: 'action', header: '', render: (item: EmergencyDispatchRow) => {
       const cooldownRemaining = item.lastManualReminderAt
@@ -100,7 +100,7 @@ export const EmergencyMonitoringPage = () => {
 
   return <div className="space-y-5">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-      <div><h1 className="text-2xl font-bold text-slate-950">Emergency monitoring</h1><p className="mt-1 text-sm text-slate-500">Live city-wise store response, reminders and escalations.</p></div>
+      <div><h1 className="text-2xl font-bold text-slate-950">Emergency Cases</h1><p className="mt-1 text-sm text-slate-500">See which stores received an emergency medicine request, who responded and who needs another alert or a call.</p></div>
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-xs font-semibold ${isConnected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
           <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
@@ -111,10 +111,10 @@ export const EmergencyMonitoringPage = () => {
       </div>
     </div>
     <div className="grid gap-3 sm:grid-cols-4">
-      <Metric icon={<Clock3 />} label="Awaiting" value={summary?.awaiting || 0} />
+      <Metric icon={<Clock3 />} label="Waiting for store reply" value={summary?.awaiting || 0} />
       <Metric icon={<CheckCircle2 />} label="Responded" value={summary?.responded || 0} />
-      <Metric icon={<TriangleAlert />} label="Escalated" value={summary?.escalated || 0} danger />
-      <Metric icon={<BellRing />} label="Push unavailable" value={summary?.push_unavailable || 0} danger />
+      <Metric icon={<TriangleAlert />} label="Needs support-team action" value={summary?.escalated || 0} danger />
+      <Metric icon={<BellRing />} label="App alert not working" value={summary?.push_unavailable || 0} danger />
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3">
     <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
@@ -128,7 +128,7 @@ export const EmergencyMonitoringPage = () => {
       <select value={push} onChange={event => { setPush(event.target.value); setPage(1) }} className="h-9 rounded-lg border border-slate-200 px-3 text-sm"><option value="">All push states</option><option value="available">Push available</option><option value="unavailable">No push token</option></select>
       <select value={waitingMinutes} onChange={event => { setWaitingMinutes(event.target.value); setPage(1) }} className="h-9 rounded-lg border border-slate-200 px-3 text-sm"><option value="">Any waiting time</option><option value="3">Over 3 minutes</option><option value="5">Over 5 minutes</option><option value="10">Over 10 minutes</option></select>
     </div>
-    {policyQuery.data && <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">Automation for this scope: first reminder after <strong>{duration(policyQuery.data.firstStoreReminderSeconds)}</strong>, second after <strong>{duration(policyQuery.data.secondStoreReminderSeconds)}</strong>, support escalation after <strong>{duration(policyQuery.data.supportEscalationSeconds)}</strong>.</div>}
+    {policyQuery.data && <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">Automatic alerts for this city: first reminder after <strong>{duration(policyQuery.data.firstStoreReminderSeconds)}</strong>, second after <strong>{duration(policyQuery.data.secondStoreReminderSeconds)}</strong>, alert the support team after <strong>{duration(policyQuery.data.supportEscalationSeconds)}</strong>.</div>}
     <div className="flex gap-2">{['awaiting', 'escalated', 'responded', 'all'].map(value => <button key={value} onClick={() => setStatus(value)} className={`rounded-lg px-3 py-2 text-sm font-medium capitalize ${status === value ? 'bg-primary-600 text-white' : 'bg-white text-slate-600'}`}>{value}</button>)}</div>
     {monitoring.isLoading ? <Loading /> : monitoring.data?.results.length ? <><DataTable data={monitoring.data.results} columns={columns} keyExtractor={item => item.id} /><div className="rounded-xl border border-slate-200 bg-white"><Pagination currentPage={monitoring.data.pagination.page} totalPages={monitoring.data.pagination.total_pages} totalItems={monitoring.data.pagination.total_count} itemsPerPage={monitoring.data.pagination.page_size} onPageChange={setPage} /></div></> : <EmptyState icon={<Radio className="h-12 w-12" />} title="No dispatches in this view" description="The selected filters currently have no matching store dispatches." />}
     {user?.role === 'admin' && draft && <section className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -136,14 +136,14 @@ export const EmergencyMonitoringPage = () => {
       <div className="grid gap-4 sm:grid-cols-4">
         <NumberField label="First reminder (seconds)" value={draft.firstStoreReminderSeconds} onChange={value => setDraft({ ...draft, firstStoreReminderSeconds: value })} />
         <NumberField label="Second reminder (seconds)" value={draft.secondStoreReminderSeconds} onChange={value => setDraft({ ...draft, secondStoreReminderSeconds: value })} />
-        <NumberField label="Support escalation (seconds)" value={draft.supportEscalationSeconds} onChange={value => setDraft({ ...draft, supportEscalationSeconds: value })} />
+        <NumberField label="Alert support team after (seconds)" value={draft.supportEscalationSeconds} onChange={value => setDraft({ ...draft, supportEscalationSeconds: value })} />
         <NumberField label="Maximum reminders" min={0} value={draft.maxStoreReminders} onChange={value => setDraft({ ...draft, maxStoreReminders: value })} />
-        <NumberField label="Manual cooldown (seconds)" value={draft.manualReminderCooldownSeconds} onChange={value => setDraft({ ...draft, manualReminderCooldownSeconds: value })} />
-        <NumberField label="Manual daily limit/store" min={1} value={draft.manualReminderDailyLimit} onChange={value => setDraft({ ...draft, manualReminderDailyLimit: value })} />
+        <NumberField label="Wait between manual alerts (seconds)" value={draft.manualReminderCooldownSeconds} onChange={value => setDraft({ ...draft, manualReminderCooldownSeconds: value })} />
+        <NumberField label="Manual alerts allowed per store each day" min={1} value={draft.manualReminderDailyLimit} onChange={value => setDraft({ ...draft, manualReminderDailyLimit: value })} />
       </div>
       <div className="mt-4 flex flex-wrap gap-5 text-sm text-slate-700">
         <label className="flex items-center gap-2"><input type="checkbox" checked={draft.remindersEnabled} onChange={event => setDraft({ ...draft, remindersEnabled: event.target.checked })} />Automatic store reminders</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={draft.supportEscalationEnabled} onChange={event => setDraft({ ...draft, supportEscalationEnabled: event.target.checked })} />Support escalation</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={draft.supportEscalationEnabled} onChange={event => setDraft({ ...draft, supportEscalationEnabled: event.target.checked })} />Alert support team when stores do not reply</label>
       </div>
       <div className="mt-4 flex justify-end"><Button loading={savePolicy.isPending} onClick={() => savePolicy.mutate()}>Save policy</Button></div>
     </section>}

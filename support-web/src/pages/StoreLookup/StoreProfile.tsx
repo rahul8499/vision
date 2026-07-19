@@ -57,7 +57,7 @@ export const StoreProfile = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card title="Store Information">
+        <Card title="Store details">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-gray-400" />
@@ -91,7 +91,7 @@ export const StoreProfile = () => {
           </div>
         </Card>
 
-        <Card title="Performance Metrics">
+        <Card title="Store performance summary">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <ShoppingBag className="h-4 w-4 text-gray-400" />
@@ -159,7 +159,7 @@ export const StoreProfile = () => {
       )}
 
       {store.prescriptionsReceived.length > 0 && (
-        <Card title="Prescriptions Received">
+        <Card title="Medicine requests received">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -186,7 +186,7 @@ export const StoreProfile = () => {
       )}
 
       {store.quotesSubmitted.length > 0 && (
-        <Card title="Quotes Submitted">
+        <Card title="Price offers sent">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -250,7 +250,7 @@ export const StoreProfile = () => {
       )}
 
       {store.safetyReports.length > 0 && (
-        <Card title="Safety Reports">
+        <Card title="Safety issues">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -281,7 +281,7 @@ export const StoreProfile = () => {
       )}
 
       {store.refunds.length > 0 && (
-        <Card title="Refunds">
+        <Card title="Refund requests">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>

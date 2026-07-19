@@ -21,7 +21,7 @@ import { SAFETY_REPORT_STATUS_COLORS, SAFETY_REPORT_SEVERITY_COLORS } from '@/ty
 
 const STATUS_OPTIONS = [
   { value: 'submitted', label: 'Submitted' }, { value: 'under_review', label: 'Under review' },
-  { value: 'action_taken', label: 'Action taken' }, { value: 'escalated', label: 'Escalated' },
+  { value: 'action_taken', label: 'Action taken' }, { value: 'escalated', label: 'Sent to senior team' },
   { value: 'closed', label: 'Closed' },
 ]
 const SEVERITY_OPTIONS = [
@@ -87,23 +87,23 @@ export const SafetyReportList = () => {
   const activeFilters = [search, status, severity, category, reporterType, targetType, scope, assignedTo, dateFrom, dateTo].filter(Boolean).length
   const columns = [
     { key: 'report', header: 'Report', render: (item: SafetyReport) => <div className="min-w-[210px]"><span className="font-mono text-xs text-slate-400">#{item.id}</span><p className="font-semibold capitalize text-slate-900">{label(item.category)}</p><p className="max-w-[260px] truncate text-xs text-slate-500">{item.description}</p></div> },
-    { key: 'parties', header: 'Reporter → Reported', render: (item: SafetyReport) => <div><p className="text-sm">{item.reporterName} <span className="text-slate-400">→</span> {item.reportedName}</p><p className="text-xs capitalize text-slate-500">{item.reporterType} → {item.targetType}</p></div> },
-    { key: 'severity', header: 'Severity', render: (item: SafetyReport) => <Badge className={SAFETY_REPORT_SEVERITY_COLORS[item.severity]}>{item.severity}</Badge> },
+    { key: 'parties', header: 'Reported by / Against', render: (item: SafetyReport) => <div><p className="text-sm">{item.reporterName} <span className="text-slate-400">→</span> {item.reportedName}</p><p className="text-xs capitalize text-slate-500">{item.reporterType} → {item.targetType}</p></div> },
+    { key: 'severity', header: 'How serious', render: (item: SafetyReport) => <Badge className={SAFETY_REPORT_SEVERITY_COLORS[item.severity]}>{item.severity}</Badge> },
     { key: 'status', header: 'Status', render: (item: SafetyReport) => <Badge className={SAFETY_REPORT_STATUS_COLORS[item.status]}>{label(item.status)}</Badge> },
-    { key: 'scope', header: 'Scope', render: (item: SafetyReport) => item.scope === 'GLOBAL' ? 'Global' : (item.cityName || 'Unassigned city') },
-    { key: 'assigned', header: 'Owner', render: (item: SafetyReport) => item.assignedToName || <span className="font-medium text-amber-700">Unassigned</span> },
+    { key: 'scope', header: 'Area', render: (item: SafetyReport) => item.scope === 'GLOBAL' ? 'All cities' : (item.cityName || 'City not set') },
+    { key: 'assigned', header: 'Assigned staff', render: (item: SafetyReport) => item.assignedToName || <span className="font-medium text-amber-700">Not assigned</span> },
     { key: 'created', header: 'Created', render: (item: SafetyReport) => new Date(item.createdAt).toLocaleString() },
   ]
 
   return <div className="space-y-5">
-    <div><h1 className="text-2xl font-bold text-slate-950">Safety reports</h1><p className="mt-1 text-sm text-slate-500">Investigate pharmacy, user and medicine-safety incidents with auditable actions.</p></div>
+    <div><h1 className="text-2xl font-bold text-slate-950">Safety Issues</h1><p className="mt-1 text-sm text-slate-500">Review serious problems involving a user, store or medicine, record your findings and close the case safely.</p></div>
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center gap-3 p-4">
         <div className="min-w-[280px] flex-1">
           <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1) }} placeholder="Search report, prescription, person…" />
         </div>
         <SelectFilter value={status} onChange={(value) => { setStatus(value); setPage(1) }} options={STATUS_OPTIONS} placeholder="All statuses" />
-        <SelectFilter value={severity} onChange={(value) => { setSeverity(value); setPage(1) }} options={SEVERITY_OPTIONS} placeholder="All severities" />
+        <SelectFilter value={severity} onChange={(value) => { setSeverity(value); setPage(1) }} options={SEVERITY_OPTIONS} placeholder="All seriousness levels" />
         <button
           type="button"
           onClick={() => setShowAdvanced((value) => !value)}
@@ -121,8 +121,8 @@ export const SafetyReportList = () => {
           <SelectFilter label="Category" value={category} onChange={(value) => { setCategory(value); setPage(1) }} options={CATEGORY_OPTIONS} />
           <SelectFilter label="Reporter" value={reporterType} onChange={(value) => { setReporterType(value); setPage(1) }} options={TYPE_OPTIONS} />
           <SelectFilter label="Reported party" value={targetType} onChange={(value) => { setTargetType(value); setPage(1) }} options={TYPE_OPTIONS} />
-          <SelectFilter label="Scope" value={scope} onChange={(value) => { setScope(value); setPage(1) }} options={SCOPE_OPTIONS} />
-          <SelectFilter label="Assignment" value={assignedTo} onChange={(value) => { setAssignedTo(value); setPage(1) }} options={ASSIGNMENT_OPTIONS} />
+          <SelectFilter label="City coverage" value={scope} onChange={(value) => { setScope(value); setPage(1) }} options={SCOPE_OPTIONS} />
+          <SelectFilter label="Assigned or not" value={assignedTo} onChange={(value) => { setAssignedTo(value); setPage(1) }} options={ASSIGNMENT_OPTIONS} />
           <DateRangeFilter from={dateFrom} to={dateTo} onFromChange={(value) => { setDateFrom(value); setPage(1) }} onToChange={(value) => { setDateTo(value); setPage(1) }} />
         </div>
       </div>}

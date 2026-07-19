@@ -62,10 +62,10 @@ export const RefundList = () => {
     { key: 'id', header: 'Refund ID', render: (item: Refund) => (
       <span className="font-mono text-xs text-gray-500">#{String(item.id).slice(0, 8)}</span>
     )},
-    { key: 'charge', header: 'Charge ID', render: (item: Refund) => (
+    { key: 'charge', header: 'Payment ID', render: (item: Refund) => (
       <span className="font-mono text-xs">{String(item.charge).slice(0, 8)}</span>
     )},
-    { key: 'source', header: 'Source', render: (item: Refund) => item.sourceDisplay },
+    { key: 'source', header: 'Refund type', render: (item: Refund) => item.sourceDisplay },
     { key: 'city', header: 'City', render: (item: Refund) => item.cityName || 'Unassigned' },
     { key: 'amount', header: 'Amount', sortable: true, render: (item: Refund) => (
       <span className="font-medium">{item.currency === 'INR' ? '₹' : item.currency} {item.amount.toFixed(2)}</span>
@@ -78,8 +78,8 @@ export const RefundList = () => {
         {item.status}
       </Badge>
     )},
-    { key: 'requestedByName', header: 'Requested By', render: (item: Refund) => item.requestedByName },
-    { key: 'assignedToName', header: 'Assigned To', render: (item: Refund) => item.assignedToName || '-' },
+    { key: 'requestedByName', header: 'Requested by', render: (item: Refund) => item.requestedByName },
+    { key: 'assignedToName', header: 'Assigned staff', render: (item: Refund) => item.assignedToName || 'Not assigned' },
     { key: 'createdAt', header: 'Created', sortable: true, render: (item: Refund) => new Date(item.createdAt).toLocaleDateString() },
   ]
 
@@ -95,8 +95,8 @@ export const RefundList = () => {
     <div className="space-y-4">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Payments & refunds</h1>
-          <p className="text-gray-500 mt-1">Refund cases only—payments and broadcast operations remain separate.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Refund Requests</h1>
+          <p className="text-gray-500 mt-1">Review money-return requests, assign them to staff and track whether the refund is complete.</p>
         </div>
         <PaymentTabs />
       </div>

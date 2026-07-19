@@ -122,7 +122,7 @@ export const RefundDetail = () => {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        {canAssign && <Button variant="secondary" onClick={() => setAssignOpen(true)}>Assign</Button>}
+        {canAssign && <Button variant="secondary" onClick={() => setAssignOpen(true)}>Assign staff</Button>}
         {canApprove && (
           <Button onClick={() => setShowApproveModal(true)}>Approve</Button>
         )}
@@ -139,7 +139,7 @@ export const RefundDetail = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
-          <Card title="Refund Details">
+          <Card title="Refund request details">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500">Amount</p>
@@ -162,7 +162,7 @@ export const RefundDetail = () => {
             </div>
           </Card>
 
-          <Card title="Payment Information">
+          <Card title="Payment details">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500">Payment Gateway</p>
@@ -185,7 +185,7 @@ export const RefundDetail = () => {
         </div>
 
         <div className="space-y-4">
-          <Card title="Request Info">
+          <Card title="People and dates">
             <div className="space-y-3">
               <div>
                 <p className="text-xs text-gray-500">Requested By</p>

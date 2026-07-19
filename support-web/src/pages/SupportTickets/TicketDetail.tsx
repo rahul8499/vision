@@ -107,7 +107,7 @@ export const TicketDetail = () => {
   })), [ticket?.messages])
 
   if (ticketQuery.isLoading) return <Loading />
-  if (ticketQuery.error || !ticket) return <ErrorState title="Support ticket not found" />
+  if (ticketQuery.error || !ticket) return <ErrorState title="Help request not found" />
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
@@ -119,14 +119,14 @@ export const TicketDetail = () => {
               <button onClick={() => navigate('/tickets')} className="mt-0.5 rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /></button>
               <div className="min-w-0"><div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500"><span>Support #{ticket.id}</span><span>•</span><span>{ticket.categoryDisplay}</span><span className={`flex items-center gap-1 ${isConnected ? 'text-emerald-600' : 'text-amber-600'}`}><CircleDot className="h-3 w-3" />{isConnected ? 'Live' : 'Refreshing'}</span></div><h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{ticket.subject}</h1></div>
             </div>
-            <div className="flex flex-wrap gap-2"><Badge className={TICKET_PRIORITY_COLORS[ticket.priority]}>{ticket.priorityDisplay} priority</Badge><Badge className={TICKET_STATUS_COLORS[ticket.status]}>{ticket.statusDisplay}</Badge>{canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Assign</Button>}</div>
+            <div className="flex flex-wrap gap-2"><Badge className={TICKET_PRIORITY_COLORS[ticket.priority]}>{ticket.priorityDisplay} priority</Badge><Badge className={TICKET_STATUS_COLORS[ticket.status]}>{ticket.statusDisplay}</Badge>{canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Assign staff</Button>}</div>
           </div>
         </div>
         <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
           <Metric icon={<MessageSquare />} label="Messages" value={String(ticket.messageCount)} />
           <Metric icon={<Clock3 />} label="Last activity" value={formatSafeDate(ticket.updatedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} />
           <Metric icon={<CalendarDays />} label="Created" value={formatSafeDate(ticket.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })} />
-          <Metric icon={<ShieldCheck />} label="Ownership" value={ticket.assignedToName || 'Unassigned'} />
+          <Metric icon={<ShieldCheck />} label="Assigned staff" value={ticket.assignedToName || 'Not assigned yet'} />
         </div>
       </section>
 
@@ -144,12 +144,12 @@ export const TicketDetail = () => {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4"><h2 className="font-semibold text-slate-900">Requester conversation</h2><p className="text-xs text-slate-500">Replies appear immediately in the user or store app</p></div>
+          <div className="border-b border-slate-200 px-5 py-4"><h2 className="font-semibold text-slate-900">Messages with the requester</h2><p className="text-xs text-slate-500">Your reply appears in the requester's app</p></div>
           <MessageThread messages={messages} onReply={async (text) => { await replyMutation.mutateAsync(text) }} isSending={replyMutation.isPending} showReplyForm={ticket.status !== 'closed'} />
         </section>
 
         <aside className="space-y-5">
-          <Panel title="Request details">
+          <Panel title="What the requester needs">
             <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">What happened</p><p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{ticket.description || 'No description provided.'}</p></div>
             <div className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">{ticket.requesterType === 'store' ? <Store className="h-5 w-5" /> : <User className="h-5 w-5" />}</div>
@@ -158,14 +158,14 @@ export const TicketDetail = () => {
             <div className="mt-4 grid grid-cols-2 gap-3"><Detail icon={<Tag />} label="Issue type" value={ticket.categoryDisplay} /><Detail icon={<LifeBuoy />} label="Channel" value="In-app support" /></div>
           </Panel>
 
-          <Panel title="Resolve ticket">
-            <label className="mb-1 block text-xs font-medium text-slate-600">Change status</label>
-            <select value={nextStatus} onChange={(event) => setNextStatus(event.target.value as TicketStatus)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary-200"><option value="">Select status…</option>{STATUS_OPTIONS.filter((option) => option.value !== ticket.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          <Panel title="Update or close this request">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Choose the next status</label>
+            <select value={nextStatus} onChange={(event) => setNextStatus(event.target.value as TicketStatus)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary-200"><option value="">Choose status…</option>{STATUS_OPTIONS.filter((option) => option.value !== ticket.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
             {(nextStatus === 'resolved' || nextStatus === 'closed') && <textarea value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} rows={4} placeholder="Explain what was fixed and any next steps…" className="mt-3 w-full resize-none rounded-lg border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-primary-200" />}
-            <Button className="mt-3 w-full" disabled={!nextStatus || ((nextStatus === 'resolved' || nextStatus === 'closed') && !resolutionNote.trim())} loading={statusMutation.isPending} onClick={() => statusMutation.mutate()}>Update ticket</Button>
+            <Button className="mt-3 w-full" disabled={!nextStatus || ((nextStatus === 'resolved' || nextStatus === 'closed') && !resolutionNote.trim())} loading={statusMutation.isPending} onClick={() => statusMutation.mutate()}>Save status</Button>
           </Panel>
 
-          {ticket.resolutionNote && <Panel title="Resolution"><p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{ticket.resolutionNote}</p>{ticket.resolvedAt && <p className="mt-2 text-xs text-slate-400">Resolved {formatSafeDate(ticket.resolvedAt)}</p>}</Panel>}
+          {ticket.resolutionNote && <Panel title="How it was solved"><p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{ticket.resolutionNote}</p>{ticket.resolvedAt && <p className="mt-2 text-xs text-slate-400">Resolved {formatSafeDate(ticket.resolvedAt)}</p>}</Panel>}
           <ContactHistoryPanel entityType="ticket" objectId={ticket.id} />
         </aside>
       </div>

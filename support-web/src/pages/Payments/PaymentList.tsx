@@ -36,7 +36,7 @@ export const PaymentList = () => {
     { key: 'paymentId', header: 'Payment ID', render: (item: PaymentRecord) => (
       <span className="font-mono text-xs text-slate-600">{item.paymentId || 'Not captured'}</span>
     )},
-    { key: 'source', header: 'Source', render: (item: PaymentRecord) => item.sourceDisplay },
+    { key: 'source', header: 'Payment for', render: (item: PaymentRecord) => item.sourceDisplay },
     { key: 'customerName', header: 'Customer', render: (item: PaymentRecord) => (
       <div><p className="font-medium text-slate-800">{item.customerName || 'Unknown'}</p><p className="text-xs capitalize text-slate-400">{item.customerType}</p></div>
     )},
@@ -47,7 +47,7 @@ export const PaymentList = () => {
     { key: 'status', header: 'Payment status', render: (item: PaymentRecord) => (
       <Badge variant={badgeVariant(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
     )},
-    { key: 'operationalStatus', header: 'Operational state', render: (item: PaymentRecord) => item.operationalStatusDisplay || '—' },
+    { key: 'operationalStatus', header: 'Service progress', render: (item: PaymentRecord) => item.operationalStatusDisplay || '—' },
     { key: 'createdAt', header: 'Created', render: (item: PaymentRecord) => new Date(item.createdAt).toLocaleString() },
   ]
 
@@ -55,13 +55,13 @@ export const PaymentList = () => {
   return (
     <div className="space-y-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><h1 className="text-2xl font-bold text-slate-950">Payments & refunds</h1><p className="mt-1 text-sm text-slate-500">Read-only financial ledger for emergency broadcasts and store subscriptions.</p></div>
+        <div><h1 className="text-2xl font-bold text-slate-950">Payments</h1><p className="mt-1 text-sm text-slate-500">View customer payments for emergency requests and store plans. Payment records cannot be edited here.</p></div>
         <PaymentTabs />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric icon={<CreditCard />} label="Matching payments" value={summary?.totalPayments ?? 0} />
-        <Metric icon={<Radio />} label="Broadcasting now" value={summary?.broadcasting ?? 0} />
+        <Metric icon={<CreditCard />} label="Payments shown" value={summary?.totalPayments ?? 0} />
+        <Metric icon={<Radio />} label="Emergency search running" value={summary?.broadcasting ?? 0} />
         <Metric icon={<CheckCircle2 />} label="Service delivered" value={summary?.serviceDelivered ?? 0} />
         <Metric icon={<Activity />} label="Refund pending" value={summary?.refundPending ?? 0} />
         <Metric icon={<AlertTriangle />} label="Refund failed" value={summary?.refundFailed ?? 0} danger />

@@ -56,7 +56,7 @@ export const StaffList = () => {
   const columns = [
     { key: 'email', header: 'Email', render: (item: StaffMember) => item.email },
     { key: 'name', header: 'Name', render: (item: StaffMember) => item.name },
-    { key: 'role', header: 'Role', render: (item: StaffMember) => (
+    { key: 'role', header: 'Access level', render: (item: StaffMember) => (
       <Badge variant="default">{ROLE_LABELS[item.role] || item.role}</Badge>
     )},
     { key: 'status', header: 'Status', render: (item: StaffMember) => (
@@ -71,8 +71,8 @@ export const StaffList = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
-          <p className="text-gray-500 mt-1">Manage support staff and permissions</p>
+          <h1 className="text-2xl font-bold text-gray-900">Support Team</h1>
+          <p className="text-gray-500 mt-1">Add support-team members and control which cities and actions they can access.</p>
         </div>
         <Button onClick={() => navigate('/staff/new')} leftIcon={<UserPlus className="h-4 w-4" />}>
           Add Staff
@@ -82,7 +82,7 @@ export const StaffList = () => {
       <FilterBar onReset={() => { setSearch(''); setStatus(''); setRole(''); setPage(1); }} activeFiltersCount={[status, role, search].filter(Boolean).length}>
         <SearchInput value={search} onChange={setSearch} />
         <SelectFilter label="Status" value={status} onChange={setStatus} options={STATUS_OPTIONS} />
-        <SelectFilter label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
+        <SelectFilter label="Access level" value={role} onChange={setRole} options={ROLE_OPTIONS} />
       </FilterBar>
 
       {isLoading ? (

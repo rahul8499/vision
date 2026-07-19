@@ -20,7 +20,7 @@ const actionLabels: Record<SafetyAction, string> = {
   warning_sent: 'Record warning sent',
   account_suspended: 'Suspend reported account',
   account_restored: 'Restore reported account',
-  escalated: 'Escalate',
+  escalated: 'Send to senior team',
   closed: 'Close with resolution',
 }
 const label = (value: string) => value.replace(/_/g, ' ')
@@ -52,8 +52,8 @@ export const SafetyReportDetail = () => {
   })
   const noteMutation = useMutation({
     mutationFn: (body: string) => safetyReportsApi.addInternalNote(id!, body),
-    onSuccess: () => { refresh(); toast.success('Internal note added') },
-    onError: () => toast.error('Internal note could not be added'),
+    onSuccess: () => { refresh(); toast.success('Private staff note added') },
+    onError: () => toast.error('Private staff note could not be added'),
   })
   const actionMutation = useMutation({
     mutationFn: () => safetyReportsApi.action(id!, selectedAction!, actionNote.trim()),
@@ -95,7 +95,7 @@ export const SafetyReportDetail = () => {
         {report.status === 'submitted' && <Button variant="secondary" onClick={() => openAction('reviewed')}>Start review</Button>}
         {canResolve && <>
           <Button variant="secondary" onClick={() => openAction('warning_sent')}>Record warning</Button>
-          <Button variant="secondary" onClick={() => openAction('escalated')}>Escalate</Button>
+          <Button variant="secondary" onClick={() => openAction('escalated')}>Send to senior team</Button>
           <Button onClick={() => openAction('closed')}>Resolve & close</Button>
         </>}
         {isAdmin && <>
@@ -108,7 +108,7 @@ export const SafetyReportDetail = () => {
 
     <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
       <div className="space-y-5">
-        <Card title="Incident details">
+        <Card title="What happened">
           <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{report.description}</p>
           {report.resolutionNote && <div className="mt-4 rounded-lg bg-emerald-50 p-3"><p className="text-xs font-semibold uppercase text-emerald-700">Resolution</p><p className="mt-1 text-sm text-emerald-900">{report.resolutionNote}</p></div>}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -129,24 +129,24 @@ export const SafetyReportDetail = () => {
               : undefined}
           />
         </div>
-        <Card title="Action history">
+        <Card title="Actions already taken">
           {!report.actionHistory.length ? <p className="text-sm text-slate-500">No actions recorded yet.</p> : <div className="space-y-3">{report.actionHistory.map((action) => <div key={action.id} className="flex gap-3 border-b border-slate-100 pb-3 last:border-0"><div className="rounded-lg bg-slate-100 p-2"><AlertTriangle className="h-4 w-4 text-slate-600" /></div><div><p className="text-sm"><strong>{action.adminName}</strong> · {label(action.action)}</p><p className="mt-0.5 text-sm text-slate-600">{action.note}</p><p className="mt-1 text-xs text-slate-400">{new Date(action.createdAt).toLocaleString()}</p></div></div>)}</div>}
         </Card>
       </div>
       <div className="space-y-5">
-        <Card title="Resolution workflow" subtitle="Recommended order for a safe, auditable decision">
+        <Card title="Steps to finish this case" subtitle="Complete these steps in order and record what you checked">
           <div className="space-y-3">
-            <WorkflowStep done={!!report.assignedToId} number="1" title="Own the case" description={report.assignedToName ? `Assigned to ${report.assignedToName}` : 'Assign the report before investigation.'} />
-            <WorkflowStep done={report.status !== 'submitted'} number="2" title="Verify evidence" description="Review the incident, linked order, both parties and add internal findings." />
-            <WorkflowStep done={['action_taken', 'escalated', 'closed'].includes(report.status)} number="3" title="Record decision" description="Warning, escalation or account action must include evidence." />
-            <WorkflowStep done={isClosed} number="4" title="Resolve & close" description="Close with a clear resolution note for future audit." />
+            <WorkflowStep done={!!report.assignedToId} number="1" title="Assign a staff member" description={report.assignedToName ? `Assigned to ${report.assignedToName}` : 'Choose who will handle this case.'} />
+            <WorkflowStep done={report.status !== 'submitted'} number="2" title="Check the proof" description="Review what happened, the linked order and both people involved. Add a private staff note with your findings." />
+            <WorkflowStep done={['action_taken', 'escalated', 'closed'].includes(report.status)} number="3" title="Write the decision" description="Explain any warning, senior-team review or account action and include evidence." />
+            <WorkflowStep done={isClosed} number="4" title="Finish and close" description="Write clearly how the issue was solved, then close the case." />
           </div>
         </Card>
-        <Card title="Case information">
+        <Card title="Case details">
           <div className="space-y-3">
-            <Info label="Severity" value={report.severity} />
+            <Info label="How serious" value={report.severity} />
             <Info label="Status" value={label(report.status)} />
-            <Info label="Owner" value={report.assignedToName || 'Unassigned'} />
+            <Info label="Assigned staff" value={report.assignedToName || 'Not assigned yet'} />
             <Info label="Created" value={new Date(report.createdAt).toLocaleString()} />
             <Info label="Last updated" value={new Date(report.updatedAt).toLocaleString()} />
           </div>

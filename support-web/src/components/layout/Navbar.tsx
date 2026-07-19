@@ -83,12 +83,12 @@ export const Navbar = () => {
       </div>
       <div className="flex items-center gap-3">
         <select
-          aria-label="Operational city"
+          aria-label="Choose the city you are working in"
           value={selectedCityId}
           onChange={(event) => setSelectedCityId(event.target.value)}
           className="hidden h-9 max-w-48 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 sm:block"
         >
-          <option value="">All permitted cities</option>
+          <option value="">All cities I can access</option>
           {cities.map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
         </select>
         <button

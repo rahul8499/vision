@@ -24,7 +24,7 @@ export const InternalNotesPanel = ({ notes, onAddNote, title = 'Internal Notes',
       </div>
       <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto">
         {notes.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-4">No internal notes yet</p>
+          <p className="text-sm text-gray-500 text-center py-4">No private staff notes yet</p>
         ) : (
           notes.map((note) => (
             <div key={note.id} className="bg-amber-50 border border-amber-200 rounded-lg p-3">

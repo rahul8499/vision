@@ -51,7 +51,7 @@ export const StaffForm = () => {
         <Input label="Email" type="email" {...register('email', { required: 'Email is required' })} />
         <Input label="Password" type="password" {...register('password', { required: 'Password is required', minLength: { value: 8, message: 'Minimum 8 characters' } })} />
         <SelectFilter
-          label="Role"
+          label="Access level"
           value={role}
           onChange={(value) => { setRole(value as UserRole); setValue('role', value as UserRole) }}
           options={ROLE_OPTIONS}

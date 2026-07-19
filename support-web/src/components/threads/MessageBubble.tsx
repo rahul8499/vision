@@ -43,7 +43,7 @@ export const MessageBubble = ({
               : 'rounded-tr-md bg-slate-900 text-white',
           pending ? 'opacity-60' : '',
         ].join(' ')}>
-          {isInternal && <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">Internal note</p>}
+          {isInternal && <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">Private staff note</p>}
           <p className="whitespace-pre-wrap break-words">{content}</p>
           {attachments.map((attachment) => (
             <a key={attachment} href={attachment} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-2 rounded-lg bg-black/5 px-3 py-2 text-xs underline">
