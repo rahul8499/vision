@@ -75,6 +75,9 @@ apiClient.interceptors.response.use(
         const accessToken = refreshData.access
         const newRefreshToken = refreshData.refresh
         const user = useAuthStore.getState().user
+        if (!user) {
+          throw new Error('No authenticated support user')
+        }
         useAuthStore.getState().setTokens(accessToken, newRefreshToken, user)
 
         if (originalRequest.headers) {

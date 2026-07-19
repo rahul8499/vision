@@ -9,6 +9,8 @@ from .models import (
     SupportAuditLog,
     SLAConfiguration,
     SupportNotification,
+    ContactLog,
+    SavedReplyTemplate,
 )
 
 
@@ -82,3 +84,17 @@ class SupportNotificationAdmin(admin.ModelAdmin):
     list_filter = ("notification_type", "is_read", "created_at")
     search_fields = ("title", "message", "recipient__user__email")
     readonly_fields = ("created_at",)
+
+
+@admin.register(ContactLog)
+class ContactLogAdmin(admin.ModelAdmin):
+    list_display = ("content_type", "object_id", "channel", "outcome", "created_by", "follow_up_at", "created_at")
+    list_filter = ("channel", "outcome", "created_at")
+
+
+@admin.register(SavedReplyTemplate)
+class SavedReplyTemplateAdmin(admin.ModelAdmin):
+    list_display = ("title", "category", "visibility", "is_active", "created_by", "updated_at")
+    list_filter = ("visibility", "is_active", "category")
+    search_fields = ("title", "body", "category")
+    readonly_fields = ("created_at", "updated_at")

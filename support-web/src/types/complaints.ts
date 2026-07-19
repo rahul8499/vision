@@ -66,6 +66,7 @@ export interface Complaint {
   respondentName: string
   orderId?: number
   assignedTo?: string
+  assignedToName?: string
   resolutionNotes?: string
   resolvedAt?: string
   unreadCount: number

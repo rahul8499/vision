@@ -1,4 +1,6 @@
 from django.conf import settings
+from datetime import timedelta
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
@@ -11,7 +13,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
 
 from .authentication import SupportJWTAuthentication
-from .models import SupportStaff, SupportSession, InternalNote, SafetyReportAction
+from .models import SupportStaff, SupportSession, InternalNote, SafetyReportAction, SupportAssignment, SLAConfiguration, SupportNotification, ContactLog, SavedReplyTemplate, RefundRequest
 from .permissions import (
     IsSupportStaff, IsSupportAgent, IsSupportSupervisor, IsSupportAdmin,
     CanApproveRefund, CanProcessRefund, CanManageStaff, CanBulkAssign, CanViewAuditLogs
@@ -25,7 +27,7 @@ from .serializers import (
     SupportStaffSerializer, SupportStaffCreateSerializer,
     SupportAssignmentSerializer, InternalNoteSerializer, InternalNoteCreateSerializer,
     SafetyReportSerializer, SafetyReportActionSerializer, SafetyReportActionCreateSerializer,
-    SupportAuditLogSerializer, SLAConfigurationSerializer, SupportNotificationSerializer,
+    SupportAuditLogSerializer, SLAConfigurationSerializer, SupportNotificationSerializer, ContactLogSerializer, SavedReplyTemplateSerializer,
     UserProfileSerializer, StoreProfileSerializer,
 )
 from complaints.serializers import ComplaintListSerializer, ComplaintDetailSerializer
@@ -257,6 +259,41 @@ class StaffListCreateView(APIView):
         return ok(SupportStaffSerializer(staff).data, message="Staff created successfully.", status_code=status.HTTP_201_CREATED)
 
 
+class AssigneeListView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportSupervisor]
+
+    def get(self, request):
+        scope = request.query_params.get("scope", "GLOBAL").upper()
+        city_id = request.query_params.get("city")
+        city_ids_param = request.query_params.get("cities", "")
+        if scope not in ("CITY", "GLOBAL"):
+            return fail("Invalid scope.", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            city_id = int(city_id) if city_id else None
+        except (TypeError, ValueError):
+            return fail("Invalid city.", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            city_ids = {int(value) for value in city_ids_param.split(",") if value.strip()}
+        except (TypeError, ValueError):
+            return fail("Invalid cities.", status_code=status.HTTP_400_BAD_REQUEST)
+        staff = notification_service.eligible_staff_for_case(scope, city_id)
+        for required_city_id in city_ids:
+            staff = staff.filter(
+                Q(role=SupportStaff.ROLE_ADMIN)
+                | Q(all_cities_access=True)
+                | Q(cities__id=required_city_id)
+            )
+        staff = staff.distinct().select_related("user").order_by(
+            "user__first_name", "user__last_name", "user__email"
+        )
+        return ok([{
+            "id": str(item.id),
+            "name": item.user.get_full_name() or item.user.username or item.user.email,
+            "role": item.role,
+        } for item in staff])
+
+
 class StaffDetailView(APIView):
     authentication_classes = [SupportJWTAuthentication]
     permission_classes = [CanManageStaff]
@@ -290,6 +327,10 @@ class StaffDetailView(APIView):
         staff = staff_selectors.get_staff_by_id(pk)
         if not staff:
             return fail("Staff not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if staff.id == request.support_staff.id:
+            return fail("You cannot deactivate your own account.", status_code=status.HTTP_400_BAD_REQUEST)
+        if staff.role == SupportStaff.ROLE_ADMIN and SupportStaff.objects.filter(role=SupportStaff.ROLE_ADMIN, is_active=True).count() <= 1:
+            return fail("The last active admin cannot be deactivated.", status_code=status.HTTP_400_BAD_REQUEST)
         staff.is_active = False
         staff.save(update_fields=["is_active"])
         ip, ua = _get_client_info(request)
@@ -611,6 +652,11 @@ class TicketListView(APIView):
         except PermissionError as exc:
             return fail(str(exc), status_code=status.HTTP_403_FORBIDDEN)
         tickets = qs.select_related("requester_user", "requester_store").prefetch_related("messages")
+        assignee_ids = {int(ticket.assigned_to) for ticket in tickets if str(ticket.assigned_to or "").isdigit()}
+        assignee_names = {
+            str(staff.id): staff.user.get_full_name() or staff.user.username or staff.user.email
+            for staff in SupportStaff.objects.select_related("user").filter(id__in=assignee_ids)
+        }
         data = []
         for ticket in tickets:
             data.append({
@@ -631,6 +677,7 @@ class TicketListView(APIView):
                     ticket.requester_user.name if ticket.requester_user else "Unknown requester"
                 ),
                 "assigned_to": ticket.assigned_to or None,
+                "assigned_to_name": assignee_names.get(str(ticket.assigned_to)),
                 "resolution_note": ticket.resolution_note or None,
                 "resolved_at": ticket.resolved_at,
                 "created_at": ticket.created_at,
@@ -694,6 +741,7 @@ class TicketDetailView(APIView):
                 ticket.requester_user.name if ticket.requester_user else "Unknown requester"
             ),
             "assigned_to": ticket.assigned_to or None,
+            "assigned_to_name": None,
             "resolution_note": ticket.resolution_note or None,
             "resolved_at": ticket.resolved_at,
             "created_at": ticket.created_at,
@@ -713,7 +761,31 @@ class TicketDetailView(APIView):
                 "created_at": m.created_at,
             } for m in messages],
         }
+        if ticket.assigned_to and str(ticket.assigned_to).isdigit():
+            assignee = SupportStaff.objects.select_related("user").filter(id=ticket.assigned_to).first()
+            if assignee:
+                data["assigned_to_name"] = assignee.user.get_full_name() or assignee.user.username or assignee.user.email
         return ok(data, status_code=status.HTTP_200_OK)
+
+
+class TicketAssignView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportSupervisor]
+
+    def post(self, request, ticket_id):
+        ticket = ticket_selectors.get_ticket_by_id(ticket_id)
+        if not ticket or not _can_access_scope(ticket, request.support_staff):
+            return fail("Support ticket not found.", status_code=status.HTTP_404_NOT_FOUND)
+        assigned_to_id = request.data.get("assigned_to")
+        if not assigned_to_id:
+            return fail("assigned_to is required.", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            ticket, _ = ticket_service.assign_ticket(ticket_id, assigned_to_id, request.support_staff)
+            ip, ua = _get_client_info(request)
+            audit_service.log_audit(actor=request.support_staff, action="assign_ticket", entity_type="ticket", entity_id=ticket.id, ip_address=ip, user_agent=ua)
+            return ok({"ticket_id": ticket.id, "assigned_to_id": assigned_to_id}, message="Ticket assigned.")
+        except ValueError as exc:
+            return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
 
 
 class TicketReplyView(APIView):
@@ -1437,6 +1509,27 @@ class RefundDetailView(APIView):
         return ok(RefundRequestSerializer(refund).data, status_code=status.HTTP_200_OK)
 
 
+class RefundAssignView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportSupervisor]
+
+    def post(self, request, pk):
+        refund = refund_selectors.get_refund_by_id(pk)
+        if not refund or not _can_access_city_id(refund.charge.city_id, request.support_staff):
+            return fail("Refund not found.", status_code=status.HTTP_404_NOT_FOUND)
+        assigned_to_id = request.data.get("assigned_to")
+        if not assigned_to_id:
+            return fail("assigned_to is required.", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            refund = refund_service.assign_refund(pk, assigned_to_id)
+            ip, ua = _get_client_info(request)
+            audit_service.log_audit(actor=request.support_staff, action="assign_refund", entity_type="refund_request", entity_id=refund.id, ip_address=ip, user_agent=ua)
+            from .serializers import RefundRequestSerializer
+            return ok(RefundRequestSerializer(refund).data, message="Refund assigned.")
+        except ValueError as exc:
+            return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
+
 class RefundReviewView(APIView):
     authentication_classes = [SupportJWTAuthentication]
     permission_classes = [CanApproveRefund]
@@ -1608,6 +1701,13 @@ class SafetyReportAssignView(APIView):
             report=report, action="assigned", admin=request.support_staff,
             note=f"Assigned to {assignee.user.get_full_name() or assignee.user.username}.",
         )
+        notification_service.create_assignment_notification(
+            recipient=assignee,
+            title="Safety report assigned to you",
+            message=f"Safety report #{report.id}: {report.get_category_display()}",
+            entity_type="safety_report",
+            entity_id=report.id,
+        )
         return ok(SafetyReportSerializer(report).data, message="Safety report assigned.")
 
 
@@ -1761,6 +1861,120 @@ class NotificationUnreadCountView(APIView):
     def get(self, request):
         count = notification_service.get_unread_count(request.support_staff)
         return ok({"unread_count": count}, status_code=status.HTTP_200_OK)
+
+
+class NotificationMarkAllReadView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def post(self, request):
+        updated = SupportNotification.objects.filter(recipient=request.support_staff, is_read=False).update(is_read=True)
+        return ok({"updated": updated}, message="All notifications marked as read.")
+
+
+class SupportOperationsView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def get(self, request):
+        staff = request.support_staff
+        now = timezone.now()
+        work = []
+        assignments = SupportAssignment.objects.filter(assigned_to=staff, is_active=True).select_related("content_type").order_by("-assigned_at")[:100]
+        for assignment in assignments:
+            obj = assignment.content_object
+            if not obj:
+                continue
+            status_value = getattr(obj, "status", "open")
+            if status_value in {"closed", "resolved", "processed", "rejected", "cancelled"}:
+                continue
+            work.append({
+                "type": assignment.content_type.model, "id": assignment.object_id,
+                "title": getattr(obj, "subject", None) or getattr(obj, "category", None) or f"Case #{assignment.object_id}",
+                "status": status_value, "priority": getattr(obj, "priority", "medium"),
+                "created_at": getattr(obj, "created_at", assignment.assigned_at),
+            })
+        for report in SafetyReport.objects.filter(assigned_to_id=staff.id).exclude(status="closed").order_by("-created_at")[:50]:
+            work.append({"type": "safetyreport", "id": report.id, "title": report.get_category_display(), "status": report.status, "priority": report.severity, "created_at": report.created_at})
+        for refund in RefundRequest.objects.filter(assigned_to=staff, status__in=["pending", "approved", "failed"]).order_by("-created_at")[:50]:
+            work.append({"type": "refundrequest", "id": refund.id, "title": f"Refund ₹{refund.amount}", "status": refund.status, "priority": "high" if refund.status == "failed" else "medium", "created_at": refund.created_at})
+
+        policies = list(SLAConfiguration.objects.filter(is_active=True).values("id", "entity_type", "priority", "first_response_minutes", "resolution_minutes"))
+        breach_counts = {"complaint": 0, "ticket": 0, "refund": 0, "safety_report": 0}
+        first_response_breaches = {"complaint": 0, "ticket": 0, "refund": 0, "safety_report": 0}
+        for policy in policies:
+            cutoff = now - timedelta(minutes=policy["resolution_minutes"])
+            response_cutoff = now - timedelta(minutes=policy["first_response_minutes"])
+            if policy["entity_type"] == "complaint":
+                base = _scope_queryset(Complaint.objects.all(), staff)
+                breach_counts["complaint"] += base.filter(priority=policy["priority"], created_at__lt=cutoff).exclude(status__in=["closed", "withdrawn"]).count()
+                first_response_breaches["complaint"] += base.filter(priority=policy["priority"], created_at__lt=response_cutoff).exclude(status__in=["closed", "withdrawn"]).exclude(messages__sender_type="platform").count()
+            elif policy["entity_type"] == "ticket":
+                base = _scope_queryset(PlatformSupportTicket.objects.all(), staff, include_global=True)
+                breach_counts["ticket"] += base.filter(priority=policy["priority"], created_at__lt=cutoff).exclude(status__in=["resolved", "closed"]).count()
+                first_response_breaches["ticket"] += base.filter(priority=policy["priority"], created_at__lt=response_cutoff).exclude(status__in=["resolved", "closed"]).exclude(messages__sender_type="platform").count()
+            elif policy["entity_type"] == "refund":
+                base = RefundRequest.objects.all(); allowed = _staff_city_ids(staff)
+                if allowed is not None: base = base.filter(charge__city_id__in=allowed)
+                breach_counts["refund"] += base.filter(created_at__lt=cutoff, status__in=["pending", "approved", "failed"]).count()
+                first_response_breaches["refund"] += base.filter(created_at__lt=response_cutoff, status="pending", reviewed_by__isnull=True).count()
+            elif policy["entity_type"] == "safety_report":
+                base = _scope_queryset(SafetyReport.objects.all(), staff, include_global=True)
+                breach_counts["safety_report"] += base.filter(severity=policy["priority"], created_at__lt=cutoff).exclude(status="closed").count()
+                first_response_breaches["safety_report"] += base.filter(severity=policy["priority"], created_at__lt=response_cutoff, admin_actions__isnull=True).exclude(status="closed").count()
+
+        contacts = ContactLog.objects.filter(created_by=staff).select_related("created_by__user", "content_type").order_by("-created_at")[:50]
+        replies = SavedReplyTemplate.objects.filter(is_active=True).order_by("category", "title")
+        notifications = SupportNotification.objects.filter(recipient=staff).order_by("-created_at")[:50]
+        return ok({
+            "my_work": work[:100], "sla": {"policies": policies, "breaches": breach_counts, "first_response_breaches": first_response_breaches},
+            "notifications": SupportNotificationSerializer(notifications, many=True).data,
+            "contacts": ContactLogSerializer(contacts, many=True).data,
+            "saved_replies": SavedReplyTemplateSerializer(replies, many=True).data,
+            "analytics": dashboard_service.get_dashboard_summary(),
+        })
+
+
+class ContactLogListCreateView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+    model_map = {"complaint": Complaint, "ticket": PlatformSupportTicket, "refund": RefundRequest, "safety_report": SafetyReport}
+
+    def get(self, request):
+        model = self.model_map.get(request.query_params.get("entity_type"))
+        object_id = request.query_params.get("object_id")
+        if not model or not object_id:
+            return fail("Valid entity_type and object_id are required.")
+        content_type = ContentType.objects.get_for_model(model)
+        logs = ContactLog.objects.filter(content_type=content_type, object_id=object_id).select_related("created_by__user", "content_type").order_by("-created_at")
+        return ok({"results": ContactLogSerializer(logs, many=True).data})
+
+    def post(self, request):
+        model = self.model_map.get(request.data.get("entity_type"))
+        if not model or not model.objects.filter(id=request.data.get("object_id")).exists():
+            return fail("Valid entity_type and object_id are required.")
+        serializer = ContactLogSerializer(data=request.data)
+        if not serializer.is_valid():
+            return fail("Validation failed.", errors=serializer.errors)
+        log = serializer.save(content_type=ContentType.objects.get_for_model(model), created_by=request.support_staff)
+        return ok(ContactLogSerializer(log).data, message="Contact activity recorded.", status_code=status.HTTP_201_CREATED)
+
+
+class SavedReplyListCreateView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [IsSupportStaff]
+
+    def get(self, request):
+        return ok({"results": SavedReplyTemplateSerializer(SavedReplyTemplate.objects.filter(is_active=True), many=True).data})
+
+    def post(self, request):
+        if request.support_staff.role not in (SupportStaff.ROLE_SUPERVISOR, SupportStaff.ROLE_ADMIN):
+            return fail("Only supervisors or admins can create templates.", status_code=status.HTTP_403_FORBIDDEN)
+        serializer = SavedReplyTemplateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return fail("Validation failed.", errors=serializer.errors)
+        template = serializer.save(created_by=request.support_staff)
+        return ok(SavedReplyTemplateSerializer(template).data, message="Saved reply created.", status_code=status.HTTP_201_CREATED)
 
 
 # ---------------------------------------------------------------------------

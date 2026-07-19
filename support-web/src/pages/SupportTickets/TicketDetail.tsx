@@ -4,14 +4,18 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, CircleDot, Clock3, LifeBuoy, MessageSquare, ShieldCheck, User, Store, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { normalizeTicketMessage, ticketsApi } from '@/api/ticketsApi'
+import { assigneesApi } from '@/api/assigneesApi'
 import { MessageThread } from '@/components/threads/MessageThread'
+import { ContactHistoryPanel } from '@/components/threads/ContactHistoryPanel'
 import { Badge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
+import { AssignModal } from '@/components/modals/AssignModal'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/store/authStore'
+import { usePermissions } from '@/hooks/usePermissions'
 import { formatSafeDate } from '@/utils/formatters'
 import type { Ticket, TicketStatus } from '@/types/tickets'
 import { TICKET_PRIORITY_COLORS, TICKET_STATUS_COLORS } from '@/types/tickets'
@@ -29,12 +33,21 @@ export const TicketDetail = () => {
   const token = useAuthStore((state) => state.accessToken)
   const [nextStatus, setNextStatus] = useState<TicketStatus | ''>('')
   const [resolutionNote, setResolutionNote] = useState('')
+  const [assignOpen, setAssignOpen] = useState(false)
+  const { hasAnyRole } = usePermissions()
+  const canAssign = hasAnyRole(['admin', 'supervisor'])
   const wsBase = (import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000').replace(/\/$/, '')
   const { subscribe, isConnected } = useWebSocket(`${wsBase}/ws/support-tickets/${id}/?token=${encodeURIComponent(token || '')}`)
 
   const ticketQuery = useQuery({
     queryKey: ['ticket', id], queryFn: () => ticketsApi.getOne(id!), enabled: !!id,
     staleTime: 10_000, refetchInterval: isConnected ? false : 5_000,
+  })
+  const assigneesQuery = useQuery({
+    queryKey: ['assignees', ticketQuery.data?.scope, ticketQuery.data?.cityId],
+    queryFn: () => assigneesApi.getAll(ticketQuery.data!.scope, ticketQuery.data?.cityId),
+    enabled: canAssign && !!ticketQuery.data,
+    staleTime: 60_000,
   })
 
   useEffect(() => subscribe('support_ticket_message', (payload) => {
@@ -106,16 +119,28 @@ export const TicketDetail = () => {
               <button onClick={() => navigate('/tickets')} className="mt-0.5 rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /></button>
               <div className="min-w-0"><div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500"><span>Support #{ticket.id}</span><span>•</span><span>{ticket.categoryDisplay}</span><span className={`flex items-center gap-1 ${isConnected ? 'text-emerald-600' : 'text-amber-600'}`}><CircleDot className="h-3 w-3" />{isConnected ? 'Live' : 'Refreshing'}</span></div><h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{ticket.subject}</h1></div>
             </div>
-            <div className="flex flex-wrap gap-2"><Badge className={TICKET_PRIORITY_COLORS[ticket.priority]}>{ticket.priorityDisplay} priority</Badge><Badge className={TICKET_STATUS_COLORS[ticket.status]}>{ticket.statusDisplay}</Badge></div>
+            <div className="flex flex-wrap gap-2"><Badge className={TICKET_PRIORITY_COLORS[ticket.priority]}>{ticket.priorityDisplay} priority</Badge><Badge className={TICKET_STATUS_COLORS[ticket.status]}>{ticket.statusDisplay}</Badge>{canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Assign</Button>}</div>
           </div>
         </div>
         <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
           <Metric icon={<MessageSquare />} label="Messages" value={String(ticket.messageCount)} />
           <Metric icon={<Clock3 />} label="Last activity" value={formatSafeDate(ticket.updatedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} />
           <Metric icon={<CalendarDays />} label="Created" value={formatSafeDate(ticket.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })} />
-          <Metric icon={<ShieldCheck />} label="Ownership" value={ticket.assignedTo || 'Unassigned'} />
+          <Metric icon={<ShieldCheck />} label="Ownership" value={ticket.assignedToName || 'Unassigned'} />
         </div>
       </section>
+
+      <AssignModal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        itemLabel={`Ticket #${ticket.id}`}
+        assignees={assigneesQuery.data || []}
+        onAssign={async (agentId) => {
+          await ticketsApi.assign(String(ticket.id), agentId)
+          await queryClient.invalidateQueries({ queryKey: ['ticket', id] })
+          await queryClient.invalidateQueries({ queryKey: ['tickets'] })
+        }}
+      />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -141,6 +166,7 @@ export const TicketDetail = () => {
           </Panel>
 
           {ticket.resolutionNote && <Panel title="Resolution"><p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{ticket.resolutionNote}</p>{ticket.resolvedAt && <p className="mt-2 text-xs text-slate-400">Resolved {formatSafeDate(ticket.resolvedAt)}</p>}</Panel>}
+          <ContactHistoryPanel entityType="ticket" objectId={ticket.id} />
         </aside>
       </div>
     </div>

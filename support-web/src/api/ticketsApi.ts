@@ -33,6 +33,7 @@ export const normalizeTicket = (raw: Raw): Ticket => ({
   priority: raw.priority || 'medium',
   priorityDisplay: asText(raw, 'priorityDisplay', 'priority_display', raw.priority || 'Medium'),
   assignedTo: pick(raw, 'assignedTo', 'assigned_to') || undefined,
+  assignedToName: pick(raw, 'assignedToName', 'assigned_to_name') || undefined,
   resolutionNote: pick(raw, 'resolutionNote', 'resolution_note') || undefined,
   resolvedAt: pick(raw, 'resolvedAt', 'resolved_at') || undefined,
   messageCount: Number(pick(raw, 'messageCount', 'message_count') || raw.messages?.length || 0),
@@ -79,5 +80,8 @@ export const ticketsApi = {
       resolvedAt: raw.resolved_at || undefined,
       updatedAt: raw.updated_at,
     }
+  },
+  assign: async (id: string, agentId: string): Promise<void> => {
+    await apiClient.post(`/tickets/${id}/assign/`, { assigned_to: agentId })
   },
 }

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { refundsApi } from '@/api/refundsApi'
+import { assigneesApi } from '@/api/assigneesApi'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card } from '@/components/common/Card'
 import { Badge } from '@/components/common/Badge'
@@ -8,11 +9,13 @@ import { Modal } from '@/components/common/Modal'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
+import { AssignModal } from '@/components/modals/AssignModal'
 import { ArrowLeft, Wallet, ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import type { Refund } from '@/types/refunds'
 import { REFUND_STATUS_COLORS } from '@/types/refunds'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export const RefundDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -29,12 +32,21 @@ export const RefundDetail = () => {
   const [paymentGateway, setPaymentGateway] = useState('')
   const [processedAmount, setProcessedAmount] = useState('')
   const [confirmAction, setConfirmAction] = useState(false)
+  const [assignOpen, setAssignOpen] = useState(false)
+  const { hasAnyRole } = usePermissions()
+  const canAssign = hasAnyRole(['admin', 'supervisor'])
 
   const { data: refund, isLoading, error } = useQuery({
     queryKey: ['refund', id],
     queryFn: () => refundsApi.getOne(id!),
     enabled: !!id,
     staleTime: 30000,
+  })
+  const assigneesQuery = useQuery({
+    queryKey: ['assignees', 'CITY', refund?.cityId],
+    queryFn: () => assigneesApi.getAll('CITY', refund?.cityId),
+    enabled: canAssign && !!refund?.cityId,
+    staleTime: 60_000,
   })
 
   const approveMutation = useMutation({
@@ -110,6 +122,7 @@ export const RefundDetail = () => {
       </div>
 
       <div className="flex gap-2 flex-wrap">
+        {canAssign && <Button variant="secondary" onClick={() => setAssignOpen(true)}>Assign</Button>}
         {canApprove && (
           <Button onClick={() => setShowApproveModal(true)}>Approve</Button>
         )}
@@ -179,6 +192,10 @@ export const RefundDetail = () => {
                 <p className="text-sm font-medium">{refund.requestedByName}</p>
               </div>
               <div>
+                <p className="text-xs text-gray-500">Assigned To</p>
+                <p className="text-sm">{refund.assignedToName || 'Unassigned'}</p>
+              </div>
+              <div>
                 <p className="text-xs text-gray-500">Reviewed By</p>
                 <p className="text-sm">{refund.reviewedByName || '-'}</p>
               </div>
@@ -195,6 +212,18 @@ export const RefundDetail = () => {
 
         </div>
       </div>
+
+      <AssignModal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        itemLabel={`Refund #${String(refund.id).slice(0, 8)}`}
+        assignees={assigneesQuery.data || []}
+        onAssign={async (agentId) => {
+          await refundsApi.assign(String(refund.id), agentId)
+          await queryClient.invalidateQueries({ queryKey: ['refund', id] })
+          await queryClient.invalidateQueries({ queryKey: ['refunds'] })
+        }}
+      />
 
       {/* Approve Modal */}
       <Modal isOpen={showApproveModal} onClose={() => { setShowApproveModal(false); setConfirmAction(false); }} title="Approve Refund">

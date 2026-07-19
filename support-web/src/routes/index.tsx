@@ -28,8 +28,10 @@ const StoreSearch = lazy(() => import('@/pages/StoreLookup/StoreSearch').then(m 
 const StoreProfile = lazy(() => import('@/pages/StoreLookup/StoreProfile').then(m => ({ default: m.StoreProfile })))
 const StaffList = lazy(() => import('@/pages/StaffManagement/StaffList').then(m => ({ default: m.StaffList })))
 const StaffDetail = lazy(() => import('@/pages/StaffManagement/StaffDetail').then(m => ({ default: m.StaffDetail })))
+const StaffForm = lazy(() => import('@/pages/StaffManagement/StaffForm').then(m => ({ default: m.StaffForm })))
 const AuditLogList = lazy(() => import('@/pages/AuditLogs/AuditLogList').then(m => ({ default: m.AuditLogList })))
 const SettingsPage = lazy(() => import('@/pages/Settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const OperationsPage = lazy(() => import('@/pages/Operations/OperationsPage').then(m => ({ default: m.OperationsPage })))
 
 export const router = createBrowserRouter([
   {
@@ -46,6 +48,7 @@ export const router = createBrowserRouter([
     children: [
       { path: '', element: LazyWrapper(DashboardPage) },
       { path: 'dashboard', element: LazyWrapper(DashboardPage) },
+      { path: 'operations', element: LazyWrapper(OperationsPage) },
       { path: 'emergency-monitoring', element: LazyWrapper(EmergencyMonitoringPage) },
       { path: 'complaints', element: LazyWrapper(ComplaintList) },
       { path: 'complaints/:id', element: LazyWrapper(ComplaintDetail) },
@@ -61,6 +64,7 @@ export const router = createBrowserRouter([
       { path: 'store-lookup', element: LazyWrapper(StoreSearch) },
       { path: 'store-lookup/:id', element: LazyWrapper(StoreProfile) },
       { path: 'staff', element: LazyWrapper(StaffList) },
+      { path: 'staff/new', element: LazyWrapper(StaffForm) },
       { path: 'staff/:id', element: LazyWrapper(StaffDetail) },
       { path: 'audit-logs', element: LazyWrapper(AuditLogList) },
       { path: 'settings', element: LazyWrapper(SettingsPage) },

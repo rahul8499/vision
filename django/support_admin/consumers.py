@@ -7,13 +7,11 @@ from .permissions import IsSupportStaff
 
 class AdminNotificationConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        self.user = self.scope.get("user")
-        if not self.user or self.user.is_anonymous:
-            await self.close()
-            return
-        staff = await self._get_staff(self.user)
+        from urllib.parse import parse_qs
+        token = parse_qs(self.scope.get("query_string", b"").decode()).get("token", [""])[0]
+        staff = await self._get_staff_from_token(token)
         if not staff or not staff.is_active:
-            await self.close()
+            await self.close(code=4003)
             return
         self.staff = staff
         self.group_name = "support_admin_dashboard"
@@ -54,11 +52,19 @@ class AdminNotificationConsumer(AsyncJsonWebsocketConsumer):
     async def sla_alert(self, event):
         await self.send_json({"type": "sla_alert", "data": event.get("data")})
 
+    async def notification_created(self, event):
+        if event.get("recipient_id") != self.staff.id:
+            return
+        await self.send_json({"type": "notification", "data": event.get("data")})
+
     @database_sync_to_async
-    def _get_staff(self, user):
+    def _get_staff_from_token(self, token):
+        from rest_framework_simplejwt.tokens import AccessToken
+        from rest_framework_simplejwt.exceptions import TokenError
         try:
-            return SupportStaff.objects.select_related("user").get(user=user, is_active=True)
-        except SupportStaff.DoesNotExist:
+            user_id = AccessToken(token).get("user_id")
+            return SupportStaff.objects.select_related("user").get(user_id=user_id, is_active=True)
+        except (SupportStaff.DoesNotExist, TokenError, TypeError, ValueError):
             return None
 
     @database_sync_to_async

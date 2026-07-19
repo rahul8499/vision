@@ -24,6 +24,7 @@ export const ConfirmModal = ({
   cancelText = 'Cancel',
   variant = 'primary',
   loading = false,
+  children,
 }: ConfirmModalProps) => {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -49,7 +50,8 @@ export const ConfirmModal = ({
       <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
         <p className="text-sm text-gray-500 mb-6">{message}</p>
-        <div className="flex justify-end gap-3">
+        {children}
+        <div className="mt-6 flex justify-end gap-3">
           <Button variant="secondary" onClick={onClose} disabled={isLoading}>
             {cancelText}
           </Button>

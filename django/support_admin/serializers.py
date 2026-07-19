@@ -2,20 +2,24 @@ from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from prescription.models import SafetyReport, User, Store, Prescription, PrescriptionResponse, PrescriptionTargetStore
 from complaints.models import Complaint, PlatformSupportTicket
-from .models import SupportStaff, SupportAssignment, InternalNote, RefundRequest, SafetyReportAction, SupportAuditLog, SLAConfiguration, SupportNotification
+from .models import SupportStaff, SupportAssignment, InternalNote, RefundRequest, SafetyReportAction, SupportAuditLog, SLAConfiguration, SupportNotification, ContactLog, SavedReplyTemplate
 
 
 class SupportStaffSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     email = serializers.CharField(source="user.email", read_only=True)
+    city_names = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportStaff
-        fields = ["id", "user", "name", "email", "role", "is_active", "employee_id", "department", "phone", "timezone", "last_seen_at", "created_at"]
+        fields = ["id", "user", "name", "email", "role", "is_active", "employee_id", "department", "phone", "timezone", "all_cities_access", "cities", "city_names", "last_seen_at", "created_at"]
         read_only_fields = ["id", "created_at"]
 
     def get_name(self, obj):
         return obj.user.get_full_name() or obj.user.username
+
+    def get_city_names(self, obj):
+        return list(obj.cities.values_list("name", flat=True))
 
 
 class SupportStaffCreateSerializer(serializers.Serializer):
@@ -26,6 +30,8 @@ class SupportStaffCreateSerializer(serializers.Serializer):
     employee_id = serializers.CharField(max_length=50)
     department = serializers.CharField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
+    all_cities_access = serializers.BooleanField(default=False)
+    cities = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
 
 
 class SupportAssignmentSerializer(serializers.ModelSerializer):
@@ -172,6 +178,26 @@ class SupportNotificationSerializer(serializers.ModelSerializer):
         model = SupportNotification
         fields = ["id", "recipient", "notification_type", "title", "message", "entity_type", "entity_id", "is_read", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+
+class ContactLogSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    entity_type = serializers.CharField(source="content_type.model", read_only=True)
+
+    class Meta:
+        model = ContactLog
+        fields = ["id", "entity_type", "object_id", "channel", "outcome", "note", "follow_up_at", "created_by_name", "created_at"]
+        read_only_fields = ["id", "created_by_name", "created_at"]
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.user.get_full_name() or obj.created_by.user.username
+
+
+class SavedReplyTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavedReplyTemplate
+        fields = ["id", "title", "body", "category", "visibility", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class UserOrderSerializer(serializers.ModelSerializer):

@@ -28,6 +28,7 @@ export interface Ticket {
   priority: TicketPriority
   priorityDisplay: string
   assignedTo?: string
+  assignedToName?: string
   resolutionNote?: string
   resolvedAt?: string
   messageCount: number

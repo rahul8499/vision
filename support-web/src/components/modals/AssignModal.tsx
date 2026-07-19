@@ -32,8 +32,10 @@ export const AssignModal = ({ isOpen, onClose, onAssign, assignees, itemLabel = 
       await onAssign(selectedAgent)
       handleClose()
       toast.success(`${itemLabel} assigned successfully`)
-    } catch {
-      toast.error(`Failed to assign ${itemLabel.toLowerCase()}`)
+    } catch (error) {
+      toast.error(error instanceof Error && error.message
+        ? error.message
+        : `Failed to assign ${itemLabel.toLowerCase()}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -51,7 +53,7 @@ export const AssignModal = ({ isOpen, onClose, onAssign, assignees, itemLabel = 
     >
       <div className="mt-4">
         <SelectFilter
-          label="Select Agent"
+          label="Select staff member"
           value={selectedAgent}
           onChange={setSelectedAgent}
           options={assignees.map((a) => ({ value: a.id, label: a.name }))}

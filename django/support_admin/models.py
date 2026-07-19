@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.db import transaction
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -312,3 +313,64 @@ class SupportNotification(models.Model):
 
     def __str__(self):
         return f"{self.title} → {self.recipient}"
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new:
+            notification_id = self.id
+            recipient_id = self.recipient_id
+            data = {
+                "id": self.id, "title": self.title, "message": self.message,
+                "entity_type": self.entity_type, "entity_id": self.entity_id,
+                "notification_type": self.notification_type,
+            }
+
+            def publish():
+                try:
+                    from asgiref.sync import async_to_sync
+                    from channels.layers import get_channel_layer
+                    channel_layer = get_channel_layer()
+                    if channel_layer:
+                        async_to_sync(channel_layer.group_send)("support_admin_dashboard", {
+                            "type": "notification_created", "recipient_id": recipient_id,
+                            "data": {**data, "id": notification_id},
+                        })
+                except Exception:
+                    # Persistence remains authoritative if realtime is unavailable.
+                    pass
+
+            transaction.on_commit(publish)
+
+
+class ContactLog(models.Model):
+    CHANNEL_CHOICES = [("call", "Call"), ("sms", "SMS"), ("whatsapp", "WhatsApp"), ("email", "Email"), ("other", "Other")]
+    OUTCOME_CHOICES = [("contacted", "Contacted"), ("no_answer", "No answer"), ("callback", "Callback requested"), ("message_sent", "Message sent"), ("resolved", "Resolved")]
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveBigIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+    channel = models.CharField(max_length=20, choices=CHANNEL_CHOICES)
+    outcome = models.CharField(max_length=30, choices=OUTCOME_CHOICES)
+    note = models.TextField(blank=True)
+    follow_up_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(SupportStaff, on_delete=models.PROTECT, related_name="contact_logs")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["content_type", "object_id", "created_at"]), models.Index(fields=["follow_up_at"])]
+
+
+class SavedReplyTemplate(models.Model):
+    VISIBILITY_CHOICES = [("user", "User"), ("store", "Store"), ("shared", "Shared"), ("internal", "Internal")]
+    title = models.CharField(max_length=120)
+    body = models.TextField()
+    category = models.CharField(max_length=50, blank=True)
+    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default="shared")
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(SupportStaff, on_delete=models.PROTECT, related_name="saved_replies")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["category", "title"]
+        indexes = [models.Index(fields=["is_active", "category"])]

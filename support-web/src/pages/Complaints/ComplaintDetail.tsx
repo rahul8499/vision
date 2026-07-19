@@ -7,15 +7,19 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { complaintsApi, normalizeComplaintMessage } from '@/api/complaintsApi'
+import { assigneesApi } from '@/api/assigneesApi'
 import { MessageThread } from '@/components/threads/MessageThread'
 import { InternalNotesPanel } from '@/components/threads/InternalNotesPanel'
+import { ContactHistoryPanel } from '@/components/threads/ContactHistoryPanel'
 import { Badge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
+import { AssignModal } from '@/components/modals/AssignModal'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/store/authStore'
+import { usePermissions } from '@/hooks/usePermissions'
 import { formatSafeDate } from '@/utils/formatters'
 import type { Complaint, ComplaintMessageVisibility, ComplaintStatus } from '@/types/complaints'
 import { COMPLAINT_STATUS_COLORS, COMPLAINT_PRIORITY_COLORS } from '@/types/complaints'
@@ -37,6 +41,9 @@ export const ComplaintDetail = () => {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<ComplaintStatus | ''>('')
   const [conversation, setConversation] = useState<ComplaintMessageVisibility>('USER_SUPPORT')
+  const [assignOpen, setAssignOpen] = useState(false)
+  const { hasAnyRole } = usePermissions()
+  const canAssign = hasAnyRole(['admin', 'supervisor'])
   const token = useAuthStore((state) => state.accessToken)
   const wsBase = (import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000').replace(/\/$/, '')
   const { subscribe, isConnected } = useWebSocket(`${wsBase}/ws/complaints/${id}/?token=${encodeURIComponent(token || '')}`)
@@ -54,6 +61,12 @@ export const ComplaintDetail = () => {
     queryFn: () => complaintsApi.getInternalNotes(id!),
     enabled: !!id,
     staleTime: 10_000,
+  })
+  const assigneesQuery = useQuery({
+    queryKey: ['assignees', complaintQuery.data?.scope, complaintQuery.data?.cityId],
+    queryFn: () => assigneesApi.getAll(complaintQuery.data!.scope, complaintQuery.data?.cityId),
+    enabled: canAssign && !!complaintQuery.data,
+    staleTime: 60_000,
   })
 
   useEffect(() => {
@@ -173,6 +186,7 @@ export const ComplaintDetail = () => {
             <div className="flex flex-wrap items-center gap-2">
               <Badge className={COMPLAINT_PRIORITY_COLORS[complaint.priority]}>{complaint.priorityDisplay} priority</Badge>
               <Badge className={COMPLAINT_STATUS_COLORS[complaint.status]}>{complaint.statusDisplay}</Badge>
+              {canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Assign</Button>}
               <select value={status} onChange={(event) => setStatus(event.target.value as ComplaintStatus)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-primary-200">
                 <option value="">Change status…</option>
                 {STATUS_OPTIONS.filter((option) => option.value !== complaint.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -186,9 +200,21 @@ export const ComplaintDetail = () => {
           <Metric icon={<MessagesSquare />} label="Messages" value={String(complaint.messageCount)} />
           <Metric icon={<Paperclip />} label="Attachments" value={String(complaint.attachmentCount)} />
           <Metric icon={<Clock3 />} label="Last updated" value={formatSafeDate(complaint.updatedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} />
-          <Metric icon={<ShieldCheck />} label="Ownership" value={complaint.assignedTo || 'Unassigned'} />
+          <Metric icon={<ShieldCheck />} label="Ownership" value={complaint.assignedToName || 'Unassigned'} />
         </div>
       </section>
+
+      <AssignModal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        itemLabel={`Complaint #${complaint.id}`}
+        assignees={assigneesQuery.data || []}
+        onAssign={async (agentId) => {
+          await complaintsApi.assign(String(complaint.id), agentId)
+          await queryClient.invalidateQueries({ queryKey: ['complaint', id] })
+          await queryClient.invalidateQueries({ queryKey: ['complaints'] })
+        }}
+      />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -256,6 +282,7 @@ export const ComplaintDetail = () => {
           </Panel>
 
           <InternalNotesPanel notes={notesQuery.data || []} onAddNote={async (content) => { await noteMutation.mutateAsync(content) }} />
+          <ContactHistoryPanel entityType="complaint" objectId={complaint.id} />
 
           <Panel title="Activity">
             {complaint.statusHistory.length === 0 ? <p className="text-sm text-slate-500">No status changes recorded yet.</p> : (

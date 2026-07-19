@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Card } from '@/components/common/Card'
@@ -6,12 +7,18 @@ import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { staffApi } from '@/api/staffApi'
 import { ROLE_LABELS } from '@/types/auth'
+import { emergencyMonitoringApi } from '@/api/emergencyMonitoringApi'
 
 export const StaffDetail = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [allCities, setAllCities] = useState(false)
+  const [cityIds, setCityIds] = useState<number[]>([])
 
   const { data: staff, isLoading, error } = useQuery({
     queryKey: ['staff', id],
@@ -19,10 +26,24 @@ export const StaffDetail = () => {
     enabled: !!id,
     staleTime: 60000,
   })
+  const citiesQuery = useQuery({ queryKey: ['staff-cities'], queryFn: emergencyMonitoringApi.getCities })
+  useEffect(() => { if (staff) { setAllCities(!!staff.allCitiesAccess); setCityIds(staff.cityIds || []) } }, [staff])
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['staff'] })
+  const statusMutation = useMutation({ mutationFn: () => {
+    if (!staff) throw new Error('Staff not loaded')
+    return staff.status === 'active' ? staffApi.delete(staff.id) : staffApi.activate(staff.id)
+  }, onSuccess: () => { const wasActive = staff?.status === 'active'; refresh(); toast.success(wasActive ? 'Staff deactivated' : 'Staff activated') }, onError: () => toast.error('Staff status could not be changed') })
+  const cityMutation = useMutation({ mutationFn: () => staffApi.update(id!, { allCitiesAccess: allCities, cities: allCities ? [] : cityIds }), onSuccess: () => { refresh(); toast.success('City access updated') }, onError: () => toast.error('City access could not be updated') })
 
   if (isLoading) return <Loading />
   if (error) return <ErrorState />
   if (!staff) return <ErrorState title="Staff member not found" />
+  const resetPassword = async () => {
+    const password = window.prompt('Enter a temporary password (minimum 8 characters)')
+    if (!password || password.length < 8) return password ? toast.error('Password must contain at least 8 characters') : undefined
+    try { await staffApi.resetPassword(staff.id, password); toast.success('Temporary password updated') } catch { toast.error('Password reset failed') }
+  }
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -40,6 +61,7 @@ export const StaffDetail = () => {
         }`}>
           {staff.status}
         </span>
+        <div className="ml-auto flex gap-2"><Button variant="secondary" onClick={resetPassword}>Reset password</Button><Button variant={staff.status === 'active' ? 'danger' : 'primary'} loading={statusMutation.isPending} onClick={() => statusMutation.mutate()}>{staff.status === 'active' ? 'Deactivate' : 'Activate'}</Button></div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -75,6 +97,11 @@ export const StaffDetail = () => {
               <p className="text-sm text-gray-500">Access is determined by the staff role.</p>
             )}
           </div>
+        </Card>
+        <Card title="City access">
+          <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={allCities} onChange={e => setAllCities(e.target.checked)} />All cities</label>
+          {!allCities && <div className="mt-3 grid grid-cols-2 gap-2">{(citiesQuery.data || []).map(city => <label key={city.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cityIds.includes(city.id)} onChange={e => setCityIds(e.target.checked ? [...cityIds, city.id] : cityIds.filter(value => value !== city.id))} />{city.name}</label>)}</div>}
+          <Button size="sm" className="mt-3" disabled={!allCities && cityIds.length === 0} loading={cityMutation.isPending} onClick={() => cityMutation.mutate()}>Save city access</Button>
         </Card>
       </div>
     </div>

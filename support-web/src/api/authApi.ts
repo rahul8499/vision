@@ -11,8 +11,8 @@ export const authApi = {
     await apiClient.post('/auth/logout/')
   },
 
-  refresh: async (data: RefreshTokenRequest): Promise<AuthResponse> => {
-    const response = await apiClient.post<{ success: boolean; data: AuthResponse }>('/auth/refresh/', data)
+  refresh: async (data: RefreshTokenRequest): Promise<Pick<AuthResponse, 'access' | 'refresh'>> => {
+    const response = await apiClient.post<{ success: boolean; data: Pick<AuthResponse, 'access' | 'refresh'> }>('/auth/refresh/', data)
     return response.data.data
   },
 

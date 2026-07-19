@@ -178,6 +178,13 @@ class ComplaintCreateView(APIView):
         )
 
         out = ComplaintDetailSerializer(complaint, context={'request': request, 'viewer': actor_type})
+        from support_admin.services.notification_service import create_scoped_notifications
+        transaction.on_commit(lambda: create_scoped_notifications(
+            notification_type="complaint", title="New complaint",
+            message=f"Complaint #{complaint.id}: {complaint.subject}",
+            entity_type="complaint", entity_id=complaint.id,
+            scope=complaint.scope, city_id=complaint.city_id,
+        ))
         return Response(out.data, status=201)
 
 
@@ -339,6 +346,14 @@ class ComplaintMessageView(APIView):
         broadcast_complaint_event(
             complaint.id, "complaint_message", serializer.data, visibility=message.visibility
         )
+        from support_admin.services.notification_service import create_scoped_notifications
+        transaction.on_commit(lambda: create_scoped_notifications(
+            notification_type="complaint", title="New complaint message",
+            message=f"New {actor_type} message on complaint #{complaint.id}",
+            entity_type="complaint", entity_id=complaint.id,
+            scope=complaint.scope, city_id=complaint.city_id,
+            assigned_to_id=complaint.assigned_to,
+        ))
         return Response(serializer.data, status=201)
 
 
@@ -576,6 +591,13 @@ class PlatformSupportTicketListCreateView(APIView):
             if verified_attachment_key:
                 message.attachment.name = verified_attachment_key
                 message.save(update_fields=['attachment'])
+        from support_admin.services.notification_service import create_scoped_notifications
+        transaction.on_commit(lambda: create_scoped_notifications(
+            notification_type="ticket", title="New support request",
+            message=f"Support request #{ticket.id}: {ticket.subject}",
+            entity_type="ticket", entity_id=ticket.id,
+            scope=ticket.scope, city_id=ticket.city_id,
+        ))
         return Response(_serialize_support_ticket(request, ticket, detail=True), status=201)
 
 
@@ -642,4 +664,12 @@ class PlatformSupportMessageView(APIView):
         }
         from .realtime import broadcast_support_ticket_event
         broadcast_support_ticket_event(ticket.id, "support_ticket_message", message_data)
+        from support_admin.services.notification_service import create_scoped_notifications
+        transaction.on_commit(lambda: create_scoped_notifications(
+            notification_type="ticket", title="New support message",
+            message=f"New {actor_type} message on support request #{ticket.id}",
+            entity_type="ticket", entity_id=ticket.id,
+            scope=ticket.scope, city_id=ticket.city_id,
+            assigned_to_id=ticket.assigned_to,
+        ))
         return Response(_serialize_support_ticket(request, ticket, detail=True), status=201)

@@ -147,6 +147,7 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
     messages = serializers.SerializerMethodField()
     status_history = ComplaintStatusHistorySerializer(many=True, read_only=True)
     can_withdraw = serializers.SerializerMethodField()
+    assigned_to_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Complaint
@@ -155,7 +156,7 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
             'status_display', 'priority', 'priority_display', 'complainant_type',
             'complainant_name', 'respondent_type', 'respondent_name', 'order_id',
             'scope', 'city', 'city_name', 'service_zone',
-            'assigned_to', 'resolution_notes', 'resolved_at', 'created_at', 'updated_at',
+            'assigned_to', 'assigned_to_name', 'resolution_notes', 'resolved_at', 'created_at', 'updated_at',
             'attachments', 'messages', 'status_history', 'can_withdraw',
         ]
 
@@ -164,6 +165,13 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
         if viewer != obj.complainant_type:
             return False
         return obj.status in ('open', 'under_review', 'awaiting_info')
+
+    def get_assigned_to_name(self, obj):
+        if not obj.assigned_to:
+            return None
+        from support_admin.models import SupportStaff
+        staff = SupportStaff.objects.select_related('user').filter(id=obj.assigned_to).first()
+        return (staff.user.get_full_name() or staff.user.username or staff.user.email) if staff else None
 
     def get_messages(self, obj):
         viewer = self.context.get('viewer')

@@ -5,7 +5,7 @@ import type { UserRole } from '@/types/auth'
 interface BulkActionsProps {
   selectedCount: number
   onClearSelection: () => void
-  onAssign?: (agentId: string) => void
+  onAssign?: () => void
   onClose?: () => void
   assignees?: { id: string; name: string }[]
   availableAssignees?: { id: string; name: string }[]
@@ -26,7 +26,7 @@ export const BulkActions = ({
       </span>
       <div className="h-4 w-px bg-primary-200" />
       {onAssign && (
-        <Button variant="primary" size="sm" leftIcon={<UserPlus className="h-4 w-4" />}>
+        <Button variant="primary" size="sm" leftIcon={<UserPlus className="h-4 w-4" />} onClick={onAssign}>
           Assign
         </Button>
       )}

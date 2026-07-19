@@ -4,7 +4,9 @@ from django.utils import timezone
 from complaints.models import Complaint
 from ..models import SupportStaff, SupportAssignment, InternalNote, SupportNotification
 from ..selectors.complaint_selectors import get_complaint_by_id, get_complaint_queryset
+from ..selectors.staff_selectors import get_staff_by_id
 from complaints.models import Complaint, ComplaintMessage, ComplaintStatusHistory
+from .notification_service import create_assignment_notification, eligible_staff_for_case
 
 
 def assign_complaint(complaint_id, assigned_to_id, assigned_by):
@@ -15,6 +17,8 @@ def assign_complaint(complaint_id, assigned_to_id, assigned_by):
     staff = get_staff_by_id(assigned_to_id)
     if not staff or not staff.is_active:
         raise ValueError("Assigned staff not found or inactive.")
+    if not eligible_staff_for_case(complaint.scope, complaint.city_id).filter(id=staff.id).exists():
+        raise ValueError("Assigned staff does not have access to this complaint city.")
 
     ct = ContentType.objects.get_for_model(Complaint)
     assignment, created = SupportAssignment.objects.get_or_create(
@@ -26,14 +30,23 @@ def assign_complaint(complaint_id, assigned_to_id, assigned_by):
             "is_active": True,
         },
     )
-    if not created and not assignment.is_active:
+    if not created and (not assignment.is_active or assignment.assigned_to_id != staff.id):
         assignment.is_active = True
         assignment.assigned_to = staff
         assignment.assigned_by = assigned_by
-        assignment.save()
+        assignment.unassigned_at = None
+        assignment.save(update_fields=["is_active", "assigned_to", "assigned_by", "unassigned_at"])
 
     complaint.assigned_to = str(staff.id)
     complaint.save()
+
+    create_assignment_notification(
+        recipient=staff,
+        title="Complaint assigned to you",
+        message=f"Complaint #{complaint.id}: {complaint.subject}",
+        entity_type="complaint",
+        entity_id=complaint.id,
+    )
 
     return complaint, assignment
 

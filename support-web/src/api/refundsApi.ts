@@ -84,4 +84,8 @@ export const refundsApi = {
     const response = await apiClient.post(`/refunds/${id}/cancel/`)
     return response.data.data
   },
+  assign: async (id: string, agentId: string): Promise<Refund> => {
+    const response = await apiClient.post(`/refunds/${id}/assign/`, { assigned_to: agentId })
+    return normalizeRefund(response.data.data)
+  },
 }

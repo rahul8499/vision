@@ -59,8 +59,10 @@ export const useAuthStore = create<AuthState>()(
           const { refreshToken } = get()
           if (!refreshToken) throw new Error('No refresh token')
           const response = await authApi.refresh({ refresh: refreshToken })
-          const { access, refresh, staff } = response
-          set({ accessToken: access, refreshToken: refresh, user: staff })
+          const { access, refresh } = response
+          const user = get().user
+          if (!user) throw new Error('No authenticated support user')
+          set({ accessToken: access, refreshToken: refresh, user, isAuthenticated: true })
         } catch (error) {
           get().logout()
           throw error

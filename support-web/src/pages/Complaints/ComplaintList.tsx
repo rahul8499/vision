@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { complaintsApi } from '@/api/complaintsApi'
 import { DataTable } from '@/components/tables/DataTable'
 import { Pagination } from '@/components/tables/Pagination'
 import { BulkActions } from '@/components/tables/BulkActions'
+import { AssignModal } from '@/components/modals/AssignModal'
+import { assigneesApi } from '@/api/assigneesApi'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { SearchInput } from '@/components/filters/SearchInput'
 import { SelectFilter } from '@/components/filters/SelectFilter'
@@ -17,6 +19,7 @@ import type { Complaint, ComplaintStatus, ComplaintPriority, ComplaintCategory }
 import { COMPLAINT_STATUS_COLORS, COMPLAINT_PRIORITY_COLORS } from '@/types/complaints'
 import { formatSafeDate } from '@/utils/formatters'
 import { useCityStore } from '@/store/cityStore'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' },
@@ -49,12 +52,16 @@ const CATEGORY_OPTIONS = [
 
 export const ComplaintList = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { hasAnyRole } = usePermissions()
+  const canAssign = hasAnyRole(['admin', 'supervisor'])
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
   const [category, setCategory] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set())
+  const [assignOpen, setAssignOpen] = useState(false)
   const debouncedSearch = useDebounce(search, 300)
   const city = useCityStore((state) => state.selectedCityId)
 
@@ -77,6 +84,20 @@ export const ComplaintList = () => {
 
   const complaints = data?.results ?? []
   const pagination = data?.pagination
+  const selectedComplaints = complaints.filter((complaint) => selectedIds.has(complaint.id))
+  const selectedCityIds = Array.from(new Set(
+    selectedComplaints
+      .filter((complaint) => complaint.scope === 'CITY' && complaint.cityId)
+      .map((complaint) => complaint.cityId as number),
+  )).sort((a, b) => a - b)
+  const assignmentScope = selectedCityIds.length === 1 ? 'CITY' as const : 'GLOBAL' as const
+  const assignmentCity = selectedCityIds.length === 1 ? selectedCityIds[0] : undefined
+  const assigneesQuery = useQuery({
+    queryKey: ['assignees', assignmentScope, assignmentCity, selectedCityIds.join(',')],
+    queryFn: () => assigneesApi.getAll(assignmentScope, assignmentCity, selectedCityIds.length > 1 ? selectedCityIds : undefined),
+    enabled: canAssign && assignOpen && selectedIds.size > 0,
+    staleTime: 60_000,
+  })
 
   const activeFilterCount = [status, priority, category, debouncedSearch].filter(Boolean).length
 
@@ -148,6 +169,21 @@ export const ComplaintList = () => {
       <BulkActions
         selectedCount={selectedIds.size}
         onClearSelection={() => setSelectedIds(new Set())}
+        onAssign={canAssign ? () => setAssignOpen(true) : undefined}
+      />
+
+      <AssignModal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        itemLabel={`${selectedIds.size} complaint${selectedIds.size === 1 ? '' : 's'}`}
+        assignees={assigneesQuery.data || []}
+        onAssign={async (agentId) => {
+          const results = await complaintsApi.bulkAssign(Array.from(selectedIds, String), agentId)
+          const failures = results.filter((result) => !result.success)
+          await queryClient.invalidateQueries({ queryKey: ['complaints'] })
+          if (failures.length) throw new Error(failures[0].error || 'Some complaints could not be assigned')
+          setSelectedIds(new Set())
+        }}
       />
 
       {isLoading ? (

@@ -18,6 +18,9 @@ const normalizeStaff = (raw: RawStaff): StaffMember => ({
   permissions: Array.isArray(raw.permissions)
     ? raw.permissions.filter((item): item is string => typeof item === 'string')
     : [],
+  allCitiesAccess: raw.all_cities_access === true,
+  cityIds: Array.isArray(raw.cities) ? raw.cities.map(Number) : [],
+  cityNames: Array.isArray(raw.city_names) ? raw.city_names.map(String) : [],
   lastLoginAt: raw.last_seen_at ? String(raw.last_seen_at) : undefined,
   createdAt: String(raw.created_at ?? ''),
   updatedAt: String(raw.updated_at ?? raw.created_at ?? ''),
@@ -49,6 +52,8 @@ export const staffApi = {
     const response = await apiClient.post('/staff/', {
       ...data,
       employee_id: data.employeeId,
+      all_cities_access: data.allCitiesAccess ?? false,
+      cities: data.cities ?? [],
     })
     return normalizeStaff(response.data.data)
   },
@@ -59,12 +64,23 @@ export const staffApi = {
       department: data.department,
       phone: data.phone,
       is_active: data.isActive,
+      all_cities_access: data.allCitiesAccess,
+      cities: data.cities,
     })
     return normalizeStaff(response.data.data)
   },
 
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/staff/${id}/`)
+  },
+
+  activate: async (id: string): Promise<StaffMember> => {
+    const response = await apiClient.post(`/staff/${id}/activate/`)
+    return normalizeStaff(response.data.data)
+  },
+
+  resetPassword: async (id: string, newPassword: string): Promise<void> => {
+    await apiClient.post(`/staff/${id}/reset-password/`, { new_password: newPassword })
   },
 
   updatePermissions: async (id: string, permissions: string[]): Promise<StaffMember> => {

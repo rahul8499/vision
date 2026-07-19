@@ -7,6 +7,7 @@ import { notificationsApi } from '@/api/notificationsApi'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useCityStore } from '@/store/cityStore'
+import { enableSupportBrowserNotifications } from '@/utils/browserNotifications'
 
 export const Navbar = () => {
   const { logout } = useAuth()
@@ -33,8 +34,9 @@ export const Navbar = () => {
       }
     }
     fetchUnreadCount()
+    window.addEventListener('support-notification-refresh', fetchUnreadCount)
     const interval = setInterval(fetchUnreadCount, 30000)
-    return () => clearInterval(interval)
+    return () => { clearInterval(interval); window.removeEventListener('support-notification-refresh', fetchUnreadCount) }
   }, [])
 
   useEffect(() => {
@@ -90,7 +92,14 @@ export const Navbar = () => {
           {cities.map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
         </select>
         <button
-          onClick={() => setNotificationPanelOpen(!notificationPanelOpen)}
+          onClick={() => {
+            const willOpen = !notificationPanelOpen
+            setNotificationPanelOpen(willOpen)
+            if (willOpen) {
+              setUnreadCount(0)
+              void enableSupportBrowserNotifications()
+            }
+          }}
           className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
         >
           <Bell className="h-5 w-5 text-gray-600" />

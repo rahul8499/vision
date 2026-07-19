@@ -15,6 +15,7 @@ import {
   ClipboardList,
   Shield,
   Radio,
+  Headphones,
 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import type { UserRole } from '@/types/auth'
@@ -22,6 +23,7 @@ import type { UserRole } from '@/types/auth'
 const ROLE_MENU_ITEMS: Record<UserRole, { to: string; label: string; icon: React.ReactNode }[]> = {
   admin: [
     { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
+    { to: '/operations', label: 'Support Operations', icon: <Headphones className="h-5 w-5" /> },
     { to: '/emergency-monitoring', label: 'Emergency Monitoring', icon: <Radio className="h-5 w-5" /> },
     { to: '/complaints', label: 'Complaints', icon: <MessageSquare className="h-5 w-5" /> },
     { to: '/tickets', label: 'Support Tickets', icon: <Ticket className="h-5 w-5" /> },
@@ -35,6 +37,7 @@ const ROLE_MENU_ITEMS: Record<UserRole, { to: string; label: string; icon: React
   ],
   supervisor: [
     { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
+    { to: '/operations', label: 'Support Operations', icon: <Headphones className="h-5 w-5" /> },
     { to: '/emergency-monitoring', label: 'Emergency Monitoring', icon: <Radio className="h-5 w-5" /> },
     { to: '/complaints', label: 'Complaints', icon: <MessageSquare className="h-5 w-5" /> },
     { to: '/tickets', label: 'Support Tickets', icon: <Ticket className="h-5 w-5" /> },
@@ -46,6 +49,7 @@ const ROLE_MENU_ITEMS: Record<UserRole, { to: string; label: string; icon: React
   ],
   agent: [
     { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
+    { to: '/operations', label: 'Support Operations', icon: <Headphones className="h-5 w-5" /> },
     { to: '/emergency-monitoring', label: 'Emergency Monitoring', icon: <Radio className="h-5 w-5" /> },
     { to: '/complaints', label: 'Complaints', icon: <MessageSquare className="h-5 w-5" /> },
     { to: '/tickets', label: 'Support Tickets', icon: <Ticket className="h-5 w-5" /> },

@@ -4,6 +4,7 @@ import { Badge } from '@/components/common/Badge'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { ClipboardList, User, Calendar } from 'lucide-react'
+import apiClient from '@/api/axios'
 
 const ACTION_TYPES = ['create', 'update', 'delete', 'login', 'logout', 'assign', 'status_change', 'note_add']
 
@@ -11,9 +12,8 @@ export const AuditLogList = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['audit-logs'],
     queryFn: async () => {
-      const res = await fetch('/support-api/v1/audit-logs/?limit=50')
-      if (!res.ok) throw new Error('Failed to fetch audit logs')
-      return res.json()
+      const response = await apiClient.get('/audit-logs/', { params: { page_size: 50 } })
+      return response.data
     },
     staleTime: 30000,
   })
@@ -41,10 +41,14 @@ export const AuditLogList = () => {
               const logData = log as {
                 id: string
                 action: string
-                actorName: string
-                targetType: string
-                targetId: string
-                createdAt: string
+                actor_name?: string
+                actorName?: string
+                entity_type?: string
+                targetType?: string
+                entity_id?: string
+                targetId?: string
+                created_at?: string
+                createdAt?: string
                 details?: string
               }
               return (
@@ -54,19 +58,19 @@ export const AuditLogList = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-900">
-                      <span className="font-medium">{logData.actorName}</span>
+                      <span className="font-medium">{logData.actor_name || logData.actorName || 'System'}</span>
                       {' '}performed{' '}
                       <span className="font-medium">{logData.action}</span>
                       {' '}on{' '}
-                      <span className="font-medium">{logData.targetType}</span>
-                      {' '}{logData.targetId}
+                      <span className="font-medium">{(logData.entity_type || logData.targetType || 'record').replace(/_/g, ' ')}</span>
+                      {' '}{logData.entity_id || logData.targetId}
                     </p>
                     {logData.details && (
                       <p className="text-xs text-gray-500 mt-0.5">{logData.details}</p>
                     )}
                   </div>
                   <span className="text-xs text-gray-500 whitespace-nowrap">
-                    {new Date(logData.createdAt).toLocaleString()}
+                    {new Date(logData.created_at || logData.createdAt || '').toLocaleString()}
                   </span>
                 </div>
               )

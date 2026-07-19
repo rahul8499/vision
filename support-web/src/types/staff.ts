@@ -7,9 +7,14 @@ export interface StaffMember {
   role: import('./auth').UserRole
   status: StaffStatus
   phone?: string
+  allCitiesAccess?: boolean
+  cities?: number[]
   department?: string
   employeeId?: string
   permissions: string[]
+  allCitiesAccess?: boolean
+  cityIds?: number[]
+  cityNames?: string[]
   lastLoginAt?: string
   createdAt: string
   updatedAt: string
@@ -32,6 +37,8 @@ export interface StaffUpdateRequest {
   department?: string
   phone?: string
   isActive?: boolean
+  allCitiesAccess?: boolean
+  cities?: number[]
 }
 
 export interface StaffListParams {

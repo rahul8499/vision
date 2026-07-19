@@ -3,8 +3,34 @@ from django.utils import timezone
 from emergency_services.models import EmergencyBroadcastCharge
 from ..models import RefundRequest, SupportStaff, SupportNotification
 from ..selectors.refund_selectors import get_refund_by_id, get_refund_queryset
+from ..selectors.staff_selectors import get_staff_by_id
+from .notification_service import create_assignment_notification, eligible_staff_for_case
 from emergency_services.models import EmergencyBroadcastCharge
 from prescription.models import PrescriptionResponse
+
+
+def assign_refund(refund_id, assigned_to_id):
+    refund = get_refund_by_id(refund_id)
+    if not refund:
+        raise ValueError("Refund request not found.")
+
+    staff = get_staff_by_id(assigned_to_id)
+    if not staff or not staff.is_active:
+        raise ValueError("Assigned staff not found or inactive.")
+    city_id = refund.charge.city_id
+    if not eligible_staff_for_case("CITY", city_id).filter(id=staff.id).exists():
+        raise ValueError("Assigned staff does not have access to this refund city.")
+
+    refund.assigned_to = staff
+    refund.save(update_fields=["assigned_to", "updated_at"])
+    create_assignment_notification(
+        recipient=staff,
+        title="Refund assigned to you",
+        message=f"Refund #{refund.id}",
+        entity_type="refund",
+        entity_id=refund.id,
+    )
+    return refund
 
 
 def create_refund_request(charge_id, amount, reason, requested_by, prescription_response_id=None, metadata=None):

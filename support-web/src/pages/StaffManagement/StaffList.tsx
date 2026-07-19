@@ -23,11 +23,9 @@ const STATUS_OPTIONS = [
 ]
 
 const ROLE_OPTIONS = [
-  { value: 'super_admin', label: 'Super Admin' },
   { value: 'admin', label: 'Admin' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'support_agent', label: 'Support Agent' },
-  { value: 'read_only', label: 'Read Only' },
+  { value: 'supervisor', label: 'Supervisor' },
+  { value: 'agent', label: 'Agent' },
 ]
 
 export const StaffList = () => {
@@ -76,7 +74,7 @@ export const StaffList = () => {
           <h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
           <p className="text-gray-500 mt-1">Manage support staff and permissions</p>
         </div>
-        <Button leftIcon={<UserPlus className="h-4 w-4" />}>
+        <Button onClick={() => navigate('/staff/new')} leftIcon={<UserPlus className="h-4 w-4" />}>
           Add Staff
         </Button>
       </div>

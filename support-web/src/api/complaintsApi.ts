@@ -11,6 +11,12 @@ import type {
 import type { PaginatedResponse } from '@/types/auth'
 
 type Raw = Record<string, any>
+export interface BulkAssignmentResult {
+  complaint_id: number
+  assigned_to_id?: string
+  success: boolean
+  error?: string
+}
 const value = (data: Raw, camel: string, snake: string) => data[camel] ?? data[snake]
 const text = (data: Raw, camel: string, snake: string, fallback = '') =>
   String(value(data, camel, snake) ?? fallback)
@@ -45,6 +51,7 @@ export const normalizeComplaint = (raw: Raw): Complaint => ({
   respondentName: text(raw, 'respondentName', 'respondent_name', 'Unknown respondent'),
   orderId: value(raw, 'orderId', 'order_id') ?? undefined,
   assignedTo: value(raw, 'assignedTo', 'assigned_to') ?? undefined,
+  assignedToName: value(raw, 'assignedToName', 'assigned_to_name') || undefined,
   resolutionNotes: value(raw, 'resolutionNotes', 'resolution_notes') || undefined,
   resolvedAt: value(raw, 'resolvedAt', 'resolved_at') || undefined,
   unreadCount: Number(value(raw, 'unreadCount', 'unread_count') || 0),
@@ -124,9 +131,9 @@ export const complaintsApi = {
   assign: async (id: string, agentId: string): Promise<void> => {
     await apiClient.post(`/complaints/${id}/assign/`, { assigned_to: agentId })
   },
-  bulkAssign: async (ids: string[], agentId: string): Promise<unknown> => {
+  bulkAssign: async (ids: string[], agentId: string): Promise<BulkAssignmentResult[]> => {
     const response = await apiClient.post('/complaints/bulk-assign/', { complaint_ids: ids, assigned_to: agentId })
-    return response.data.data
+    return response.data.data?.results || []
   },
   bulkClose: async (ids: string[]): Promise<unknown> => {
     const response = await apiClient.post('/complaints/bulk-close/', { complaint_ids: ids })
