@@ -28,6 +28,9 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-local-development-o
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes', 'on')
+SUPPORT_ATTACHMENT_MALWARE_SCAN_REQUIRED = os.getenv(
+    'SUPPORT_ATTACHMENT_MALWARE_SCAN_REQUIRED', 'false' if DEBUG else 'true'
+).lower() in ('1', 'true', 'yes', 'on')
 
 # ALLOWED_HOSTS = [
 #     'localhost',
@@ -83,6 +86,21 @@ TIME_ZONE = 'UTC'
 USE_TZ = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
+
+CELERY_BEAT_SCHEDULE = {
+    'support-runtime-heartbeat': {
+        'task': 'support_admin.tasks.record_support_runtime_heartbeat',
+        'schedule': 30.0,
+    },
+    'support-due-follow-up-reminders': {
+        'task': 'support_admin.tasks.send_due_follow_up_reminders',
+        'schedule': 60.0,
+    },
+    'support-sla-monitor': {
+        'task': 'support_admin.tasks.monitor_support_sla_deadlines',
+        'schedule': 60.0,
+    },
+}
 
 # Reliability: task acknowledged AFTER completion (not before)
 CELERY_TASK_ACKS_LATE = True
@@ -446,4 +464,3 @@ if _s3_enabled:
     AWS_S3_SIGNATURE_VERSION = 's3v4'
     AWS_S3_CUSTOM_DOMAIN = None            # No custom domain, use presigned URLs
     AWS_S3_ADDRESSING_STYLE = 'virtual'    # Virtual-hosted style URLs
-

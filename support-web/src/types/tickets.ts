@@ -22,6 +22,7 @@ export interface Ticket {
   subject: string
   description: string
   requesterType: 'user' | 'store'
+  requesterId?: number
   requesterName: string
   status: TicketStatus
   statusDisplay: string
@@ -34,6 +35,7 @@ export interface Ticket {
   messageCount: number
   unreadCount: number
   messages: TicketMessage[]
+  supportRating?: { rating: number; feedback?: string; createdAt?: string }
   createdAt: string
   updatedAt: string
 }
@@ -50,6 +52,7 @@ export interface TicketListParams {
 
 export interface TicketReplyRequest {
   text: string
+  attachment?: File
 }
 
 export const TICKET_STATUS_COLORS: Record<TicketStatus, string> = {

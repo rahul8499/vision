@@ -12,7 +12,7 @@ interface InternalNoteFormProps {
   submitLabel?: string
 }
 
-export const InternalNoteForm = ({ onSubmit, submitLabel = 'Add Note' }: InternalNoteFormProps) => {
+export const InternalNoteForm = ({ onSubmit, submitLabel = 'Save private note' }: InternalNoteFormProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { register, handleSubmit, reset } = useForm<InternalNoteFormData>()
 

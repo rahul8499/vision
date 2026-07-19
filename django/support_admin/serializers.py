@@ -2,7 +2,7 @@ from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from prescription.models import SafetyReport, User, Store, Prescription, PrescriptionResponse, PrescriptionTargetStore
 from complaints.models import Complaint, PlatformSupportTicket
-from .models import SupportStaff, SupportAssignment, InternalNote, RefundRequest, SafetyReportAction, SupportAuditLog, SLAConfiguration, SupportNotification, ContactLog, SavedReplyTemplate
+from .models import SupportStaff, SupportAssignment, InternalNote, RefundRequest, SafetyReportAction, SupportAuditLog, SLAConfiguration, SupportHoliday, SupportNotification, ContactLog, SavedReplyTemplate
 
 
 class SupportStaffSerializer(serializers.ModelSerializer):
@@ -35,22 +35,31 @@ class SupportStaffCreateSerializer(serializers.Serializer):
 
 
 class SupportAssignmentSerializer(serializers.ModelSerializer):
-    assigned_to_name = serializers.CharField(source="assigned_to.user.name", read_only=True)
-    assigned_by_name = serializers.CharField(source="assigned_by.user.name", read_only=True)
+    assigned_to_name = serializers.SerializerMethodField()
+    assigned_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportAssignment
         fields = ["id", "content_type", "object_id", "assigned_to", "assigned_to_name", "assigned_by", "assigned_by_name", "is_active", "assigned_at", "unassigned_at"]
         read_only_fields = ["id", "assigned_at", "unassigned_at"]
 
+    def get_assigned_to_name(self, obj):
+        return obj.assigned_to.user.get_full_name() or obj.assigned_to.user.username or obj.assigned_to.user.email
+
+    def get_assigned_by_name(self, obj):
+        return (obj.assigned_by.user.get_full_name() or obj.assigned_by.user.username or obj.assigned_by.user.email) if obj.assigned_by else None
+
 
 class InternalNoteSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.CharField(source="created_by.user.name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = InternalNote
         fields = ["id", "content_type", "object_id", "body", "created_by", "created_by_name", "is_pinned", "is_edited", "is_deleted", "created_at", "updated_at"]
         read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.user.get_full_name() or obj.created_by.user.username or obj.created_by.user.email
 
 
 class InternalNoteCreateSerializer(serializers.Serializer):
@@ -59,9 +68,9 @@ class InternalNoteCreateSerializer(serializers.Serializer):
 
 
 class RefundRequestSerializer(serializers.ModelSerializer):
-    requested_by_name = serializers.CharField(source="requested_by.user.name", read_only=True)
-    assigned_to_name = serializers.CharField(source="assigned_to.user.name", read_only=True)
-    reviewed_by_name = serializers.CharField(source="reviewed_by.user.name", read_only=True)
+    requested_by_name = serializers.SerializerMethodField()
+    assigned_to_name = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = RefundRequest
@@ -73,6 +82,19 @@ class RefundRequestSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
+    @staticmethod
+    def _staff_name(staff):
+        return (staff.user.get_full_name() or staff.user.username or staff.user.email) if staff else None
+
+    def get_requested_by_name(self, obj):
+        return self._staff_name(obj.requested_by)
+
+    def get_assigned_to_name(self, obj):
+        return self._staff_name(obj.assigned_to)
+
+    def get_reviewed_by_name(self, obj):
+        return self._staff_name(obj.reviewed_by)
+
 
 class RefundRequestCreateSerializer(serializers.Serializer):
     charge_id = serializers.UUIDField()
@@ -82,7 +104,7 @@ class RefundRequestCreateSerializer(serializers.Serializer):
 
 
 class RefundReviewSerializer(serializers.Serializer):
-    action = serializers.ChoiceField(choices=["approve", "reject", "process", "retry"])
+    action = serializers.ChoiceField(choices=["approve", "reject", "process", "retry", "cancel"])
     admin_note = serializers.CharField(required=False, allow_blank=True)
     payment_reference = serializers.CharField(required=False, allow_blank=True)
 
@@ -158,19 +180,38 @@ class SafetyReportSerializer(serializers.ModelSerializer):
 
 
 class SupportAuditLogSerializer(serializers.ModelSerializer):
-    actor_name = serializers.CharField(source="actor.user.name", read_only=True)
+    actor_name = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportAuditLog
         fields = ["id", "actor", "actor_name", "action", "entity_type", "entity_id", "old_data", "new_data", "ip_address", "user_agent", "created_at"]
         read_only_fields = ["id", "created_at"]
 
+    def get_actor_name(self, obj):
+        return (obj.actor.user.get_full_name() or obj.actor.user.username or obj.actor.user.email) if obj.actor else "System"
+
 
 class SLAConfigurationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SLAConfiguration
-        fields = ["id", "entity_type", "priority", "first_response_minutes", "resolution_minutes", "is_active"]
+        fields = ["id", "entity_type", "priority", "first_response_minutes", "resolution_minutes", "is_active", "working_hours_only", "workday_start", "workday_end", "working_days", "pause_when_waiting", "warning_minutes", "auto_escalate", "auto_assign"]
         read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        start = attrs.get("workday_start", getattr(self.instance, "workday_start", None))
+        end = attrs.get("workday_end", getattr(self.instance, "workday_end", None))
+        if start and end and start >= end:
+            raise serializers.ValidationError({"workday_end": "Workday end must be after workday start."})
+        days = attrs.get("working_days", getattr(self.instance, "working_days", []))
+        if any(not isinstance(day, int) or day < 0 or day > 6 for day in days):
+            raise serializers.ValidationError({"working_days": "Use weekday numbers from 0 (Monday) to 6 (Sunday)."})
+        return attrs
+
+
+class SupportHolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupportHoliday
+        fields = ["id", "date", "name", "is_active"]
 
 
 class SupportNotificationSerializer(serializers.ModelSerializer):
@@ -186,8 +227,8 @@ class ContactLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ContactLog
-        fields = ["id", "entity_type", "object_id", "channel", "outcome", "note", "follow_up_at", "created_by_name", "created_at"]
-        read_only_fields = ["id", "created_by_name", "created_at"]
+        fields = ["id", "entity_type", "object_id", "channel", "outcome", "note", "follow_up_at", "status", "completed_at", "created_by_name", "created_at", "updated_at"]
+        read_only_fields = ["id", "completed_at", "created_by_name", "created_at", "updated_at"]
 
     def get_created_by_name(self, obj):
         return obj.created_by.user.get_full_name() or obj.created_by.user.username

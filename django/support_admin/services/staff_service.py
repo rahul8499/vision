@@ -16,7 +16,7 @@ def list_staff(filters=None):
             qs = qs.filter(role=filters["role"])
         if filters.get("search"):
             value = filters["search"].strip()
-            qs = qs.filter(Q(user__name__icontains=value) | Q(user__email__icontains=value) | Q(employee_id__icontains=value) | Q(phone__icontains=value))
+            qs = qs.filter(Q(user__first_name__icontains=value) | Q(user__last_name__icontains=value) | Q(user__email__icontains=value) | Q(employee_id__icontains=value) | Q(phone__icontains=value))
         if filters.get("is_active") is not None:
             qs = qs.filter(is_active=str(filters["is_active"]).lower() in ("1", "true", "yes"))
         if filters.get("department"):

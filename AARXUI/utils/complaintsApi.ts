@@ -90,7 +90,10 @@ export type ComplaintDetail = ComplaintSummary & {
   assigned_to: string | null;
   resolution_notes: string | null;
   resolved_at: string | null;
+  support_rating: SupportRating | null;
 };
+
+export type SupportRating = { rating: number; feedback: string; created_at: string; updated_at?: string };
 
 export type LocalAttachment = { uri: string; name: string; type: string };
 
@@ -191,5 +194,11 @@ export async function withdrawComplaint(id: number, reason?: string): Promise<Co
     { reason: reason || '' },
     { headers: h }
   );
+  return res.data;
+}
+
+export async function rateComplaint(id: number, rating: number, feedback: string): Promise<SupportRating> {
+  const h = await authHeaders();
+  const res = await axios.post(`${BASE_URL}/api/complaints/${id}/rating/`, { rating, feedback }, { headers: h });
   return res.data;
 }

@@ -16,10 +16,12 @@ import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import {
   getSupportTicket,
+  rateSupportTicket,
   replySupportTicket,
   type SupportMessage,
   type SupportTicket,
 } from '@/utils/platformSupportApi';
+import { SupportRatingCard } from '@/components/SupportRatingCard';
 import {
   LocalizedText as Text,
   LocalizedTextInput as TextInput,
@@ -41,6 +43,7 @@ export function SupportTicketRealtime() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [live, setLive] = useState(false);
   const listRef = useRef<FlatList<SupportMessage>>(null);
 
   const load = useCallback(async (showLoader = false) => {
@@ -95,9 +98,12 @@ export function SupportTicketRealtime() {
           // REST remains the consistency fallback for malformed frames.
         }
       };
+      socket.onopen = () => setLive(true);
       socket.onclose = () => {
+        setLive(false);
         if (!stopped) reconnectTimer = setTimeout(connect, 1500);
       };
+      socket.onerror = () => setLive(false);
     };
 
     connect();
@@ -107,6 +113,12 @@ export function SupportTicketRealtime() {
       socket?.close();
     };
   }, [focused, id, load]);
+
+  useEffect(() => {
+    if (!focused || live) return;
+    const timer = setInterval(() => load(false), 5000);
+    return () => clearInterval(timer);
+  }, [focused, live, load]);
 
   const send = async () => {
     const message = text.trim();
@@ -146,6 +158,10 @@ export function SupportTicketRealtime() {
             <Text className="text-lg font-black text-white">Support #{ticket.id}</Text>
             <Text className="mt-0.5 text-xs text-slate-400">{ticket.category_display}</Text>
           </View>
+          <View className="mr-2 flex-row items-center rounded-full bg-white/10 px-2 py-1">
+            <View className={`mr-1.5 h-2 w-2 rounded-full ${live ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            <Text className="text-[9px] font-bold text-white">{live ? 'Live' : 'Reconnecting'}</Text>
+          </View>
           <View style={{ backgroundColor: `${statusColor(ticket.status)}22` }} className="rounded-full px-3 py-1.5">
             <Text style={{ color: statusColor(ticket.status) }} className="text-[10px] font-black">{ticket.status_display}</Text>
           </View>
@@ -163,6 +179,7 @@ export function SupportTicketRealtime() {
             <Text className="mt-3 text-lg font-black text-slate-950">{ticket.subject}</Text>
             <Text className="mt-3 leading-5 text-slate-600">{ticket.description}</Text>
             {ticket.resolution_note ? <View className="mt-4 rounded-xl bg-emerald-50 p-3"><Text className="font-bold text-emerald-900">Resolution</Text><Text className="mt-1 text-emerald-800">{ticket.resolution_note}</Text></View> : null}
+            {(ticket.status === 'resolved' || ticket.status === 'closed') ? <SupportRatingCard value={ticket.support_rating} onSubmit={async (rating, feedback) => { const saved = await rateSupportTicket(ticket.id, rating, feedback); setTicket(current => current ? { ...current, support_rating: saved } : current); return saved; }} /> : null}
             <Text className="mb-1 mt-6 text-[10px] font-black tracking-widest text-slate-400">CONVERSATION</Text>
           </View>
         }

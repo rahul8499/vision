@@ -5,6 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
 EXPO_PUSH_CHUNK_SIZE = 100  # Expo's max per request
 VALID_EXPO_PUSH_TOKEN_PREFIXES = ("ExponentPushToken", "ExpoPushToken")
 
@@ -34,12 +35,21 @@ def send_push_notification(expo_push_token, title, body, data=None):
 
     try:
         response = requests.post(EXPO_PUSH_URL, json=message, timeout=10)
+        response.raise_for_status()
         res_data = response.json()
         logger.info(f"Expo Push Response: {res_data}")
         return res_data
     except Exception as e:
         logger.error(f"Push send error: {e}")
         return None
+
+
+def get_push_receipts(ticket_ids):
+    if not ticket_ids:
+        return {}
+    response = requests.post(EXPO_RECEIPTS_URL, json={"ids": list(ticket_ids)}, timeout=10)
+    response.raise_for_status()
+    return response.json().get("data", {})
 
 
 def send_push_notification_batch(messages):

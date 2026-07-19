@@ -41,6 +41,62 @@ def send_push_task(self, expo_push_token, title, body, data=None):
         raise self.retry(exc=e)
 
 
+def _clear_notification_token(notification):
+    recipient = notification.recipient_user or notification.recipient_store
+    if recipient and getattr(recipient, "expo_push_token", None):
+        recipient.expo_push_token = None
+        recipient.save(update_fields=["expo_push_token"])
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=60, queue="notifications")
+def retry_app_notification_push_task(self, notification_id):
+    from .models import AppNotification
+    from .utils.notifications import send_push_notification
+    notification = AppNotification.objects.select_related("recipient_user", "recipient_store").filter(pk=notification_id).first()
+    if not notification or notification.push_status == "delivered" or notification.push_attempts >= 3:
+        return None
+    recipient = notification.recipient_user or notification.recipient_store
+    token = getattr(recipient, "expo_push_token", None) if recipient else None
+    if not token:
+        notification.push_status = "no_token"
+        notification.save(update_fields=["push_status"])
+        return None
+    try:
+        result = send_push_notification(token, notification.title, notification.body, notification.data)
+        from .utils.app_notifications import _track_push_result
+        _track_push_result(notification, result)
+        return result
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="notifications")
+def check_push_receipt_task(self, notification_id):
+    from .models import AppNotification
+    from .utils.notifications import get_push_receipts
+    notification = AppNotification.objects.select_related("recipient_user", "recipient_store").filter(pk=notification_id).first()
+    if not notification or not notification.push_ticket_id or notification.push_status == "delivered":
+        return None
+    try:
+        receipt = get_push_receipts([notification.push_ticket_id]).get(notification.push_ticket_id)
+        if not receipt:
+            raise self.retry(exc=RuntimeError("Expo receipt is not ready"))
+        details = receipt.get("details") or {}
+        notification.push_status = "delivered" if receipt.get("status") == "ok" else "failed"
+        notification.push_error = receipt.get("message") or details.get("error") or ""
+        notification.push_receipt_checked_at = timezone.now()
+        notification.save(update_fields=["push_status", "push_error", "push_receipt_checked_at"])
+        if details.get("error") == "DeviceNotRegistered":
+            _clear_notification_token(notification)
+        return receipt
+    except self.MaxRetriesExceededError:
+        notification.push_status = "receipt_timeout"
+        notification.save(update_fields=["push_status"])
+        return None
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
 def _haversine_km(lat1, lon1, lat2, lon2):
     try:
         lat1, lon1 = float(lat1), float(lon1)

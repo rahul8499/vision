@@ -28,6 +28,7 @@ gnome-terminal --title="AI Prod Service" -- bash -c "cd /home/rahulkolhe/Desktop
 # 4. Celery Worker for Background Tasks (Optional but good for Payments)
 echo "⚡ Starting Celery Task Workers..."
 gnome-terminal --title="Celery Workers" -- bash -c "cd /home/rahulkolhe/Desktop/backup/vision/django && source venv/bin/activate && celery -A aarx worker -l info --concurrency=4; exec bash"
+gnome-terminal --title="Celery Beat" -- bash -c "cd /home/rahulkolhe/Desktop/backup/vision/django && source venv/bin/activate && celery -A aarx beat -l info --pidfile=/tmp/aarx-celery-beat.pid; exec bash"
 
 # 5. Expo Dev Client
 echo "📱 Starting Expo Metro Bundler..."

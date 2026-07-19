@@ -66,23 +66,23 @@ export const refundsApi = {
   },
 
   approve: async (id: string, data?: RefundApproveRequest): Promise<Refund> => {
-    const response = await apiClient.post(`/refunds/${id}/approve/`, data)
-    return response.data.data
+    const response = await apiClient.post(`/refunds/${id}/review/`, { action: 'approve', admin_note: data?.notes })
+    return normalizeRefund(response.data.data)
   },
 
   reject: async (id: string, data: RefundRejectRequest): Promise<Refund> => {
-    const response = await apiClient.post(`/refunds/${id}/reject/`, data)
-    return response.data.data
+    const response = await apiClient.post(`/refunds/${id}/review/`, { action: 'reject', admin_note: data.reason })
+    return normalizeRefund(response.data.data)
   },
 
   process: async (id: string, data: RefundProcessRequest): Promise<Refund> => {
-    const response = await apiClient.post(`/refunds/${id}/process/`, data)
-    return response.data.data
+    const response = await apiClient.post(`/refunds/${id}/review/`, { action: 'process', payment_reference: data.transactionId, payment_method: data.paymentMethod })
+    return normalizeRefund(response.data.data)
   },
 
   cancel: async (id: string): Promise<Refund> => {
-    const response = await apiClient.post(`/refunds/${id}/cancel/`)
-    return response.data.data
+    const response = await apiClient.post(`/refunds/${id}/review/`, { action: 'cancel' })
+    return normalizeRefund(response.data.data)
   },
   assign: async (id: string, agentId: string): Promise<Refund> => {
     const response = await apiClient.post(`/refunds/${id}/assign/`, { assigned_to: agentId })

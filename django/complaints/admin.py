@@ -8,6 +8,8 @@ from .models import (
     ComplaintStatusHistory,
     PlatformSupportTicket,
     PlatformSupportMessage,
+    PlatformSupportTicketStatusHistory,
+    SupportCaseRating,
 )
 
 
@@ -160,3 +162,19 @@ class PlatformSupportMessageAdmin(admin.ModelAdmin):
     list_filter = ('sender_type', 'is_read', 'created_at')
     search_fields = ('ticket__subject', 'text')
     readonly_fields = ('created_at',)
+
+
+@admin.register(PlatformSupportTicketStatusHistory)
+class PlatformSupportTicketStatusHistoryAdmin(admin.ModelAdmin):
+    list_display = ('ticket', 'from_status', 'to_status', 'changed_by_staff', 'created_at')
+    list_filter = ('to_status', 'created_at')
+    search_fields = ('ticket__subject', 'note')
+    readonly_fields = ('created_at',)
+
+
+@admin.register(SupportCaseRating)
+class SupportCaseRatingAdmin(admin.ModelAdmin):
+    list_display = ('id', 'complaint', 'ticket', 'rating', 'credited_staff', 'created_at')
+    list_filter = ('rating', 'created_at')
+    search_fields = ('feedback',)
+    readonly_fields = ('created_at', 'updated_at')

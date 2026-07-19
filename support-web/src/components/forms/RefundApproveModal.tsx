@@ -44,7 +44,7 @@ export const RefundApproveModal = ({ isOpen, onClose, onApprove, refund }: Refun
       onClose={handleClose}
       onConfirm={handleApprove}
       title="Approve Refund"
-      message={`Are you sure you want to approve refund of ${refund.currency} ${refund.amount.toFixed(2)} for order ${refund.orderId}?`}
+      message={`Approve ${refund.currency} ${refund.amount.toFixed(2)} for payment ${refund.charge}?`}
       confirmText="Approve"
       loading={isSubmitting}
     />

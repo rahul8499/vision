@@ -10,7 +10,7 @@ interface AssignModalProps {
   isOpen: boolean
   onClose: () => void
   onAssign: (agentId: string) => Promise<void>
-  assignees: { id: string; name: string }[]
+  assignees: { id: string; name: string; active_cases?: number }[]
   itemLabel?: string
 }
 
@@ -31,7 +31,7 @@ export const AssignModal = ({ isOpen, onClose, onAssign, assignees, itemLabel = 
     try {
       await onAssign(selectedAgent)
       handleClose()
-      toast.success(`${itemLabel} assigned successfully`)
+      toast.success(`${itemLabel} was given to the selected staff member`)
     } catch (error) {
       toast.error(error instanceof Error && error.message
         ? error.message
@@ -46,17 +46,17 @@ export const AssignModal = ({ isOpen, onClose, onAssign, assignees, itemLabel = 
       isOpen={isOpen}
       onClose={handleClose}
       onConfirm={handleAssign}
-      title={`Assign ${itemLabel}`}
-      message={`Select an agent to assign this ${itemLabel.toLowerCase()} to.`}
-      confirmText="Assign"
+      title={`Give ${itemLabel} to a staff member`}
+      message={`Choose who will be responsible for this ${itemLabel.toLowerCase()}.`}
+      confirmText="Give to this staff member"
       loading={isSubmitting}
     >
       <div className="mt-4">
         <SelectFilter
-          label="Select staff member"
+          label="Who should handle this?"
           value={selectedAgent}
           onChange={setSelectedAgent}
-          options={assignees.map((a) => ({ value: a.id, label: a.name }))}
+          options={assignees.map((a) => ({ value: a.id, label: `${a.name}${a.active_cases == null ? '' : ` — ${a.active_cases} active cases`}` }))}
         />
       </div>
     </ConfirmModal>

@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     LoginView, RefreshTokenView, LogoutView, MeView, ChangePasswordView,
-    DashboardSummaryView,
+    DashboardSummaryView, SupportRuntimeHealthView,
     StaffListCreateView, StaffDetailView, StaffActivateView, StaffResetPasswordView, AssigneeListView,
     ComplaintListView, ComplaintDetailView, ComplaintAssignView, ComplaintReplyView,
     ComplaintInternalNoteView, ComplaintStatusUpdateView, ComplaintBulkAssignView, ComplaintBulkCloseView,
@@ -13,7 +13,9 @@ from .views import (
     UserLookupView, UserDetailView,
     StoreLookupView, StoreDetailView,
     NotificationListView, NotificationMarkReadView, NotificationUnreadCountView,
-    NotificationMarkAllReadView, SupportOperationsView, ContactLogListCreateView, SavedReplyListCreateView,
+    NotificationMarkAllReadView, SupportOperationsView, ContactLogListCreateView, ContactLogDetailView, SavedReplyListCreateView, SavedReplyDetailView,
+    CaseSelfAssignView, CaseManagementView, CaseManagementSearchView, SLAConfigurationListCreateView, SLAConfigurationDetailView,
+    SupportHolidayListCreateView, SupportHolidayDetailView,
     AuditLogListView,
 )
 
@@ -24,6 +26,7 @@ urlpatterns = [
     path("auth/me/", MeView.as_view(), name="me"),
     path("auth/change-password/", ChangePasswordView.as_view(), name="change-password"),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
+    path("health/runtime/", SupportRuntimeHealthView.as_view(), name="support-runtime-health"),
     path("emergency-monitoring/", EmergencyMonitoringView.as_view(), name="emergency-monitoring"),
     path("emergency-monitoring/cities/", EmergencyCityListView.as_view(), name="emergency-cities"),
     path("emergency-monitoring/policy/", EmergencyPolicyView.as_view(), name="emergency-policy"),
@@ -66,7 +69,16 @@ urlpatterns = [
     path("notifications/unread-count/", NotificationUnreadCountView.as_view(), name="notification-unread-count"),
     path("notifications/mark-all-read/", NotificationMarkAllReadView.as_view(), name="notification-mark-all-read"),
     path("operations/", SupportOperationsView.as_view(), name="support-operations"),
+    path("cases/<str:entity_type>/<int:object_id>/assign-to-me/", CaseSelfAssignView.as_view(), name="case-self-assign"),
+    path("cases/<str:entity_type>/<int:object_id>/management/", CaseManagementView.as_view(), name="case-management"),
+    path("case-management/search/", CaseManagementSearchView.as_view(), name="case-management-search"),
     path("contact-logs/", ContactLogListCreateView.as_view(), name="contact-log-create"),
+    path("contact-logs/<int:pk>/", ContactLogDetailView.as_view(), name="contact-log-detail"),
     path("saved-replies/", SavedReplyListCreateView.as_view(), name="saved-replies"),
+    path("saved-replies/<int:pk>/", SavedReplyDetailView.as_view(), name="saved-reply-detail"),
+    path("sla-settings/", SLAConfigurationListCreateView.as_view(), name="sla-settings"),
+    path("sla-settings/<int:pk>/", SLAConfigurationDetailView.as_view(), name="sla-setting-detail"),
+    path("sla-holidays/", SupportHolidayListCreateView.as_view(), name="sla-holidays"),
+    path("sla-holidays/<int:pk>/", SupportHolidayDetailView.as_view(), name="sla-holiday-detail"),
     path("audit-logs/", AuditLogListView.as_view(), name="audit-log-list"),
 ]

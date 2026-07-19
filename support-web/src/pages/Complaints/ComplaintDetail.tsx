@@ -11,6 +11,7 @@ import { assigneesApi } from '@/api/assigneesApi'
 import { MessageThread } from '@/components/threads/MessageThread'
 import { InternalNotesPanel } from '@/components/threads/InternalNotesPanel'
 import { ContactHistoryPanel } from '@/components/threads/ContactHistoryPanel'
+import { CaseManagementPanel } from '@/components/threads/CaseManagementPanel'
 import { Badge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
 import { Loading } from '@/components/common/Loading'
@@ -87,8 +88,8 @@ export const ComplaintDetail = () => {
   }, [id, queryClient, subscribe])
 
   const replyMutation = useMutation({
-    mutationFn: (message: string) => complaintsApi.reply(id!, { text: message, visibility: conversation }),
-    onMutate: async (message) => {
+    mutationFn: ({ message, attachment }: { message: string; attachment?: File }) => complaintsApi.reply(id!, { text: message, visibility: conversation, attachment }),
+    onMutate: async ({ message }) => {
       await queryClient.cancelQueries({ queryKey: ['complaint', id] })
       const previous = queryClient.getQueryData<Complaint>(['complaint', id])
       if (previous) {
@@ -108,7 +109,7 @@ export const ComplaintDetail = () => {
       }
       return { previous }
     },
-    onError: (_error, _message, context) => {
+    onError: (_error, _payload, context) => {
       if (context?.previous) queryClient.setQueryData(['complaint', id], context.previous)
       toast.error('Reply could not be sent. Your message has been restored.')
     },
@@ -184,14 +185,14 @@ export const ComplaintDetail = () => {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className={COMPLAINT_PRIORITY_COLORS[complaint.priority]}>{complaint.priorityDisplay} priority</Badge>
-              <Badge className={COMPLAINT_STATUS_COLORS[complaint.status]}>{complaint.statusDisplay}</Badge>
-              {canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Assign staff</Button>}
+              <Badge className={COMPLAINT_PRIORITY_COLORS[complaint.priority]}>Importance: {complaint.priorityDisplay}</Badge>
+              <Badge className={COMPLAINT_STATUS_COLORS[complaint.status]}>Current progress: {complaint.statusDisplay}</Badge>
+              {canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Choose who will handle this</Button>}
               <select value={status} onChange={(event) => setStatus(event.target.value as ComplaintStatus)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-primary-200">
-                <option value="">Change status…</option>
+                <option value="">Choose current stage…</option>
                 {STATUS_OPTIONS.filter((option) => option.value !== complaint.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-              <Button size="sm" disabled={!status} loading={statusMutation.isPending} onClick={() => status && statusMutation.mutate(status)}>Update</Button>
+              <Button size="sm" disabled={!status} loading={statusMutation.isPending} onClick={() => status && statusMutation.mutate(status)}>Save current stage</Button>
             </div>
           </div>
         </div>
@@ -200,7 +201,7 @@ export const ComplaintDetail = () => {
           <Metric icon={<MessagesSquare />} label="Messages" value={String(complaint.messageCount)} />
           <Metric icon={<Paperclip />} label="Attachments" value={String(complaint.attachmentCount)} />
           <Metric icon={<Clock3 />} label="Last updated" value={formatSafeDate(complaint.updatedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} />
-          <Metric icon={<ShieldCheck />} label="Assigned staff" value={complaint.assignedToName || 'Not assigned yet'} />
+          <Metric icon={<ShieldCheck />} label="Person handling this case" value={complaint.assignedToName || 'No staff member chosen yet'} />
         </div>
       </section>
 
@@ -253,8 +254,9 @@ export const ComplaintDetail = () => {
           </div>
           <MessageThread
             messages={messages}
-            onReply={async (content) => { await replyMutation.mutateAsync(content) }}
+            onReply={async (content, attachment) => { await replyMutation.mutateAsync({ message: content, attachment }) }}
             isSending={replyMutation.isPending}
+            draftKey={`complaint-${complaint.id}-${conversation}`}
             replyPlaceholder={conversation === 'INTERNAL' ? 'Write an internal support message…' : `Reply to ${conversation === 'USER_SUPPORT' ? 'user' : conversation === 'STORE_SUPPORT' ? 'store' : 'both parties'}…`}
           />
         </section>
@@ -269,20 +271,23 @@ export const ComplaintDetail = () => {
             )}
             <div className="space-y-4">
               <Party icon={complaint.complainantType === 'store' ? <Store /> : <User />} eyebrow="Filed by" name={complaint.complainantName} type={complaint.complainantType} />
+              {complaint.complainantId && <Button size="sm" variant="ghost" onClick={() => navigate(`/${complaint.complainantType === 'store' ? 'store' : 'user'}-lookup/${complaint.complainantId}`)}>View full history</Button>}
               <div className="ml-4 h-5 border-l border-dashed border-slate-300" />
               <Party danger icon={complaint.respondentType === 'store' ? <Store /> : <User />} eyebrow="Complaint against" name={complaint.respondentName} type={complaint.respondentType} />
+              {complaint.respondentId && <Button size="sm" variant="ghost" onClick={() => navigate(`/${complaint.respondentType === 'store' ? 'store' : 'user'}-lookup/${complaint.respondentId}`)}>View full history</Button>}
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Detail icon={<Activity />} label="Category" value={complaint.categoryDisplay} />
               <Detail icon={<CalendarDays />} label="Created" value={formatSafeDate(complaint.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })} />
               <Detail icon={<ShoppingBag />} label="Order" value={complaint.orderId ? `#${complaint.orderId}` : 'Not linked'} />
-              <Detail icon={<ShieldCheck />} label="Assigned staff" value={complaint.assignedToName || 'Not assigned yet'} />
+              <Detail icon={<ShieldCheck />} label="Person handling this case" value={complaint.assignedToName || 'No staff member chosen yet'} />
             </div>
             {complaint.orderId && <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">View linked order <ExternalLink className="h-3.5 w-3.5" /></button>}
           </Panel>
 
           <InternalNotesPanel notes={notesQuery.data || []} onAddNote={async (content) => { await noteMutation.mutateAsync(content) }} />
           <ContactHistoryPanel entityType="complaint" objectId={complaint.id} />
+          <CaseManagementPanel entityType="complaint" objectId={complaint.id} status={complaint.status} subject={complaint.subject} />
 
           <Panel title="Status history">
             {complaint.statusHistory.length === 0 ? <p className="text-sm text-slate-500">No status changes recorded yet.</p> : (

@@ -63,7 +63,7 @@ export const StaffForm = () => {
           {!allCities && <div className="mt-3 grid grid-cols-2 gap-2">{(citiesQuery.data || []).map(city => <label key={city.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedCities.includes(city.id)} onChange={e => setSelectedCities(e.target.checked ? [...selectedCities, city.id] : selectedCities.filter(id => id !== city.id))} />{city.name}</label>)}</div>}
           <p className="mt-2 text-xs text-gray-500">Agents only see operational records from assigned cities. Admin can use All cities.</p>
         </div>
-        <Button type="submit" loading={isSubmitting}>Create Staff Member</Button>
+        <Button type="submit" loading={isSubmitting}>Create support staff account</Button>
       </form>
     </div>
   )

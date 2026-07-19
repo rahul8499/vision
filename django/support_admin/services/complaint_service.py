@@ -1,12 +1,14 @@
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 from django.utils import timezone
+from django.db import transaction
 from complaints.models import Complaint
 from ..models import SupportStaff, SupportAssignment, InternalNote, SupportNotification
 from ..selectors.complaint_selectors import get_complaint_by_id, get_complaint_queryset
 from ..selectors.staff_selectors import get_staff_by_id
 from complaints.models import Complaint, ComplaintMessage, ComplaintStatusHistory
 from .notification_service import create_assignment_notification, eligible_staff_for_case
+from . import sla_service
 
 
 def assign_complaint(complaint_id, assigned_to_id, assigned_by):
@@ -51,6 +53,16 @@ def assign_complaint(complaint_id, assigned_to_id, assigned_by):
     return complaint, assignment
 
 
+@transaction.atomic
+def claim_unassigned_complaint(complaint_id, staff):
+    complaint = Complaint.objects.select_for_update().filter(id=complaint_id).first()
+    if not complaint:
+        raise ValueError("Complaint not found.")
+    if complaint.assigned_to:
+        raise ValueError("This complaint is already assigned.")
+    return assign_complaint(complaint_id, staff.id, staff)
+
+
 def reply_to_complaint(
     complaint_id, text, actor, actor_type="staff", attachment=None,
     visibility=ComplaintMessage.VISIBILITY_SHARED,
@@ -66,6 +78,7 @@ def reply_to_complaint(
     message = ComplaintMessage.objects.create(
         complaint=complaint,
         sender_type="platform",
+        support_staff=actor,
         visibility=visibility,
         text=text or None,
         attachment=attachment,
@@ -90,7 +103,7 @@ def add_internal_note(complaint_id, body, staff, is_pinned=False):
     return note
 
 
-def update_complaint_status(complaint_id, new_status, changed_by, note=None):
+def update_complaint_status(complaint_id, new_status, changed_by, note=None, changed_by_staff=None):
     complaint = get_complaint_by_id(complaint_id)
     if not complaint:
         raise ValueError("Complaint not found.")
@@ -103,18 +116,21 @@ def update_complaint_status(complaint_id, new_status, changed_by, note=None):
     if new_status not in allowed:
         raise ValueError(f"Illegal status transition from '{old_status}' to '{new_status}'.")
 
+    sla_service.sync_case_clock("complaint", complaint)
     complaint.status = new_status
     if new_status in ("resolved", "rejected", "withdrawn", "closed"):
         complaint.resolved_at = timezone.now()
     if note:
         complaint.resolution_notes = note
     complaint.save()
+    sla_service.sync_case_clock("complaint", complaint)
 
     ComplaintStatusHistory.objects.create(
         complaint=complaint,
         from_status=old_status,
         to_status=new_status,
         changed_by=changed_by,
+        changed_by_staff=changed_by_staff,
         note=note,
     )
     return complaint

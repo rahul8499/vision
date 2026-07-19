@@ -170,7 +170,7 @@ export default function TabLayout() {
     unreadCount: notificationUnreadCount,
     loading: notificationLoading,
     fetchNotifications,
-    markAllRead,
+    markRead,
     handleRealtimeMessage,
   } = useAppNotifications({
     baseUrl: BASE_URL,
@@ -188,7 +188,12 @@ export default function TabLayout() {
   const routeSellerNotification = useCallback((data?: Record<string, unknown>) => {
     const notificationType = String(data?.type || '');
 
-    if (notificationType.toLowerCase().startsWith('replacement_')) {
+    if (notificationType === 'SUPPORT_RATING') {
+      const caseId = Number(data?.case_id || 0);
+      const route = String(data?.path || '');
+      if (caseId && route === 'platform-support') router.push(`/platform-support/${caseId}` as any);
+      else if (caseId) router.push(`/support/${caseId}` as any);
+    } else if (notificationType.toLowerCase().startsWith('replacement_')) {
       router.push('/(sellerTabs)/replacements' as any);
     } else if (SELLER_NOTIFICATION_TYPES.has(notificationType)) {
       router.push('/(sellerTabs)/active-orders' as any);
@@ -201,12 +206,13 @@ export default function TabLayout() {
   }, [router]);
 
   const handleSellerNotificationPress = useCallback((notification?: HeaderNotification) => {
+    if (notification?.id != null) markRead(notification.id);
     const data = notification?.data || {};
     routeSellerNotification({
       ...data,
       type: data.type || notification?.notification_type,
     });
-  }, [routeSellerNotification]);
+  }, [markRead, routeSellerNotification]);
 
   // Handle incoming notification deep links
   const notificationResponse = Notifications.useLastNotificationResponse();
@@ -374,7 +380,6 @@ export default function TabLayout() {
         notifications={notifications}
         notificationCount={notificationUnreadCount}
         notificationLoading={notificationLoading}
-        onOpenNotifications={markAllRead}
         onNotificationPress={handleSellerNotificationPress}
         showNotificationDot={chatUnreadCount > 0}
       />

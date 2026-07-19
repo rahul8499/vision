@@ -11,6 +11,12 @@ from .models import (
     SupportNotification,
     ContactLog,
     SavedReplyTemplate,
+    SupportHoliday,
+    CaseSLAClock,
+    CaseEscalation,
+    CaseRelation,
+    EngineeringIssue,
+    SensitiveActionRequest,
 )
 
 
@@ -73,9 +79,23 @@ class SupportAuditLogAdmin(admin.ModelAdmin):
 
 @admin.register(SLAConfiguration)
 class SLAConfigurationAdmin(admin.ModelAdmin):
-    list_display = ("entity_type", "priority", "first_response_minutes", "resolution_minutes", "is_active")
-    list_filter = ("entity_type", "is_active")
+    list_display = ("entity_type", "priority", "first_response_minutes", "resolution_minutes", "working_hours_only", "pause_when_waiting", "auto_escalate", "auto_assign", "is_active")
+    list_filter = ("entity_type", "is_active", "working_hours_only", "auto_escalate", "auto_assign")
     search_fields = ("priority",)
+
+
+@admin.register(SupportHoliday)
+class SupportHolidayAdmin(admin.ModelAdmin):
+    list_display = ("date", "name", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("name",)
+
+
+@admin.register(CaseSLAClock)
+class CaseSLAClockAdmin(admin.ModelAdmin):
+    list_display = ("content_type", "object_id", "paused_at", "paused_business_seconds", "warning_stage", "breached_stage", "updated_at")
+    list_filter = ("content_type",)
+    readonly_fields = ("updated_at",)
 
 
 @admin.register(SupportNotification)
@@ -88,8 +108,8 @@ class SupportNotificationAdmin(admin.ModelAdmin):
 
 @admin.register(ContactLog)
 class ContactLogAdmin(admin.ModelAdmin):
-    list_display = ("content_type", "object_id", "channel", "outcome", "created_by", "follow_up_at", "created_at")
-    list_filter = ("channel", "outcome", "created_at")
+    list_display = ("content_type", "object_id", "channel", "outcome", "status", "created_by", "follow_up_at", "created_at")
+    list_filter = ("channel", "outcome", "status", "created_at")
 
 
 @admin.register(SavedReplyTemplate)
@@ -98,3 +118,30 @@ class SavedReplyTemplateAdmin(admin.ModelAdmin):
     list_filter = ("visibility", "is_active", "category")
     search_fields = ("title", "body", "category")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(CaseEscalation)
+class CaseEscalationAdmin(admin.ModelAdmin):
+    list_display = ("entity_type", "entity_id", "destination", "status", "escalated_by", "created_at")
+    list_filter = ("destination", "status", "entity_type")
+    search_fields = ("entity_id", "reason", "handover_note")
+
+
+@admin.register(CaseRelation)
+class CaseRelationAdmin(admin.ModelAdmin):
+    list_display = ("source_type", "source_id", "relation", "target_type", "target_id", "created_by")
+    list_filter = ("relation", "source_type", "target_type")
+
+
+@admin.register(EngineeringIssue)
+class EngineeringIssueAdmin(admin.ModelAdmin):
+    list_display = ("title", "entity_type", "entity_id", "priority", "status", "owner", "updated_at")
+    list_filter = ("priority", "status", "entity_type")
+    search_fields = ("title", "description", "owner", "external_reference")
+
+
+@admin.register(SensitiveActionRequest)
+class SensitiveActionRequestAdmin(admin.ModelAdmin):
+    list_display = ("action_type", "entity_type", "entity_id", "status", "requested_by", "reviewed_by", "created_at")
+    list_filter = ("action_type", "status", "entity_type")
+    search_fields = ("entity_id", "reason", "verification_reference")

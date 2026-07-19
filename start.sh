@@ -109,6 +109,17 @@ else
   ok "✓ Celery worker started"
 fi
 
+if pgrep -f "celery .*[-]A aarx beat" >/dev/null; then
+  ok "✓ Celery Beat already running"
+else
+  launch_terminal "AARX Celery Beat" \
+    "cd '$DJANGO_DIR' && exec '$DJANGO_VENV/bin/celery' -A aarx beat -l info --pidfile=/tmp/aarx-celery-beat.pid"
+  sleep 2
+  pgrep -f "celery .*[-]A aarx beat" >/dev/null ||
+    fail "Celery Beat failed to start; check its terminal"
+  ok "✓ Celery Beat started"
+fi
+
 if pgrep -f "expo start.*--dev-client" >/dev/null; then
   ok "✓ Expo Metro already running"
 else

@@ -27,6 +27,7 @@ export const normalizeTicket = (raw: Raw): Ticket => ({
   subject: String(raw.subject || 'Untitled support request'),
   description: String(raw.description || ''),
   requesterType: pick(raw, 'requesterType', 'requester_type') || 'user',
+  requesterId: pick(raw, 'requesterId', 'requester_id') ?? undefined,
   requesterName: asText(raw, 'requesterName', 'requester_name', 'Unknown requester'),
   status: raw.status || 'open',
   statusDisplay: asText(raw, 'statusDisplay', 'status_display', String(raw.status || 'open').replace(/_/g, ' ')),
@@ -39,6 +40,7 @@ export const normalizeTicket = (raw: Raw): Ticket => ({
   messageCount: Number(pick(raw, 'messageCount', 'message_count') || raw.messages?.length || 0),
   unreadCount: Number(pick(raw, 'unreadCount', 'unread_count') || 0),
   messages: (raw.messages || []).map(normalizeTicketMessage),
+  supportRating: pick(raw, 'supportRating', 'support_rating') ? { rating: Number(pick(raw, 'supportRating', 'support_rating').rating), feedback: pick(raw, 'supportRating', 'support_rating').feedback, createdAt: pick(raw, 'supportRating', 'support_rating').created_at } : undefined,
   createdAt: asText(raw, 'createdAt', 'created_at'),
   updatedAt: asText(raw, 'updatedAt', 'updated_at'),
 })
@@ -64,7 +66,12 @@ export const ticketsApi = {
     return normalizeTicket(response.data.data)
   },
   reply: async (id: string, data: TicketReplyRequest): Promise<TicketMessage> => {
-    const response = await apiClient.post(`/tickets/${id}/reply/`, data)
+    const body = data.attachment ? new FormData() : data
+    if (body instanceof FormData) {
+      body.append('text', data.text)
+      body.append('attachment', data.attachment!)
+    }
+    const response = await apiClient.post(`/tickets/${id}/reply/`, body, body instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined)
     return normalizeTicketMessage(response.data.data)
   },
   updateStatus: async (id: string, status: TicketStatus, resolutionNote?: string): Promise<Partial<Ticket>> => {

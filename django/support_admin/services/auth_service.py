@@ -25,8 +25,9 @@ def login_staff(email, password, ip_address=None, user_agent=None):
         raise ValueError("Invalid credentials.")
 
     invalidate_staff_sessions(staff)
-    tokens = RefreshToken.for_user(user)
     session = create_staff_session(staff)
+    tokens = RefreshToken.for_user(user)
+    tokens["support_session"] = session.session_key
 
     return {
         "access": str(tokens.access_token),
@@ -42,10 +43,15 @@ def refresh_staff_token(refresh_token_str):
         user_id = refresh["user_id"]
         user = User.objects.get(id=user_id, is_active=True)
         staff = SupportStaff.objects.select_related("user").get(user=user, is_active=True)
+        session_key = refresh.get("support_session")
+        session = SupportSession.objects.filter(staff=staff, session_key=session_key, expires_at__gt=timezone.now()).first()
+        if not session:
+            raise ValueError("Support session has expired. Please sign in again.")
     except (TokenError, User.DoesNotExist, SupportStaff.DoesNotExist):
         raise ValueError("Invalid or expired refresh token.")
 
     new_tokens = RefreshToken.for_user(user)
+    new_tokens["support_session"] = session.session_key
     return {
         "access": str(new_tokens.access_token),
         "refresh": str(new_tokens),
@@ -70,6 +76,8 @@ def change_staff_password(staff, old_password, new_password):
     user = staff.user
     if not user.check_password(old_password):
         raise ValueError("Current password is incorrect.")
-    user.password = new_password
-    user.save()
+    if len(new_password) < 8:
+        raise ValueError("New password must be at least 8 characters.")
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
     invalidate_staff_sessions(staff)

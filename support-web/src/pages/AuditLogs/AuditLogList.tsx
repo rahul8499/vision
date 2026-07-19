@@ -27,7 +27,7 @@ export const AuditLogList = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Activity History</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Who changed what</h1>
           <p className="text-gray-500 mt-1">See who changed, assigned or closed each support case and when it happened.</p>
         </div>
       </div>

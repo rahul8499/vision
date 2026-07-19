@@ -51,13 +51,13 @@ export const StatusChangeModal = ({
       onClose={handleClose}
       onConfirm={handleConfirm}
       title={title}
-      message={`Change status for this ${itemType}?`}
-      confirmText="Update Status"
+      message={`Choose what stage this ${itemType} is now in.`}
+      confirmText="Save current progress"
       loading={isSubmitting}
     >
       <div className="mt-4">
         <SelectFilter
-          label="New Status"
+          label="What is happening with this case now?"
           value={selectedStatus}
           onChange={(value) => setSelectedStatus(value)}
           options={statusOptions}

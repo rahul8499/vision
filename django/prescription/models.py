@@ -1032,6 +1032,12 @@ class AppNotification(models.Model):
     dedupe_key = models.CharField(max_length=180, null=True, blank=True, unique=True)
     is_read = models.BooleanField(default=False, db_index=True)
     read_at = models.DateTimeField(null=True, blank=True)
+    push_status = models.CharField(max_length=24, blank=True, default='', db_index=True)
+    push_ticket_id = models.CharField(max_length=120, blank=True, default='', db_index=True)
+    push_attempts = models.PositiveSmallIntegerField(default=0)
+    push_error = models.TextField(blank=True, default='')
+    push_last_attempt_at = models.DateTimeField(null=True, blank=True)
+    push_receipt_checked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

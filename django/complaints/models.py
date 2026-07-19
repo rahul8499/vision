@@ -166,6 +166,7 @@ class ComplaintMessage(models.Model):
     sender_type = models.CharField(max_length=10, choices=SENDER_CHOICES)
     sender_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     sender_store = models.ForeignKey(Store, on_delete=models.SET_NULL, null=True, blank=True)
+    support_staff = models.ForeignKey('support_admin.SupportStaff', on_delete=models.SET_NULL, null=True, blank=True, related_name='complaint_replies')
     visibility = models.CharField(
         max_length=20,
         choices=VISIBILITY_CHOICES,
@@ -189,6 +190,7 @@ class ComplaintStatusHistory(models.Model):
     from_status = models.CharField(max_length=20)
     to_status = models.CharField(max_length=20)
     changed_by = models.CharField(max_length=20, default='platform')
+    changed_by_staff = models.ForeignKey('support_admin.SupportStaff', on_delete=models.SET_NULL, null=True, blank=True, related_name='complaint_status_changes')
     note = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -213,6 +215,13 @@ class PlatformSupportTicket(models.Model):
         ('open', 'Open'), ('in_progress', 'In progress'),
         ('waiting_for_user', 'Waiting for you'), ('resolved', 'Resolved'), ('closed', 'Closed'),
     ]
+    STATUS_TRANSITIONS = {
+        'open': ['in_progress', 'waiting_for_user', 'resolved', 'closed'],
+        'in_progress': ['open', 'waiting_for_user', 'resolved', 'closed'],
+        'waiting_for_user': ['open', 'in_progress', 'resolved', 'closed'],
+        'resolved': ['closed'],
+        'closed': [],
+    }
     PRIORITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')]
     REQUESTER_CHOICES = [('user', 'User'), ('store', 'Store')]
 
@@ -267,6 +276,7 @@ class PlatformSupportMessage(models.Model):
     sender_type = models.CharField(max_length=10, choices=SENDER_CHOICES)
     sender_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     sender_store = models.ForeignKey(Store, on_delete=models.SET_NULL, null=True, blank=True)
+    support_staff = models.ForeignKey('support_admin.SupportStaff', on_delete=models.SET_NULL, null=True, blank=True, related_name='ticket_replies')
     text = models.TextField(blank=True)
     attachment = models.FileField(upload_to='platform_support/', null=True, blank=True)
     is_read = models.BooleanField(default=False)
@@ -277,3 +287,38 @@ class PlatformSupportMessage(models.Model):
 
     def __str__(self):
         return f"Support message #{self.id} on ticket {self.ticket_id}"
+
+
+class PlatformSupportTicketStatusHistory(models.Model):
+    ticket = models.ForeignKey(PlatformSupportTicket, on_delete=models.CASCADE, related_name='status_history')
+    from_status = models.CharField(max_length=20)
+    to_status = models.CharField(max_length=20)
+    changed_by_staff = models.ForeignKey('support_admin.SupportStaff', on_delete=models.SET_NULL, null=True, blank=True, related_name='ticket_status_changes')
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class SupportCaseRating(models.Model):
+    complaint = models.OneToOneField(Complaint, on_delete=models.CASCADE, null=True, blank=True, related_name='support_rating')
+    ticket = models.OneToOneField(PlatformSupportTicket, on_delete=models.CASCADE, null=True, blank=True, related_name='support_rating')
+    rating = models.PositiveSmallIntegerField()
+    feedback = models.TextField(blank=True)
+    submitted_by_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='support_case_ratings')
+    submitted_by_store = models.ForeignKey(Store, on_delete=models.SET_NULL, null=True, blank=True, related_name='support_case_ratings')
+    credited_staff = models.ForeignKey('support_admin.SupportStaff', on_delete=models.SET_NULL, null=True, blank=True, related_name='customer_ratings')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if bool(self.complaint_id) == bool(self.ticket_id):
+            raise ValidationError('Select exactly one complaint or help request.')
+        if not 1 <= self.rating <= 5:
+            raise ValidationError({'rating': 'Rating must be between 1 and 5.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

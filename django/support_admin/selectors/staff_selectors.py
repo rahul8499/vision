@@ -24,7 +24,8 @@ def search_staff(query=None, role=None, is_active=None, department=None, page=1,
     qs = get_staff_queryset()
     if query:
         qs = qs.filter(
-            Q(user__name__icontains=query) |
+            Q(user__first_name__icontains=query) |
+            Q(user__last_name__icontains=query) |
             Q(user__email__icontains=query) |
             Q(employee_id__icontains=query) |
             Q(phone__icontains=query)

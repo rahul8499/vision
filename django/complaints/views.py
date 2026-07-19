@@ -17,7 +17,7 @@ from prescription.utils.app_notifications import (
     send_store_app_notification,
 )
 
-from .models import Complaint, ComplaintMessage, ComplaintAttachment, ComplaintStatusHistory, PlatformSupportTicket, PlatformSupportMessage
+from .models import Complaint, ComplaintMessage, ComplaintAttachment, ComplaintStatusHistory, PlatformSupportTicket, PlatformSupportMessage, SupportCaseRating
 from .serializers import (
     ComplaintCreateSerializer,
     ComplaintDetailSerializer,
@@ -499,6 +499,7 @@ def _file_url(request, field):
 
 def _serialize_support_ticket(request, ticket, detail=False):
     actor_type, _ = get_actor(request)
+    rating = getattr(ticket, 'support_rating', None)
     data = {
         'id': ticket.id,
         'category': ticket.category,
@@ -514,6 +515,7 @@ def _serialize_support_ticket(request, ticket, detail=False):
         'resolved_at': ticket.resolved_at,
         'created_at': ticket.created_at,
         'updated_at': ticket.updated_at,
+        'support_rating': _rating_payload(rating),
         'message_count': ticket.messages.count(),
         'unread_count': ticket.messages.filter(is_read=False).exclude(sender_type=actor_type).count(),
     }
@@ -522,7 +524,8 @@ def _serialize_support_ticket(request, ticket, detail=False):
             'id': message.id,
             'sender_type': message.sender_type,
             'sender_name': (
-                message.sender_store.name if message.sender_store
+                (message.support_staff.user.get_full_name() or message.support_staff.user.username or message.support_staff.user.email) if message.support_staff
+                else message.sender_store.name if message.sender_store
                 else message.sender_user.name if message.sender_user
                 else 'AARX Support'
             ),
@@ -530,7 +533,7 @@ def _serialize_support_ticket(request, ticket, detail=False):
             'attachment': _file_url(request, message.attachment),
             'is_read': message.is_read,
             'created_at': message.created_at.isoformat(),
-        } for message in ticket.messages.select_related('sender_user', 'sender_store').all()]
+        } for message in ticket.messages.select_related('sender_user', 'sender_store', 'support_staff__user').all()]
     return data
 
 
@@ -673,3 +676,72 @@ class PlatformSupportMessageView(APIView):
             assigned_to_id=ticket.assigned_to,
         ))
         return Response(_serialize_support_ticket(request, ticket, detail=True), status=201)
+
+
+def _rating_payload(rating):
+    return None if not rating else {"rating": rating.rating, "feedback": rating.feedback, "created_at": rating.created_at, "updated_at": rating.updated_at}
+
+
+class ComplaintRatingView(APIView):
+    authentication_classes = [StoreTokenAuthentication, UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, complaint_id):
+        actor_type, actor = get_actor(request)
+        complaint = Complaint.objects.filter(pk=complaint_id).first()
+        if not complaint or not is_participant(complaint, actor_type, actor):
+            return Response({"error": "Complaint not found."}, status=404)
+        return Response(_rating_payload(getattr(complaint, "support_rating", None)))
+
+    def post(self, request, complaint_id):
+        actor_type, actor = get_actor(request)
+        complaint = Complaint.objects.filter(pk=complaint_id).first()
+        is_complainant = complaint and ((actor_type == "user" and complaint.complainant_user_id == actor.id) or (actor_type == "store" and complaint.complainant_store_id == actor.id))
+        if not is_complainant:
+            return Response({"error": "Only the person who filed this complaint can rate support."}, status=403)
+        if complaint.status not in {"resolved", "closed", "rejected"}:
+            return Response({"error": "You can rate support after the complaint is completed."}, status=400)
+        try:
+            score = int(request.data.get("rating"))
+        except (TypeError, ValueError):
+            return Response({"rating": "Enter a rating from 1 to 5."}, status=400)
+        if score not in range(1, 6):
+            return Response({"rating": "Enter a rating from 1 to 5."}, status=400)
+        latest = complaint.status_history.filter(changed_by_staff__isnull=False).select_related("changed_by_staff").first()
+        values = {"rating": score, "feedback": str(request.data.get("feedback", "")).strip()[:2000], "credited_staff": latest.changed_by_staff if latest else None, "submitted_by_user": actor if actor_type == "user" else None, "submitted_by_store": actor if actor_type == "store" else None}
+        rating, _ = SupportCaseRating.objects.update_or_create(complaint=complaint, defaults=values)
+        from support_admin.services.audit_service import log_audit
+        log_audit(None, "customer_support_rating", "complaint", complaint.id, new_data={"rating": score, "submitted_by_type": actor_type, "submitted_by_id": actor.id})
+        return Response(_rating_payload(rating), status=200)
+
+
+class SupportTicketRatingView(APIView):
+    authentication_classes = [StoreTokenAuthentication, UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, ticket_id):
+        actor_type, actor = get_actor(request)
+        ticket = _support_ticket_for_actor(ticket_id, actor_type, actor)
+        if not ticket:
+            return Response({"error": "Support request not found."}, status=404)
+        return Response(_rating_payload(getattr(ticket, "support_rating", None)))
+
+    def post(self, request, ticket_id):
+        actor_type, actor = get_actor(request)
+        ticket = _support_ticket_for_actor(ticket_id, actor_type, actor)
+        if not ticket:
+            return Response({"error": "Support request not found."}, status=404)
+        if ticket.status not in {"resolved", "closed"}:
+            return Response({"error": "You can rate support after the request is completed."}, status=400)
+        try:
+            score = int(request.data.get("rating"))
+        except (TypeError, ValueError):
+            return Response({"rating": "Enter a rating from 1 to 5."}, status=400)
+        if score not in range(1, 6):
+            return Response({"rating": "Enter a rating from 1 to 5."}, status=400)
+        latest = ticket.status_history.filter(changed_by_staff__isnull=False).select_related("changed_by_staff").first()
+        values = {"rating": score, "feedback": str(request.data.get("feedback", "")).strip()[:2000], "credited_staff": latest.changed_by_staff if latest else None, "submitted_by_user": actor if actor_type == "user" else None, "submitted_by_store": actor if actor_type == "store" else None}
+        rating, _ = SupportCaseRating.objects.update_or_create(ticket=ticket, defaults=values)
+        from support_admin.services.audit_service import log_audit
+        log_audit(None, "customer_support_rating", "ticket", ticket.id, new_data={"rating": score, "submitted_by_type": actor_type, "submitted_by_id": actor.id})
+        return Response(_rating_payload(rating), status=200)

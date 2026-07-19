@@ -49,6 +49,12 @@ class AdminNotificationConsumer(AsyncJsonWebsocketConsumer):
     async def ticket_updated(self, event):
         await self.send_json({"type": "ticket_updated", "data": event.get("data")})
 
+    async def refund_updated(self, event):
+        await self.send_json({"type": "refund_updated", "data": event.get("data")})
+
+    async def safety_report_updated(self, event):
+        await self.send_json({"type": "safety_report_updated", "data": event.get("data")})
+
     async def sla_alert(self, event):
         await self.send_json({"type": "sla_alert", "data": event.get("data")})
 

@@ -1,0 +1,17 @@
+[Unit]
+Description=Celery Beat scheduler for AARX support automation
+After=network.target redis-server.service celery.service
+
+[Service]
+Type=simple
+User=rahulkolhe
+Group=rahulkolhe
+WorkingDirectory=/home/rahulkolhe/Desktop/backup/vision/django
+Environment="PATH=/home/rahulkolhe/Desktop/backup/vision/django/venv2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="DJANGO_SETTINGS_MODULE=aarx.settings"
+ExecStart=/home/rahulkolhe/Desktop/backup/vision/django/venv2/bin/celery -A aarx beat -l info --pidfile=/tmp/aarx-celery-beat.pid
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

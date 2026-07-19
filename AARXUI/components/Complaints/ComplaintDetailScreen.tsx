@@ -16,6 +16,7 @@ import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import {
   getComplaintDetail,
+  rateComplaint,
   withdrawComplaint,
   type ComplaintDetail as DetailType,
   type LocalAttachment,
@@ -23,6 +24,7 @@ import {
 import { SupportHeader } from './SupportHeader';
 import { StatusBadge } from './StatusBadge';
 import { ComplaintThread } from './ComplaintThread';
+import { SupportRatingCard } from '@/components/SupportRatingCard';
 
 const BASE_URL = (Constants.expoConfig?.extra?.BASE_URL as string) || '';
 
@@ -32,6 +34,7 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
   const [detail, setDetail] = useState<DetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [live, setLive] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -78,9 +81,12 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
           // Ignore malformed realtime frames; REST remains the source of truth.
         }
       };
+      socket.onopen = () => setLive(true);
       socket.onclose = () => {
+        setLive(false);
         if (!stopped) reconnectTimer = setTimeout(connect, 1500);
       };
+      socket.onerror = () => setLive(false);
     };
 
     connect();
@@ -90,6 +96,12 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
       socket?.close();
     };
   }, [id, isFocused]);
+
+  useEffect(() => {
+    if (!isFocused || live) return;
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, [isFocused, live, load]);
 
   const handleSend = async (text: string, attachment: LocalAttachment | null) => {
     const { addComplaintMessage } = await import('@/utils/complaintsApi');
@@ -172,6 +184,7 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
             </View>
             {detail.order_id ? <Text style={styles.orderTag}>Order #{detail.order_id}</Text> : null}
           </View>
+          <View style={styles.liveRow}><View style={[styles.liveDot, { backgroundColor: live ? '#10b981' : '#f59e0b' }]} /><Text style={styles.liveText}>{live ? 'Live updates connected' : 'Reconnecting — refreshing automatically'}</Text></View>
 
           <Text style={styles.subject}>{detail.subject}</Text>
           <Text style={styles.description}>{detail.description}</Text>
@@ -203,6 +216,17 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
               <Ionicons name="lock-closed-outline" size={14} color="#64748b" />
               <Text style={styles.closedText}>This complaint is closed. No further replies.</Text>
             </View>
+          ) : null}
+
+          {isClosed && detail.complainant_type === userType ? (
+            <SupportRatingCard
+              value={detail.support_rating}
+              onSubmit={async (rating, feedback) => {
+                const saved = await rateComplaint(detail.id, rating, feedback);
+                setDetail((current) => current ? { ...current, support_rating: saved } : current);
+                return saved;
+              }}
+            />
           ) : null}
         </ScrollView>
 
@@ -245,4 +269,7 @@ const styles = StyleSheet.create({
   resolutionText: { fontSize: 14, color: '#064e3b', fontWeight: '600' },
   closedNote: { flexDirection: 'row', alignItems: 'center', marginTop: 14, backgroundColor: '#f1f5f9', padding: 10, borderRadius: 10 },
   closedText: { marginLeft: 6, fontSize: 12, color: '#64748b', fontWeight: '700' },
+  liveRow: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', marginBottom: 10, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
+  liveText: { fontSize: 10, color: '#475569', fontWeight: '700' },
 });

@@ -33,6 +33,16 @@ def assign_refund(refund_id, assigned_to_id):
     return refund
 
 
+@transaction.atomic
+def claim_unassigned_refund(refund_id, staff):
+    refund = RefundRequest.objects.select_for_update().filter(id=refund_id).first()
+    if not refund:
+        raise ValueError("Refund request not found.")
+    if refund.assigned_to_id:
+        raise ValueError("This refund is already assigned.")
+    return assign_refund(refund_id, staff.id)
+
+
 def create_refund_request(charge_id, amount, reason, requested_by, prescription_response_id=None, metadata=None):
     try:
         charge = EmergencyBroadcastCharge.objects.get(id=charge_id)
@@ -46,6 +56,13 @@ def create_refund_request(charge_id, amount, reason, requested_by, prescription_
             raise ValueError("Prescription response not found.")
     else:
         prescription_response = None
+
+    if RefundRequest.objects.filter(
+        charge=charge,
+        amount=amount,
+        status__in=[RefundRequest.STATUS_PENDING, RefundRequest.STATUS_APPROVED],
+    ).exists():
+        raise ValueError("An active refund request for this payment and amount already exists.")
 
     refund = RefundRequest.objects.create(
         charge=charge,
@@ -83,6 +100,8 @@ def review_refund(refund_id, action, admin, admin_note=None, payment_reference=N
         elif action == "process":
             if refund.status != RefundRequest.STATUS_APPROVED:
                 raise ValueError("Only approved refunds can be processed.")
+            if refund.reviewed_by_id == admin.id:
+                raise ValueError("A different admin must process this refund after approval.")
             refund.status = RefundRequest.STATUS_PROCESSED
             refund.processed_at = timezone.now()
             refund.reviewed_by = admin
@@ -93,6 +112,13 @@ def review_refund(refund_id, action, admin, admin_note=None, payment_reference=N
                 raise ValueError("Only failed refunds can be retried.")
             refund.status = RefundRequest.STATUS_PENDING
             refund.reviewed_by = admin
+        elif action == "cancel":
+            if refund.status not in (RefundRequest.STATUS_PENDING, RefundRequest.STATUS_APPROVED):
+                raise ValueError("Only pending or approved refunds can be cancelled.")
+            refund.status = RefundRequest.STATUS_CANCELLED
+            refund.reviewed_by = admin
+            if admin_note:
+                refund.rejection_reason = admin_note
         else:
             raise ValueError("Invalid action.")
 

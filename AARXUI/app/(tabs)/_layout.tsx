@@ -190,7 +190,7 @@ export default function TabLayout() {
     unreadCount: notificationUnreadCount,
     loading: notificationLoading,
     fetchNotifications,
-    markAllRead,
+    markRead,
     handleRealtimeMessage,
   } = useAppNotifications({
     baseUrl: BASE_URL,
@@ -208,7 +208,12 @@ export default function TabLayout() {
   const routeUserNotification = useCallback((data?: Record<string, unknown>) => {
     const notificationType = String(data?.type || '');
 
-    if (PRESCRIPTION_NOTIFICATION_TYPES.has(notificationType)) {
+    if (notificationType === 'SUPPORT_RATING') {
+      const caseId = Number(data?.case_id || 0);
+      const route = String(data?.path || '');
+      if (caseId && route === 'platform-support') router.push(`/platform-support/${caseId}` as any);
+      else if (caseId) router.push(`/support/${caseId}` as any);
+    } else if (PRESCRIPTION_NOTIFICATION_TYPES.has(notificationType)) {
       router.push('/(tabs)/prescription' as any);
     } else if (ORDER_NOTIFICATION_TYPES.has(notificationType)) {
       router.push('/(tabs)/orders' as any);
@@ -221,12 +226,13 @@ export default function TabLayout() {
   }, [router]);
 
   const handleUserNotificationPress = useCallback((notification?: HeaderNotification) => {
+    if (notification?.id != null) markRead(notification.id);
     const data = notification?.data || {};
     routeUserNotification({
       ...data,
       type: data.type || notification?.notification_type,
     });
-  }, [routeUserNotification]);
+  }, [markRead, routeUserNotification]);
 
   // Handle incoming notification deep links
   const notificationResponse = Notifications.useLastNotificationResponse();
@@ -393,7 +399,6 @@ export default function TabLayout() {
         notifications={notifications}
         notificationCount={notificationUnreadCount}
         notificationLoading={notificationLoading}
-        onOpenNotifications={markAllRead}
         onNotificationPress={handleUserNotificationPress}
         showNotificationDot={chatUnreadCount > 0}
       />

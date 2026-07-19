@@ -53,6 +53,7 @@ export const Layout = () => {
       const data = payload as { id?: string | number; message?: string }
       toast(data?.message || 'New support update', { icon: '🔔' })
       window.dispatchEvent(new CustomEvent('support-notification-refresh'))
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
 
       if (eventType === 'new_complaint' || eventType === 'complaint_updated') {
         queryClient.invalidateQueries({ queryKey: ['complaints'] })
@@ -62,8 +63,14 @@ export const Layout = () => {
         queryClient.invalidateQueries({ queryKey: ['tickets'] })
         if (data.id != null) queryClient.invalidateQueries({ queryKey: ['ticket', String(data.id)] })
       }
-      if (eventType === 'new_refund') queryClient.invalidateQueries({ queryKey: ['refunds'] })
-      if (eventType === 'sla_alert') queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      if (eventType === 'new_refund' || eventType === 'refund_updated') {
+        queryClient.invalidateQueries({ queryKey: ['refunds'] })
+        if (data.id != null) queryClient.invalidateQueries({ queryKey: ['refund', String(data.id)] })
+      }
+      if (eventType === 'safety_report_updated') {
+        queryClient.invalidateQueries({ queryKey: ['safety-reports'] })
+        if (data.id != null) queryClient.invalidateQueries({ queryKey: ['safety-report', String(data.id)] })
+      }
 
       if (eventType === 'notification') {
         const notification = payload as {
@@ -80,9 +87,11 @@ export const Layout = () => {
         if (notification.entity_type === 'ticket') queryClient.invalidateQueries({ queryKey: ['tickets'] })
         if (notification.entity_type === 'refund') queryClient.invalidateQueries({ queryKey: ['refunds'] })
         if (notification.entity_type === 'safety_report') queryClient.invalidateQueries({ queryKey: ['safety-reports'] })
+        if (notification.entity_type === 'refund' && notification.entity_id != null) queryClient.invalidateQueries({ queryKey: ['refund', String(notification.entity_id)] })
+        if (notification.entity_type === 'safety_report' && notification.entity_id != null) queryClient.invalidateQueries({ queryKey: ['safety-report', String(notification.entity_id)] })
       }
     }
-    const events = ['notification', 'new_complaint', 'new_ticket', 'new_refund', 'complaint_updated', 'ticket_updated', 'sla_alert']
+    const events = ['notification', 'new_complaint', 'new_ticket', 'new_refund', 'refund_updated', 'safety_report_updated', 'complaint_updated', 'ticket_updated', 'sla_alert']
     const unsub = events.map(event => subscribe(event, handler(event)))
     return () => unsub.forEach(fn => fn())
   }, [navigate, queryClient, subscribe])

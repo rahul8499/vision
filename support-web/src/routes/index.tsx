@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/permissions/ProtectedRoute'
+import { RoleRoute } from '@/components/permissions/RoleRoute'
 import { Layout } from '@/components/layout/Layout'
 import { Loading } from '@/components/common/Loading'
 import { LoginPage } from '@/pages/Login/LoginPage'
@@ -9,6 +10,15 @@ const LazyWrapper = (Component: React.LazyExoticComponent<React.ComponentType>) 
   <Suspense fallback={<Loading size="lg" className="min-h-[400px]" />}>
     <Component />
   </Suspense>
+)
+
+const RoleProtected = (
+  Component: React.LazyExoticComponent<React.ComponentType>,
+  allowedRoles: Array<'admin' | 'supervisor' | 'agent'>,
+) => (
+  <RoleRoute allowedRoles={allowedRoles}>
+    {LazyWrapper(Component)}
+  </RoleRoute>
 )
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })))
@@ -59,14 +69,14 @@ export const router = createBrowserRouter([
       { path: 'refunds/:id', element: LazyWrapper(RefundDetail) },
       { path: 'safety-reports', element: LazyWrapper(SafetyReportList) },
       { path: 'safety-reports/:id', element: LazyWrapper(SafetyReportDetail) },
-      { path: 'user-lookup', element: LazyWrapper(UserSearch) },
-      { path: 'user-lookup/:id', element: LazyWrapper(UserProfile) },
-      { path: 'store-lookup', element: LazyWrapper(StoreSearch) },
-      { path: 'store-lookup/:id', element: LazyWrapper(StoreProfile) },
-      { path: 'staff', element: LazyWrapper(StaffList) },
-      { path: 'staff/new', element: LazyWrapper(StaffForm) },
-      { path: 'staff/:id', element: LazyWrapper(StaffDetail) },
-      { path: 'audit-logs', element: LazyWrapper(AuditLogList) },
+      { path: 'user-lookup', element: RoleProtected(UserSearch, ['supervisor', 'admin']) },
+      { path: 'user-lookup/:id', element: RoleProtected(UserProfile, ['supervisor', 'admin']) },
+      { path: 'store-lookup', element: RoleProtected(StoreSearch, ['supervisor', 'admin']) },
+      { path: 'store-lookup/:id', element: RoleProtected(StoreProfile, ['supervisor', 'admin']) },
+      { path: 'staff', element: RoleProtected(StaffList, ['admin']) },
+      { path: 'staff/new', element: RoleProtected(StaffForm, ['admin']) },
+      { path: 'staff/:id', element: RoleProtected(StaffDetail, ['admin']) },
+      { path: 'audit-logs', element: RoleProtected(AuditLogList, ['supervisor', 'admin']) },
       { path: 'settings', element: LazyWrapper(SettingsPage) },
     ],
   },

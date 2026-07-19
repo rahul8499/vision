@@ -17,46 +17,31 @@ import {
   Radio,
   Headphones,
 } from 'lucide-react'
-import { usePermissions } from '@/hooks/usePermissions'
 import type { UserRole } from '@/types/auth'
 
-const ROLE_MENU_ITEMS: Record<UserRole, { to: string; label: string; icon: React.ReactNode }[]> = {
-  admin: [
-    { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { to: '/operations', label: 'My Work & Reports', icon: <Headphones className="h-5 w-5" /> },
-    { to: '/emergency-monitoring', label: 'Emergency Cases', icon: <Radio className="h-5 w-5" /> },
-    { to: '/complaints', label: 'Customer Complaints', icon: <MessageSquare className="h-5 w-5" /> },
-    { to: '/tickets', label: 'Help Requests', icon: <Ticket className="h-5 w-5" /> },
-    { to: '/payments', label: 'Payments', icon: <CreditCard className="h-5 w-5" /> },
-    { to: '/refunds', label: 'Refund Requests', icon: <Wallet className="h-5 w-5" /> },
-    { to: '/safety-reports', label: 'Safety Issues', icon: <ShieldAlert className="h-5 w-5" /> },
-    { to: '/user-lookup', label: 'Find a User', icon: <UserSearch className="h-5 w-5" /> },
-    { to: '/store-lookup', label: 'Find a Store', icon: <Store className="h-5 w-5" /> },
-    { to: '/staff', label: 'Support Team', icon: <Users className="h-5 w-5" /> },
-    { to: '/audit-logs', label: 'Activity History', icon: <ClipboardList className="h-5 w-5" /> },
-  ],
-  supervisor: [
-    { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { to: '/operations', label: 'My Work & Reports', icon: <Headphones className="h-5 w-5" /> },
-    { to: '/emergency-monitoring', label: 'Emergency Cases', icon: <Radio className="h-5 w-5" /> },
-    { to: '/complaints', label: 'Customer Complaints', icon: <MessageSquare className="h-5 w-5" /> },
-    { to: '/tickets', label: 'Help Requests', icon: <Ticket className="h-5 w-5" /> },
-    { to: '/payments', label: 'Payments', icon: <CreditCard className="h-5 w-5" /> },
-    { to: '/refunds', label: 'Refund Requests', icon: <Wallet className="h-5 w-5" /> },
-    { to: '/safety-reports', label: 'Safety Issues', icon: <ShieldAlert className="h-5 w-5" /> },
-    { to: '/user-lookup', label: 'Find a User', icon: <UserSearch className="h-5 w-5" /> },
-    { to: '/store-lookup', label: 'Find a Store', icon: <Store className="h-5 w-5" /> },
-  ],
-  agent: [
-    { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { to: '/operations', label: 'My Work & Reports', icon: <Headphones className="h-5 w-5" /> },
-    { to: '/emergency-monitoring', label: 'Emergency Cases', icon: <Radio className="h-5 w-5" /> },
-    { to: '/complaints', label: 'Customer Complaints', icon: <MessageSquare className="h-5 w-5" /> },
-    { to: '/tickets', label: 'Help Requests', icon: <Ticket className="h-5 w-5" /> },
-    { to: '/payments', label: 'Payments', icon: <CreditCard className="h-5 w-5" /> },
-    { to: '/refunds', label: 'Refund Requests', icon: <Wallet className="h-5 w-5" /> },
-    { to: '/safety-reports', label: 'Safety Issues', icon: <ShieldAlert className="h-5 w-5" /> },
-  ],
+type MenuKey = 'dashboard' | 'operations' | 'emergency' | 'complaints' | 'tickets' | 'payments' | 'refunds' | 'safety' | 'users' | 'stores' | 'staff' | 'audit'
+type MenuItem = { to: string; label: string; description: string; icon: React.ReactNode }
+
+const MENU_ITEMS: Record<MenuKey, MenuItem> = {
+  dashboard: { to: '/dashboard', label: "Today's work summary", description: 'See open work, urgent cases, and team progress.', icon: <LayoutDashboard className="h-5 w-5" /> },
+  operations: { to: '/operations', label: 'My tasks and tools', description: 'Work assigned cases, follow-ups, ready replies, and reports.', icon: <Headphones className="h-5 w-5" /> },
+  emergency: { to: '/emergency-monitoring', label: 'Urgent medicine requests', description: 'Help when nearby stores have not responded in time.', icon: <Radio className="h-5 w-5" /> },
+  complaints: { to: '/complaints', label: 'Customer complaints', description: 'Investigate complaints, reply, assign, and resolve them.', icon: <MessageSquare className="h-5 w-5" /> },
+  tickets: { to: '/tickets', label: 'App help requests', description: 'Answer account, app, verification, and technical questions.', icon: <Ticket className="h-5 w-5" /> },
+  payments: { to: '/payments', label: 'Payment records', description: 'Find charges and check whether a payment succeeded or failed.', icon: <CreditCard className="h-5 w-5" /> },
+  refunds: { to: '/refunds', label: 'Refund requests', description: 'Review, approve, reject, or complete customer refunds.', icon: <Wallet className="h-5 w-5" /> },
+  safety: { to: '/safety-reports', label: 'Medicine safety issues', description: 'Handle unsafe medicine, fraud, and serious safety reports.', icon: <ShieldAlert className="h-5 w-5" /> },
+  users: { to: '/user-lookup', label: 'Find a customer', description: 'Open a customer profile and see their complete support history.', icon: <UserSearch className="h-5 w-5" /> },
+  stores: { to: '/store-lookup', label: 'Find a pharmacy', description: 'Check pharmacy details, orders, complaints, and performance.', icon: <Store className="h-5 w-5" /> },
+  staff: { to: '/staff', label: 'Manage support staff', description: 'Create staff accounts and control their access.', icon: <Users className="h-5 w-5" /> },
+  audit: { to: '/audit-logs', label: 'Who changed what', description: 'See which staff member performed each important action.', icon: <ClipboardList className="h-5 w-5" /> },
+}
+
+const menu = (...keys: MenuKey[]) => keys.map(key => MENU_ITEMS[key])
+const ROLE_MENU_ITEMS: Record<UserRole, MenuItem[]> = {
+  admin: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores', 'staff', 'audit'),
+  supervisor: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores'),
+  agent: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety'),
 }
 
 export const Sidebar = () => {
@@ -93,15 +78,20 @@ export const Sidebar = () => {
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
                     [
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                      'group relative flex items-start gap-3 px-3 py-2.5 rounded-lg transition-colors',
                       isActive
                         ? 'bg-primary-50 text-primary-700'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
                     ].join(' ')
                   }
                 >
-                  {item.icon}
-                  {item.label}
+                  <span className="mt-0.5 shrink-0">{item.icon}</span>
+                  <span className="min-w-0"><span className="block text-sm font-semibold">{item.label}</span><span className="mt-0.5 block text-[11px] font-normal leading-4 opacity-70">{item.description}</span></span>
+                  <span role="tooltip" className="pointer-events-none absolute left-2 top-full z-[90] mt-2 hidden w-56 rounded-xl border border-white/10 bg-slate-950/95 px-3.5 py-2.5 text-left text-xs font-normal leading-5 text-white shadow-[0_14px_38px_rgba(15,23,42,0.28)] backdrop-blur-md group-hover:block group-focus-visible:block">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-sky-300">What you can do here</span>
+                    <span className="mt-0.5 block">{item.description}</span>
+                    <span className="absolute bottom-full left-6 h-2 w-2 translate-y-1/2 rotate-45 border-l border-t border-white/10 bg-slate-950" />
+                  </span>
                 </NavLink>
               </li>
             ))}
@@ -110,10 +100,11 @@ export const Sidebar = () => {
         <div className="p-4 border-t border-gray-200">
           <NavLink
             to="/settings"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+            className="group relative flex items-start gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
-            <Settings className="h-5 w-5" />
-            Settings
+            <Settings className="mt-0.5 h-5 w-5 shrink-0" />
+            <span><span className="block text-sm font-semibold">My account</span><span className="mt-0.5 block text-[11px] leading-4 opacity-70">Change your profile, password, and personal settings.</span></span>
+            <span role="tooltip" className="pointer-events-none absolute bottom-full left-2 z-[90] mb-2 hidden w-56 rounded-xl border border-white/10 bg-slate-950/95 px-3.5 py-2.5 text-left text-xs font-normal leading-5 text-white shadow-[0_14px_38px_rgba(15,23,42,0.28)] backdrop-blur-md group-hover:block group-focus-visible:block"><span className="block text-[10px] font-semibold uppercase tracking-wider text-sky-300">What you can do here</span><span className="mt-0.5 block">Change your profile, password, and personal settings.</span></span>
           </NavLink>
         </div>
       </aside>

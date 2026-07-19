@@ -123,6 +123,25 @@ export function useAppNotifications({ baseUrl, token, enabled = true }: UseAppNo
     }
   }, [baseUrl, enabled, fetchNotifications, token]);
 
+  const markRead = useCallback(async (notificationId: number | string) => {
+    if (!enabled || !baseUrl || !token) return;
+    const selected = notifications.find((item) => String(item.id) === String(notificationId));
+    if (selected?.is_read) return;
+    setNotifications((prev) => prev.map((item) => String(item.id) === String(notificationId) ? { ...item, is_read: true } : item));
+    setUnreadCount((count) => Math.max(0, count - 1));
+    try {
+      const res = await axios.post<{ unread_count?: number }>(
+        `${baseUrl}/api/notifications/mark-read/`,
+        { id: notificationId },
+        { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+      );
+      setUnreadCount(normalizeUnreadCount(res.data?.unread_count));
+    } catch (error) {
+      console.log('Error marking notification read:', error);
+      fetchNotifications();
+    }
+  }, [baseUrl, enabled, fetchNotifications, notifications, token]);
+
   const handleRealtimeMessage = useCallback((message: RealtimeNotificationMessage) => {
     if (message?.type !== 'fulfillment_update' || message?.action !== 'app_notification') {
       return false;
@@ -154,6 +173,7 @@ export function useAppNotifications({ baseUrl, token, enabled = true }: UseAppNo
     loading,
     fetchNotifications,
     markAllRead,
+    markRead,
     handleRealtimeMessage,
   };
 }

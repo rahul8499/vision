@@ -7,7 +7,6 @@ export interface StaffMember {
   role: import('./auth').UserRole
   status: StaffStatus
   phone?: string
-  allCitiesAccess?: boolean
   cities?: number[]
   department?: string
   employeeId?: string
@@ -28,6 +27,8 @@ export interface StaffCreateRequest {
   employeeId: string
   department?: string
   phone?: string
+  allCitiesAccess?: boolean
+  cities?: number[]
 }
 
 export interface StaffUpdateRequest {

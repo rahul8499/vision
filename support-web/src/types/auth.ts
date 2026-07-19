@@ -63,12 +63,14 @@ export interface TokenPayload {
 }
 
 export interface UpdateProfileRequest {
+  name?: string
+  email?: string
   department?: string
   phone?: string
   timezone?: string
 }
 
 export interface ChangePasswordRequest {
-  oldPassword: string
-  newPassword: string
+  old_password: string
+  new_password: string
 }

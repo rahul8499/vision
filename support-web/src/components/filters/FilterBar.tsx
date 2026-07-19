@@ -18,7 +18,7 @@ export const FilterBar = ({ children, onReset, activeFiltersCount }: FilterBarPr
             onClick={onReset}
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap"
           >
-            Reset filters
+            Show all results
           </button>
         )}
       </div>

@@ -17,6 +17,15 @@ class SupportJWTAuthentication(JWTAuthentication):
             staff = SupportStaff.objects.select_related("user").get(user=user, is_active=True)
         except SupportStaff.DoesNotExist:
             raise exceptions.AuthenticationFailed("Support staff not found or inactive.")
+        session_key = validated_token.get("support_session")
+        session = SupportSession.objects.filter(
+            staff=staff, session_key=session_key, expires_at__gt=timezone.now(),
+        ).first()
+        if not session:
+            raise exceptions.AuthenticationFailed("Support session has expired. Please sign in again.")
+        now = timezone.now()
+        if session.last_activity_at < now - timezone.timedelta(minutes=2):
+            SupportSession.objects.filter(pk=session.pk).update(last_activity_at=now)
         return user, staff
 
     def authenticate(self, request):
@@ -28,6 +37,10 @@ class SupportJWTAuthentication(JWTAuthentication):
             return None
         validated_token = self.get_validated_token(raw_token)
         user, staff = self.get_user(validated_token)
+        now = timezone.now()
+        if not staff.last_seen_at or staff.last_seen_at < now - timezone.timedelta(minutes=2):
+            SupportStaff.objects.filter(pk=staff.pk).update(last_seen_at=now)
+            staff.last_seen_at = now
         request.user = user
         request.support_staff = staff
         return user, staff

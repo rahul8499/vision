@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from django.db import models
 from django.db import transaction
@@ -286,6 +287,14 @@ class SLAConfiguration(models.Model):
     first_response_minutes = models.PositiveIntegerField()
     resolution_minutes = models.PositiveIntegerField()
     is_active = models.BooleanField(default=True)
+    working_hours_only = models.BooleanField(default=False)
+    workday_start = models.TimeField(default=datetime.time(9, 0))
+    workday_end = models.TimeField(default=datetime.time(18, 0))
+    working_days = models.JSONField(default=list, blank=True, help_text="Weekdays: Monday=0 through Sunday=6")
+    pause_when_waiting = models.BooleanField(default=True)
+    warning_minutes = models.PositiveIntegerField(default=30)
+    auto_escalate = models.BooleanField(default=False)
+    auto_assign = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("entity_type", "priority")
@@ -293,6 +302,34 @@ class SLAConfiguration(models.Model):
 
     def __str__(self):
         return f"SLA {self.entity_type} {self.priority}"
+
+
+class SupportHoliday(models.Model):
+    date = models.DateField(unique=True)
+    name = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["date"]
+
+    def __str__(self):
+        return f"{self.name} ({self.date})"
+
+
+class CaseSLAClock(models.Model):
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveBigIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+    paused_at = models.DateTimeField(null=True, blank=True)
+    paused_seconds = models.PositiveBigIntegerField(default=0)
+    paused_business_seconds = models.PositiveBigIntegerField(default=0)
+    warning_stage = models.CharField(max_length=30, blank=True)
+    breached_stage = models.CharField(max_length=30, blank=True)
+    escalated_stage = models.CharField(max_length=30, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["content_type", "object_id"], name="unique_case_sla_clock")]
 
 
 class SupportNotification(models.Model):
@@ -346,6 +383,7 @@ class SupportNotification(models.Model):
 class ContactLog(models.Model):
     CHANNEL_CHOICES = [("call", "Call"), ("sms", "SMS"), ("whatsapp", "WhatsApp"), ("email", "Email"), ("other", "Other")]
     OUTCOME_CHOICES = [("contacted", "Contacted"), ("no_answer", "No answer"), ("callback", "Callback requested"), ("message_sent", "Message sent"), ("resolved", "Resolved")]
+    STATUS_CHOICES = [("scheduled", "Scheduled"), ("completed", "Completed"), ("cancelled", "Cancelled")]
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveBigIntegerField()
     content_object = GenericForeignKey("content_type", "object_id")
@@ -353,8 +391,11 @@ class ContactLog(models.Model):
     outcome = models.CharField(max_length=30, choices=OUTCOME_CHOICES)
     note = models.TextField(blank=True)
     follow_up_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="scheduled")
+    completed_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(SupportStaff, on_delete=models.PROTECT, related_name="contact_logs")
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [models.Index(fields=["content_type", "object_id", "created_at"]), models.Index(fields=["follow_up_at"])]
@@ -374,3 +415,77 @@ class SavedReplyTemplate(models.Model):
     class Meta:
         ordering = ["category", "title"]
         indexes = [models.Index(fields=["is_active", "category"])]
+
+
+class CaseEscalation(models.Model):
+    DESTINATION_CHOICES = [(value, label) for value, label in [
+        ("supervisor", "Supervisor"), ("technical", "Technical team"),
+        ("emergency", "Emergency team"), ("legal", "Legal team"),
+    ]]
+    STATUS_CHOICES = [("open", "Open"), ("accepted", "Accepted"), ("resolved", "Resolved"), ("cancelled", "Cancelled")]
+    entity_type = models.CharField(max_length=30, db_index=True)
+    entity_id = models.PositiveBigIntegerField(db_index=True)
+    destination = models.CharField(max_length=20, choices=DESTINATION_CHOICES)
+    reason = models.TextField()
+    handover_note = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open", db_index=True)
+    escalated_by = models.ForeignKey(SupportStaff, on_delete=models.PROTECT, related_name="case_escalations")
+    resolved_by = models.ForeignKey(SupportStaff, null=True, blank=True, on_delete=models.SET_NULL, related_name="resolved_case_escalations")
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["entity_type", "entity_id", "status"])]
+
+
+class CaseRelation(models.Model):
+    RELATION_CHOICES = [("related", "Related"), ("duplicate", "Duplicate"), ("caused_by", "Caused by")]
+    source_type = models.CharField(max_length=30)
+    source_id = models.PositiveBigIntegerField()
+    target_type = models.CharField(max_length=30)
+    target_id = models.PositiveBigIntegerField()
+    relation = models.CharField(max_length=20, choices=RELATION_CHOICES, default="related")
+    reason = models.TextField(blank=True)
+    created_by = models.ForeignKey(SupportStaff, on_delete=models.PROTECT, related_name="case_relations")
+    merged_by = models.ForeignKey(SupportStaff, null=True, blank=True, on_delete=models.SET_NULL, related_name="duplicate_case_merges")
+    merged_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["source_type", "source_id", "target_type", "target_id"], name="unique_support_case_relation")]
+        indexes = [models.Index(fields=["source_type", "source_id"]), models.Index(fields=["target_type", "target_id"])]
+
+
+class EngineeringIssue(models.Model):
+    STATUS_CHOICES = [("open", "Open"), ("triaged", "Triaged"), ("in_progress", "In progress"), ("fixed", "Fixed"), ("closed", "Closed")]
+    PRIORITY_CHOICES = [("low", "Low"), ("medium", "Medium"), ("high", "High"), ("urgent", "Urgent")]
+    entity_type = models.CharField(max_length=30, db_index=True)
+    entity_id = models.PositiveBigIntegerField(db_index=True)
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="medium")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
+    owner = models.CharField(max_length=120, blank=True)
+    external_reference = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(SupportStaff, on_delete=models.PROTECT, related_name="engineering_issues")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class SensitiveActionRequest(models.Model):
+    ACTION_CHOICES = [("account_suspend", "Suspend account"), ("account_restore", "Restore account"), ("personal_data_change", "Change personal data"), ("high_value_refund", "High-value refund")]
+    STATUS_CHOICES = [("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected"), ("executed", "Executed"), ("cancelled", "Cancelled")]
+    entity_type = models.CharField(max_length=30, db_index=True)
+    entity_id = models.PositiveBigIntegerField(db_index=True)
+    action_type = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    reason = models.TextField()
+    verification_method = models.CharField(max_length=50)
+    verification_reference = models.CharField(max_length=200)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
+    requested_by = models.ForeignKey(SupportStaff, on_delete=models.PROTECT, related_name="sensitive_action_requests")
+    reviewed_by = models.ForeignKey(SupportStaff, null=True, blank=True, on_delete=models.SET_NULL, related_name="reviewed_sensitive_actions")
+    review_note = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

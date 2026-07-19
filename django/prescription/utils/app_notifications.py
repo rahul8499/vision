@@ -11,6 +11,30 @@ from .notifications import send_push_notification
 logger = logging.getLogger(__name__)
 
 
+def _track_push_result(notification, result):
+    if not isinstance(notification, AppNotification):
+        return
+    payload = (result or {}).get("data") if isinstance(result, dict) else None
+    payload = payload if isinstance(payload, dict) else {}
+    status = payload.get("status") or "retrying"
+    ticket_id = payload.get("id") or ""
+    error = payload.get("message") or ((payload.get("details") or {}).get("error") if isinstance(payload.get("details"), dict) else "") or ""
+    notification.push_attempts += 1
+    notification.push_status = "ticket_created" if status == "ok" and ticket_id else status
+    notification.push_ticket_id = ticket_id
+    notification.push_error = str(error)
+    notification.push_last_attempt_at = timezone.now()
+    notification.save(update_fields=["push_attempts", "push_status", "push_ticket_id", "push_error", "push_last_attempt_at"])
+    from ..tasks import check_push_receipt_task, retry_app_notification_push_task
+    try:
+        if ticket_id:
+            check_push_receipt_task.apply_async(args=[notification.id], countdown=30)
+        elif notification.push_attempts < 3:
+            retry_app_notification_push_task.apply_async(args=[notification.id], countdown=30 * notification.push_attempts)
+    except Exception:
+        logger.exception("Could not queue push follow-up for notification=%s", notification.id)
+
+
 def serialize_app_notification(notification):
     return {
         'id': notification.id,
@@ -131,7 +155,8 @@ def send_user_app_notification(user, title, body, data=None, notification_type=N
     token = getattr(user, 'expo_push_token', None)
     if token:
         try:
-            send_push_notification(token, title=title, body=body, data=data or {})
+            result = send_push_notification(token, title=title, body=body, data=data or {})
+            _track_push_result(notification, result)
         except Exception:
             logger.exception('User push send failed. user=%s type=%s', getattr(user, 'id', None), notification_type or (data or {}).get('type'))
     return notification
@@ -142,7 +167,8 @@ def send_store_app_notification(store, title, body, data=None, notification_type
     token = getattr(store, 'expo_push_token', None)
     if token:
         try:
-            send_push_notification(token, title=title, body=body, data=data or {})
+            result = send_push_notification(token, title=title, body=body, data=data or {})
+            _track_push_result(notification, result)
         except Exception:
             logger.exception('Store push send failed. store=%s type=%s', getattr(store, 'id', None), notification_type or (data or {}).get('type'))
     return notification

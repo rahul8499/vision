@@ -35,12 +35,15 @@ export const RefundDetail = () => {
   const [assignOpen, setAssignOpen] = useState(false)
   const { hasAnyRole } = usePermissions()
   const canAssign = hasAnyRole(['admin', 'supervisor'])
+  const canReview = hasAnyRole(['admin', 'supervisor'])
+  const canProcessRefund = hasAnyRole(['admin'])
 
   const { data: refund, isLoading, error } = useQuery({
     queryKey: ['refund', id],
     queryFn: () => refundsApi.getOne(id!),
     enabled: !!id,
     staleTime: 30000,
+    refetchInterval: 15_000,
   })
   const assigneesQuery = useQuery({
     queryKey: ['assignees', 'CITY', refund?.cityId],
@@ -102,10 +105,10 @@ export const RefundDetail = () => {
   if (error) return <ErrorState />
   if (!refund) return <ErrorState title="Refund not found" />
 
-  const canApprove = refund.status === 'pending'
-  const canReject = refund.status === 'pending'
-  const canProcess = refund.status === 'approved'
-  const canCancel = ['pending', 'approved'].includes(refund.status)
+  const canApprove = canReview && refund.status === 'pending'
+  const canReject = canReview && refund.status === 'pending'
+  const canProcess = canProcessRefund && refund.status === 'approved'
+  const canCancel = canReview && ['pending', 'approved'].includes(refund.status)
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -122,7 +125,7 @@ export const RefundDetail = () => {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        {canAssign && <Button variant="secondary" onClick={() => setAssignOpen(true)}>Assign staff</Button>}
+        {canAssign && <Button variant="secondary" onClick={() => setAssignOpen(true)}>Choose who will handle this</Button>}
         {canApprove && (
           <Button onClick={() => setShowApproveModal(true)}>Approve</Button>
         )}
@@ -155,7 +158,7 @@ export const RefundDetail = () => {
               </div>
               {refund.rejectionReason && (
                 <div className="col-span-2">
-                  <p className="text-xs text-gray-500">Rejection Reason</p>
+                  <p className="text-xs text-gray-500">Why it was rejected</p>
                   <p className="text-sm text-red-600">{refund.rejectionReason}</p>
                 </div>
               )}
@@ -173,11 +176,11 @@ export const RefundDetail = () => {
                 <p className="text-sm font-mono">{refund.paymentReference || '-'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Processed At</p>
+                <p className="text-xs text-gray-500">Refund sent on</p>
                 <p className="text-sm">{refund.processedAt ? new Date(refund.processedAt).toLocaleString() : '-'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Approved At</p>
+                <p className="text-xs text-gray-500">Approved on</p>
                 <p className="text-sm">{refund.approvedAt ? new Date(refund.approvedAt).toLocaleString() : '-'}</p>
               </div>
             </div>
@@ -192,11 +195,11 @@ export const RefundDetail = () => {
                 <p className="text-sm font-medium">{refund.requestedByName}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Assigned To</p>
+                <p className="text-xs text-gray-500">Person handling this</p>
                 <p className="text-sm">{refund.assignedToName || 'Unassigned'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Reviewed By</p>
+                <p className="text-xs text-gray-500">Checked by</p>
                 <p className="text-sm">{refund.reviewedByName || '-'}</p>
               </div>
               <div>
@@ -267,7 +270,7 @@ export const RefundDetail = () => {
             <p className="text-sm text-red-800">This action will permanently reject the refund request.</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason <span className="text-red-500">*</span></label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Why are you rejecting this refund? <span className="text-red-500">*</span></label>
             <textarea
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}

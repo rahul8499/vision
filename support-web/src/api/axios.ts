@@ -41,7 +41,12 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _networkRetry?: number }
+
+    if (originalRequest?.method?.toLowerCase() === 'get' && (!error.response || error.response.status >= 500) && !originalRequest._networkRetry) {
+      originalRequest._networkRetry = 1
+      return apiClient(originalRequest)
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {

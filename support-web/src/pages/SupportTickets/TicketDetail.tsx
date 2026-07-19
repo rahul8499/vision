@@ -7,6 +7,7 @@ import { normalizeTicketMessage, ticketsApi } from '@/api/ticketsApi'
 import { assigneesApi } from '@/api/assigneesApi'
 import { MessageThread } from '@/components/threads/MessageThread'
 import { ContactHistoryPanel } from '@/components/threads/ContactHistoryPanel'
+import { CaseManagementPanel } from '@/components/threads/CaseManagementPanel'
 import { Badge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
@@ -65,8 +66,8 @@ export const TicketDetail = () => {
   }), [id, queryClient, subscribe])
 
   const replyMutation = useMutation({
-    mutationFn: (text: string) => ticketsApi.reply(id!, { text }),
-    onMutate: async (text) => {
+    mutationFn: ({ text, attachment }: { text: string; attachment?: File }) => ticketsApi.reply(id!, { text, attachment }),
+    onMutate: async ({ text }) => {
       await queryClient.cancelQueries({ queryKey: ['ticket', id] })
       const previous = queryClient.getQueryData<Ticket>(['ticket', id])
       if (previous) queryClient.setQueryData<Ticket>(['ticket', id], {
@@ -75,7 +76,7 @@ export const TicketDetail = () => {
       })
       return { previous }
     },
-    onError: (_error, _text, context) => {
+    onError: (_error, _payload, context) => {
       if (context?.previous) queryClient.setQueryData(['ticket', id], context.previous)
       toast.error('Reply could not be sent')
     },
@@ -119,14 +120,14 @@ export const TicketDetail = () => {
               <button onClick={() => navigate('/tickets')} className="mt-0.5 rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /></button>
               <div className="min-w-0"><div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500"><span>Support #{ticket.id}</span><span>•</span><span>{ticket.categoryDisplay}</span><span className={`flex items-center gap-1 ${isConnected ? 'text-emerald-600' : 'text-amber-600'}`}><CircleDot className="h-3 w-3" />{isConnected ? 'Live' : 'Refreshing'}</span></div><h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{ticket.subject}</h1></div>
             </div>
-            <div className="flex flex-wrap gap-2"><Badge className={TICKET_PRIORITY_COLORS[ticket.priority]}>{ticket.priorityDisplay} priority</Badge><Badge className={TICKET_STATUS_COLORS[ticket.status]}>{ticket.statusDisplay}</Badge>{canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Assign staff</Button>}</div>
+            <div className="flex flex-wrap gap-2"><Badge className={TICKET_PRIORITY_COLORS[ticket.priority]}>Importance: {ticket.priorityDisplay}</Badge><Badge className={TICKET_STATUS_COLORS[ticket.status]}>Current progress: {ticket.statusDisplay}</Badge>{canAssign && <Button size="sm" variant="secondary" onClick={() => setAssignOpen(true)}>Choose who will handle this</Button>}</div>
           </div>
         </div>
         <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
           <Metric icon={<MessageSquare />} label="Messages" value={String(ticket.messageCount)} />
           <Metric icon={<Clock3 />} label="Last activity" value={formatSafeDate(ticket.updatedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} />
           <Metric icon={<CalendarDays />} label="Created" value={formatSafeDate(ticket.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })} />
-          <Metric icon={<ShieldCheck />} label="Assigned staff" value={ticket.assignedToName || 'Not assigned yet'} />
+          <Metric icon={<ShieldCheck />} label="Person handling this case" value={ticket.assignedToName || 'No staff member chosen yet'} />
         </div>
       </section>
 
@@ -145,7 +146,7 @@ export const TicketDetail = () => {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4"><h2 className="font-semibold text-slate-900">Messages with the requester</h2><p className="text-xs text-slate-500">Your reply appears in the requester's app</p></div>
-          <MessageThread messages={messages} onReply={async (text) => { await replyMutation.mutateAsync(text) }} isSending={replyMutation.isPending} showReplyForm={ticket.status !== 'closed'} />
+          <MessageThread messages={messages} onReply={async (text, attachment) => { await replyMutation.mutateAsync({ text, attachment }) }} isSending={replyMutation.isPending} showReplyForm={ticket.status !== 'closed'} draftKey={`ticket-${ticket.id}`} />
         </section>
 
         <aside className="space-y-5">
@@ -154,19 +155,21 @@ export const TicketDetail = () => {
             <div className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">{ticket.requesterType === 'store' ? <Store className="h-5 w-5" /> : <User className="h-5 w-5" />}</div>
               <div><p className="text-xs text-slate-500">Requested by</p><p className="font-semibold text-slate-900">{ticket.requesterName}</p><p className="text-xs capitalize text-slate-400">{ticket.requesterType}</p></div>
+              {ticket.requesterId && <Button size="sm" variant="ghost" onClick={() => navigate(`/${ticket.requesterType === 'store' ? 'store' : 'user'}-lookup/${ticket.requesterId}`)}>View full history</Button>}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3"><Detail icon={<Tag />} label="Issue type" value={ticket.categoryDisplay} /><Detail icon={<LifeBuoy />} label="Channel" value="In-app support" /></div>
           </Panel>
 
-          <Panel title="Update or close this request">
-            <label className="mb-1 block text-xs font-medium text-slate-600">Choose the next status</label>
-            <select value={nextStatus} onChange={(event) => setNextStatus(event.target.value as TicketStatus)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary-200"><option value="">Choose status…</option>{STATUS_OPTIONS.filter((option) => option.value !== ticket.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          <Panel title="What is happening with this request now?">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Choose the current stage</label>
+            <select value={nextStatus} onChange={(event) => setNextStatus(event.target.value as TicketStatus)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary-200"><option value="">Choose current stage…</option>{STATUS_OPTIONS.filter((option) => option.value !== ticket.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
             {(nextStatus === 'resolved' || nextStatus === 'closed') && <textarea value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} rows={4} placeholder="Explain what was fixed and any next steps…" className="mt-3 w-full resize-none rounded-lg border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-primary-200" />}
-            <Button className="mt-3 w-full" disabled={!nextStatus || ((nextStatus === 'resolved' || nextStatus === 'closed') && !resolutionNote.trim())} loading={statusMutation.isPending} onClick={() => statusMutation.mutate()}>Save status</Button>
+            <Button className="mt-3 w-full" disabled={!nextStatus || ((nextStatus === 'resolved' || nextStatus === 'closed') && !resolutionNote.trim())} loading={statusMutation.isPending} onClick={() => statusMutation.mutate()}>Save current stage</Button>
           </Panel>
 
           {ticket.resolutionNote && <Panel title="How it was solved"><p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{ticket.resolutionNote}</p>{ticket.resolvedAt && <p className="mt-2 text-xs text-slate-400">Resolved {formatSafeDate(ticket.resolvedAt)}</p>}</Panel>}
           <ContactHistoryPanel entityType="ticket" objectId={ticket.id} />
+          <CaseManagementPanel entityType="ticket" objectId={ticket.id} status={ticket.status} subject={ticket.subject} />
         </aside>
       </div>
     </div>

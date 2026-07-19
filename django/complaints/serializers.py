@@ -44,6 +44,9 @@ class ComplaintMessageSerializer(serializers.ModelSerializer):
         return self._abs_url(obj)
 
     def get_sender_name(self, obj):
+        if obj.support_staff:
+            user = obj.support_staff.user
+            return user.get_full_name() or user.username or user.email
         if obj.sender_store:
             return obj.sender_store.name
         if obj.sender_user:
@@ -54,9 +57,17 @@ class ComplaintMessageSerializer(serializers.ModelSerializer):
 
 
 class ComplaintStatusHistorySerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = ComplaintStatusHistory
-        fields = ['id', 'from_status', 'to_status', 'changed_by', 'note', 'created_at']
+        fields = ['id', 'from_status', 'to_status', 'changed_by', 'changed_by_name', 'note', 'created_at']
+
+    def get_changed_by_name(self, obj):
+        if not obj.changed_by_staff:
+            return obj.changed_by
+        user = obj.changed_by_staff.user
+        return user.get_full_name() or user.username or user.email
 
 
 class _BaseComplaintSerializer(serializers.ModelSerializer):
@@ -148,6 +159,9 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
     status_history = ComplaintStatusHistorySerializer(many=True, read_only=True)
     can_withdraw = serializers.SerializerMethodField()
     assigned_to_name = serializers.SerializerMethodField()
+    complainant_id = serializers.SerializerMethodField()
+    respondent_id = serializers.SerializerMethodField()
+    support_rating = serializers.SerializerMethodField()
 
     class Meta:
         model = Complaint
@@ -156,8 +170,8 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
             'status_display', 'priority', 'priority_display', 'complainant_type',
             'complainant_name', 'respondent_type', 'respondent_name', 'order_id',
             'scope', 'city', 'city_name', 'service_zone',
-            'assigned_to', 'assigned_to_name', 'resolution_notes', 'resolved_at', 'created_at', 'updated_at',
-            'attachments', 'messages', 'status_history', 'can_withdraw',
+            'complainant_id', 'respondent_id', 'assigned_to', 'assigned_to_name', 'resolution_notes', 'resolved_at', 'created_at', 'updated_at',
+            'attachments', 'messages', 'status_history', 'can_withdraw', 'support_rating',
         ]
 
     def get_can_withdraw(self, obj):
@@ -172,6 +186,16 @@ class ComplaintDetailSerializer(_BaseComplaintSerializer):
         from support_admin.models import SupportStaff
         staff = SupportStaff.objects.select_related('user').filter(id=obj.assigned_to).first()
         return (staff.user.get_full_name() or staff.user.username or staff.user.email) if staff else None
+
+    def get_complainant_id(self, obj):
+        return obj.complainant_store_id if obj.complainant_type == 'store' else obj.complainant_user_id
+
+    def get_support_rating(self, obj):
+        rating = getattr(obj, 'support_rating', None)
+        return {"rating": rating.rating, "feedback": rating.feedback, "created_at": rating.created_at} if rating else None
+
+    def get_respondent_id(self, obj):
+        return obj.respondent_store_id if obj.respondent_type == 'store' else obj.respondent_user_id
 
     def get_messages(self, obj):
         viewer = self.context.get('viewer')

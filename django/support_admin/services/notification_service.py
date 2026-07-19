@@ -1,5 +1,21 @@
 from django.db.models import Q
 from ..models import SupportNotification, SupportStaff
+
+
+def active_case_count(staff):
+    from ..models import SupportAssignment, RefundRequest
+    from prescription.models import SafetyReport
+    closed = {"closed", "resolved", "processed", "rejected", "cancelled", "withdrawn"}
+    generic = 0
+    for assignment in SupportAssignment.objects.filter(assigned_to=staff, is_active=True).select_related("content_type"):
+        obj = assignment.content_object
+        if obj and getattr(obj, "status", "open") not in closed:
+            generic += 1
+    return (
+        generic
+        + SafetyReport.objects.filter(assigned_to_id=staff.id).exclude(status="closed").count()
+        + RefundRequest.objects.filter(assigned_to=staff, status__in=["pending", "approved", "failed"]).count()
+    )
 from ..selectors.notification_selectors import get_notification_by_id, get_notification_queryset_for_staff
 
 

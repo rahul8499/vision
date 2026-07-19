@@ -46,8 +46,10 @@ export const normalizeComplaint = (raw: Raw): Complaint => ({
   priority: raw.priority || 'medium',
   priorityDisplay: text(raw, 'priorityDisplay', 'priority_display', String(raw.priority || 'medium')),
   complainantType: value(raw, 'complainantType', 'complainant_type') || 'user',
+  complainantId: value(raw, 'complainantId', 'complainant_id') ?? undefined,
   complainantName: text(raw, 'complainantName', 'complainant_name', 'Unknown complainant'),
   respondentType: value(raw, 'respondentType', 'respondent_type') || 'store',
+  respondentId: value(raw, 'respondentId', 'respondent_id') ?? undefined,
   respondentName: text(raw, 'respondentName', 'respondent_name', 'Unknown respondent'),
   orderId: value(raw, 'orderId', 'order_id') ?? undefined,
   assignedTo: value(raw, 'assignedTo', 'assigned_to') ?? undefined,
@@ -72,6 +74,7 @@ export const normalizeComplaint = (raw: Raw): Complaint => ({
     createdAt: text(event, 'createdAt', 'created_at'),
   })),
   canWithdraw: Boolean(value(raw, 'canWithdraw', 'can_withdraw')),
+  supportRating: value(raw, 'supportRating', 'support_rating') ? { rating: Number(value(raw, 'supportRating', 'support_rating').rating), feedback: value(raw, 'supportRating', 'support_rating').feedback, createdAt: value(raw, 'supportRating', 'support_rating').created_at } : undefined,
   createdAt: text(raw, 'createdAt', 'created_at'),
   updatedAt: text(raw, 'updatedAt', 'updated_at'),
 })
@@ -121,7 +124,13 @@ export const complaintsApi = {
     throw new Error('This complaint update is not supported by the API.')
   },
   reply: async (id: string, data: ComplaintReplyRequest): Promise<ComplaintMessage> => {
-    const response = await apiClient.post(`/complaints/${id}/reply/`, data)
+    const body = data.attachment ? new FormData() : data
+    if (body instanceof FormData) {
+      body.append('text', data.text)
+      body.append('visibility', data.visibility)
+      body.append('attachment', data.attachment!)
+    }
+    const response = await apiClient.post(`/complaints/${id}/reply/`, body, body instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined)
     return normalizeComplaintMessage(response.data.data)
   },
   addInternalNote: async (id: string, body: string): Promise<InternalNote> => {

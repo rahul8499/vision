@@ -1,11 +1,13 @@
 from django.db.models import Q
+from django.db import transaction
 from django.utils import timezone
 from ..selectors.ticket_selectors import get_ticket_by_id, get_ticket_queryset
-from complaints.models import PlatformSupportTicket, PlatformSupportMessage
+from complaints.models import PlatformSupportTicket, PlatformSupportMessage, PlatformSupportTicketStatusHistory
 from complaints.models import PlatformSupportTicket, PlatformSupportMessage
 from ..models import SupportStaff, SupportAssignment
 from django.contrib.contenttypes.models import ContentType
 from .notification_service import create_assignment_notification, eligible_staff_for_case
+from . import sla_service
 from ..selectors.staff_selectors import get_staff_by_id
 
 
@@ -46,6 +48,16 @@ def assign_ticket(ticket_id, assigned_to_id, assigned_by):
     return ticket, assignment
 
 
+@transaction.atomic
+def claim_unassigned_ticket(ticket_id, staff):
+    ticket = PlatformSupportTicket.objects.select_for_update().filter(id=ticket_id).first()
+    if not ticket:
+        raise ValueError("Support ticket not found.")
+    if ticket.assigned_to:
+        raise ValueError("This help request is already assigned.")
+    return assign_ticket(ticket_id, staff.id, staff)
+
+
 def reply_to_ticket(ticket_id, text, staff, attachment=None):
     ticket = get_ticket_by_id(ticket_id)
     if not ticket:
@@ -57,6 +69,7 @@ def reply_to_ticket(ticket_id, text, staff, attachment=None):
     message = PlatformSupportMessage.objects.create(
         ticket=ticket,
         sender_type="platform",
+        support_staff=staff,
         text=text or None,
         attachment=attachment,
         is_read=False,
@@ -79,10 +92,15 @@ def update_ticket_status(ticket_id, new_status, staff, resolution_note=None):
         raise ValueError("Invalid status.")
 
     old_status = ticket.status
+    if new_status not in PlatformSupportTicket.STATUS_TRANSITIONS.get(old_status, []):
+        raise ValueError(f"Illegal status transition from '{old_status}' to '{new_status}'.")
+    sla_service.sync_case_clock("ticket", ticket)
     ticket.status = new_status
     if new_status == "resolved":
         ticket.resolved_at = timezone.now()
     if resolution_note:
         ticket.resolution_note = resolution_note
     ticket.save()
+    sla_service.sync_case_clock("ticket", ticket)
+    PlatformSupportTicketStatusHistory.objects.create(ticket=ticket, from_status=old_status, to_status=new_status, changed_by_staff=staff, note=resolution_note or "")
     return ticket

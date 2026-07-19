@@ -61,8 +61,10 @@ export interface Complaint {
   priority: ComplaintPriority
   priorityDisplay: string
   complainantType: PartyType
+  complainantId?: number
   complainantName: string
   respondentType: PartyType
+  respondentId?: number
   respondentName: string
   orderId?: number
   assignedTo?: string
@@ -76,6 +78,7 @@ export interface Complaint {
   messages: ComplaintMessage[]
   statusHistory: ComplaintStatusEvent[]
   canWithdraw: boolean
+  supportRating?: { rating: number; feedback?: string; createdAt?: string }
   createdAt: string
   updatedAt: string
 }
@@ -108,7 +111,7 @@ export interface ComplaintCreateRequest {
 export interface ComplaintReplyRequest {
   text: string
   visibility: ComplaintMessageVisibility
-  attachments?: string[]
+  attachment?: File
 }
 
 export interface ComplaintUpdateRequest {

@@ -1,13 +1,27 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useUIStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
-import { Bell, Search, ChevronDown, LogOut, User, Settings } from 'lucide-react'
+import { Bell, Search, ChevronDown, LogOut, User, Settings, Store, Ticket, MessageSquare, Loader2, Wrench, AlertTriangle } from 'lucide-react'
 import { notificationsApi } from '@/api/notificationsApi'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useCityStore } from '@/store/cityStore'
 import { enableSupportBrowserNotifications } from '@/utils/browserNotifications'
+import { useDebounce } from '@/hooks/useDebounce'
+import { lookupApi } from '@/api/lookupApi'
+import { ticketsApi } from '@/api/ticketsApi'
+import { complaintsApi } from '@/api/complaintsApi'
+import { caseManagementApi } from '@/api/caseManagementApi'
+
+type GlobalSearchResult = {
+  id: string
+  type: 'user' | 'store' | 'ticket' | 'complaint' | 'engineering' | 'escalation'
+  title: string
+  subtitle: string
+  to: string
+}
 
 export const Navbar = () => {
   const { logout } = useAuth()
@@ -16,9 +30,59 @@ export const Navbar = () => {
   const [unreadCount, setUnreadCount] = useState(0)
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const debouncedSearch = useDebounce(searchQuery.trim(), 300)
   const navigate = useNavigate()
   const { cities, selectedCityId, setSelectedCityId, loadCities } = useCityStore()
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
+
+  const canSearchPeople = user?.role === 'admin' || user?.role === 'supervisor'
+  const globalSearch = useQuery({
+    queryKey: ['global-search', debouncedSearch, user?.role],
+    enabled: debouncedSearch.length >= 3,
+    staleTime: 30_000,
+    queryFn: async (): Promise<GlobalSearchResult[]> => {
+      const [tickets, complaints, users, stores, managedCases] = await Promise.all([
+        ticketsApi.getAll({ search: debouncedSearch, page: 1, limit: 5 }),
+        complaintsApi.getAll({ search: debouncedSearch, page: 1, limit: 5 }),
+        canSearchPeople ? lookupApi.searchUsers(debouncedSearch, 5) : Promise.resolve({ results: [] }),
+        canSearchPeople ? lookupApi.searchStores(debouncedSearch, 5) : Promise.resolve({ results: [] }),
+        caseManagementApi.search(debouncedSearch),
+      ])
+
+      return [
+        ...tickets.results.map(item => ({
+          id: String(item.id), type: 'ticket' as const, title: item.subject,
+          subtitle: `${item.requesterName} · ${item.statusDisplay}`, to: `/tickets/${item.id}`,
+        })),
+        ...complaints.results.map(item => ({
+          id: String(item.id), type: 'complaint' as const, title: item.subject,
+          subtitle: `${item.complainantName} · ${item.statusDisplay}`, to: `/complaints/${item.id}`,
+        })),
+        ...users.results.map(item => ({
+          id: item.id, type: 'user' as const, title: item.name,
+          subtitle: item.email || item.mobile || 'User', to: `/user-lookup/${item.id}`,
+        })),
+        ...stores.results.map(item => ({
+          id: item.id, type: 'store' as const, title: item.name,
+          subtitle: item.ownerName || item.email || item.mobile || 'Store', to: `/store-lookup/${item.id}`,
+        })),
+        ...managedCases.map(item => ({
+          id: String(item.id), type: item.result_type as 'engineering' | 'escalation', title: String(item.title),
+          subtitle: String(item.subtitle),
+          to: item.entity_type === 'complaint' ? `/complaints/${item.entity_id}` : item.entity_type === 'ticket' ? `/tickets/${item.entity_id}` : item.entity_type === 'refund' ? `/refunds/${item.entity_id}` : `/safety-reports/${item.entity_id}`,
+        })),
+      ]
+    },
+  })
+
+  const searchResults = globalSearch.data ?? []
+  const openSearchResult = (result: GlobalSearchResult) => {
+    setSearchQuery('')
+    setSearchOpen(false)
+    navigate(result.to)
+  }
 
   useEffect(() => {
     loadCities().catch(() => undefined)
@@ -37,6 +101,14 @@ export const Navbar = () => {
     window.addEventListener('support-notification-refresh', fetchUnreadCount)
     const interval = setInterval(fetchUnreadCount, 30000)
     return () => { clearInterval(interval); window.removeEventListener('support-notification-refresh', fetchUnreadCount) }
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) setSearchOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   useEffect(() => {
@@ -70,15 +142,56 @@ export const Navbar = () => {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <div className="hidden lg:flex items-center relative">
+        <div ref={searchRef} className="hidden lg:flex items-center relative">
           <Search className="absolute left-3 h-4 w-4 text-gray-400" />
           <input
             type="text"
             placeholder="Search..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true) }}
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setSearchOpen(false)
+              if (event.key === 'Enter' && searchResults[0]) openSearchResult(searchResults[0])
+            }}
+            aria-label="Search support cases, users and stores"
+            aria-expanded={searchOpen}
+            aria-controls="global-search-results"
             className="pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 w-64"
           />
+          {searchOpen && searchQuery.trim().length > 0 && (
+            <div id="global-search-results" className="absolute left-0 top-full z-50 mt-2 w-[26rem] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+              {searchQuery.trim().length < 3 ? (
+                <p className="px-4 py-3 text-sm text-gray-500">Type at least 3 characters to search.</p>
+              ) : globalSearch.isLoading || globalSearch.isFetching ? (
+                <div className="flex items-center gap-2 px-4 py-4 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Searching…</div>
+              ) : globalSearch.isError ? (
+                <p className="px-4 py-3 text-sm text-red-600">Search could not be completed. Please try again.</p>
+              ) : searchResults.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-gray-500">No matching results found.</p>
+              ) : (
+                <div className="max-h-96 overflow-y-auto py-1">
+                  {searchResults.map(result => {
+                    const Icon = result.type === 'ticket' ? Ticket : result.type === 'complaint' ? MessageSquare : result.type === 'store' ? Store : result.type === 'engineering' ? Wrench : result.type === 'escalation' ? AlertTriangle : User
+                    return (
+                      <button
+                        key={`${result.type}-${result.id}`}
+                        type="button"
+                        onClick={() => openSearchResult(result)}
+                        className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+                      >
+                        <span className="mt-0.5 rounded-lg bg-primary-50 p-2 text-primary-600"><Icon className="h-4 w-4" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-gray-900">{result.title}</span>
+                          <span className="block truncate text-xs text-gray-500">{result.type} · {result.subtitle}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-3">

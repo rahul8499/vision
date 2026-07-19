@@ -30,9 +30,10 @@ export const StaffDetail = () => {
   useEffect(() => { if (staff) { setAllCities(!!staff.allCitiesAccess); setCityIds(staff.cityIds || []) } }, [staff])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['staff'] })
-  const statusMutation = useMutation({ mutationFn: () => {
+  const statusMutation = useMutation({ mutationFn: async (): Promise<void> => {
     if (!staff) throw new Error('Staff not loaded')
-    return staff.status === 'active' ? staffApi.delete(staff.id) : staffApi.activate(staff.id)
+    if (staff.status === 'active') await staffApi.delete(staff.id)
+    else await staffApi.activate(staff.id)
   }, onSuccess: () => { const wasActive = staff?.status === 'active'; refresh(); toast.success(wasActive ? 'Staff deactivated' : 'Staff activated') }, onError: () => toast.error('Staff status could not be changed') })
   const cityMutation = useMutation({ mutationFn: () => staffApi.update(id!, { allCitiesAccess: allCities, cities: allCities ? [] : cityIds }), onSuccess: () => { refresh(); toast.success('City access updated') }, onError: () => toast.error('City access could not be updated') })
 
@@ -61,7 +62,7 @@ export const StaffDetail = () => {
         }`}>
           {staff.status}
         </span>
-        <div className="ml-auto flex gap-2"><Button variant="secondary" onClick={resetPassword}>Reset password</Button><Button variant={staff.status === 'active' ? 'danger' : 'primary'} loading={statusMutation.isPending} onClick={() => statusMutation.mutate()}>{staff.status === 'active' ? 'Deactivate' : 'Activate'}</Button></div>
+        <div className="ml-auto flex gap-2"><Button variant="secondary" onClick={resetPassword}>Create a new password</Button><Button variant={staff.status === 'active' ? 'danger' : 'primary'} loading={statusMutation.isPending} onClick={() => statusMutation.mutate()}>{staff.status === 'active' ? 'Stop this staff account' : 'Allow this staff account'}</Button></div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -101,7 +102,7 @@ export const StaffDetail = () => {
         <Card title="Cities this person can work in">
           <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={allCities} onChange={e => setAllCities(e.target.checked)} />All cities</label>
           {!allCities && <div className="mt-3 grid grid-cols-2 gap-2">{(citiesQuery.data || []).map(city => <label key={city.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cityIds.includes(city.id)} onChange={e => setCityIds(e.target.checked ? [...cityIds, city.id] : cityIds.filter(value => value !== city.id))} />{city.name}</label>)}</div>}
-          <Button size="sm" className="mt-3" disabled={!allCities && cityIds.length === 0} loading={cityMutation.isPending} onClick={() => cityMutation.mutate()}>Save city access</Button>
+          <Button size="sm" className="mt-3" disabled={!allCities && cityIds.length === 0} loading={cityMutation.isPending} onClick={() => cityMutation.mutate()}>Save cities this staff member can access</Button>
         </Card>
       </div>
     </div>

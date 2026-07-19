@@ -43,7 +43,7 @@ export const RefundProcessModal = ({ isOpen, onClose, onProcess, refund }: Refun
       onClose={handleClose}
       onConfirm={handleSubmit(handleProcess)}
       title="Process Refund"
-      message={`Process refund of ${refund.currency} ${refund.amount.toFixed(2)} for order ${refund.orderId}?`}
+      message={`Send ${refund.currency} ${refund.amount.toFixed(2)} back for payment ${refund.charge}?`}
       confirmText="Process Refund"
       loading={isSubmitting}
     >

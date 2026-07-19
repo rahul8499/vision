@@ -4,6 +4,7 @@ export interface Assignee {
   id: string
   name: string
   role: 'agent' | 'supervisor' | 'admin'
+  active_cases?: number
 }
 
 export const assigneesApi = {
