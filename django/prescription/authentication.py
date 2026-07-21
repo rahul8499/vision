@@ -2,7 +2,7 @@
 
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
-from .models import Store, User  # ✅ दोनों models import करो
+from .models import Store, User, StoreDeliveryPerson  # ✅ तीनों actor models
 from django.utils import translation
 
 class StoreTokenAuthentication(BaseAuthentication):
@@ -65,3 +65,17 @@ class UserTokenAuthentication(BaseAuthentication):
         request.LANGUAGE_CODE = language
         getattr(request, '_request', request).LANGUAGE_CODE = language
         return (user, None)  # Django expects (user, auth)
+
+
+class DeliveryPersonTokenAuthentication(BaseAuthentication):
+    def authenticate(self, request):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return None
+        parts = auth_header.split()
+        if len(parts) != 2 or parts[0].lower() != 'bearer':
+            raise AuthenticationFailed('Authorization token must be provided as Bearer <token>.')
+        person = StoreDeliveryPerson.objects.select_related('store').filter(auth_token=parts[1]).first()
+        if not person or not person.is_active or not person.store.is_active:
+            raise AuthenticationFailed('Delivery partner account is inactive or invalid.')
+        return (person, None)

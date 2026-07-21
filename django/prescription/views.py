@@ -98,7 +98,7 @@ from django.contrib.auth.hashers import check_password
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
-from .authentication import StoreTokenAuthentication, UserTokenAuthentication
+from .authentication import StoreTokenAuthentication, UserTokenAuthentication, DeliveryPersonTokenAuthentication
 from core.services.capability_service import delete_store_account, delete_user_account, get_store_lifecycle_status, get_user_lifecycle_status
 from core.services.repeat_customer_service import create_order_again_request
 from rest_framework.pagination import PageNumberPagination
@@ -1440,12 +1440,7 @@ class StoreUpdateProgressView(APIView):
                 elif action == 'mark_locked':
                     if response.delivery_option == 'online':
                         if not delivery_person_id:
-                            delivery_person_id = StoreDeliveryPerson.objects.filter(
-                                store=request.user,
-                                is_active=True,
-                                is_available=True,
-                                current_order_count__lt=F('max_concurrent_orders'),
-                            ).order_by('current_order_count', 'last_assigned_at', 'id').values_list('id', flat=True).first()
+                            return Response({"error": "Select a delivery partner before dispatch."}, status=400)
                         if delivery_person_id:
                             try:
                                 person = StoreDeliveryPerson.objects.select_for_update().get(
@@ -1453,6 +1448,7 @@ class StoreUpdateProgressView(APIView):
                                     store=request.user,
                                     is_active=True,
                                     is_available=True,
+                                    pin_hash__gt='',
                                 )
                             except StoreDeliveryPerson.DoesNotExist:
                                 return Response({"error": "Selected delivery person is not available."}, status=400)
@@ -3900,6 +3896,188 @@ class StoreDeliveryPersonDetailView(APIView):
         person.is_available = False
         person.save(update_fields=['is_active', 'is_available', 'updated_at'])
         return Response(status=204)
+
+
+def _serialize_delivery_job(response):
+    prescription = response.prescription
+    person = response.delivery_offer.assigned_delivery_person
+    stage = 'reached' if response.delivery_reached_at else 'picked_up' if response.delivery_picked_up_at else 'assigned'
+    return {
+        'id': response.id,
+        'order_id': response.id,
+        'stage': stage,
+        'user_status': response.user_status,
+        'customer_name': getattr(response.user, 'name', None) or 'Customer',
+        'customer_mobile': getattr(response.user, 'mobile', None),
+        'customer_address': prescription.user_address,
+        'latitude': prescription.latitude,
+        'longitude': prescription.longitude,
+        'store_name': response.store_name or response.store.name,
+        'store_address': response.store_address or response.store.address,
+        'store_latitude': response.store_latitude or response.store.latitude,
+        'store_longitude': response.store_longitude or response.store.longitude,
+        'assigned_to': {'id': person.id, 'name': person.name},
+        'delivery_picked_up_at': response.delivery_picked_up_at,
+        'delivery_reached_at': response.delivery_reached_at,
+        'completion_otp_requested': bool(getattr(response, 'delivery_otp', None) and response.delivery_otp.is_active),
+        'created_at': response.created_at,
+        'updated_at': response.updated_at,
+    }
+
+
+def _broadcast_delivery_partner_update(response, action):
+    payload = {
+        'id': response.id,
+        'response_id': response.id,
+        'user_status': response.user_status,
+        'delivery_picked_up_at': response.delivery_picked_up_at.isoformat() if response.delivery_picked_up_at else None,
+        'delivery_reached_at': response.delivery_reached_at.isoformat() if response.delivery_reached_at else None,
+        'completed_at': response.completed_at.isoformat() if response.completed_at else None,
+        'completion_otp_requested': action == 'completion_otp_requested',
+        'updated_at': response.updated_at.isoformat(),
+        'response_version': response.response_version,
+    }
+    def send_after_commit():
+        channel_layer = get_channel_layer()
+        for group in (f'store_{response.store_id}_fulfillment', f'user_{response.user_id}_fulfillment'):
+            async_to_sync(channel_layer.group_send)(group, {
+                'type': 'fulfillment_update', 'event_id': str(uuid.uuid4()),
+                'seq': response.response_version, 'action': action, 'data': payload,
+            })
+    transaction.on_commit(send_after_commit)
+
+
+class DeliveryPersonLoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        login_id = str(request.data.get('login_id', '')).strip()
+        pin = str(request.data.get('pin', '')).strip()
+        if not login_id or not pin:
+            return Response({'error': 'Partner ID and PIN are required.'}, status=400)
+        person = StoreDeliveryPerson.objects.select_related('store').filter(login_id=login_id, is_active=True).first()
+        if not person or not person.check_login_pin(pin) or not person.store.is_active:
+            return Response({'error': 'Invalid Partner ID or PIN.'}, status=401)
+        person.auth_token = uuid.uuid4()
+        person.last_login_at = timezone.now()
+        person.save(update_fields=['auth_token', 'last_login_at', 'updated_at'])
+        return Response({
+            'token': str(person.auth_token),
+            'user_type': 'delivery',
+            'partner': {'id': person.id, 'login_id': str(person.login_id), 'name': person.name, 'mobile': person.mobile, 'vehicle_type': person.vehicle_type, 'vehicle_number': person.vehicle_number, 'store_id': person.store_id, 'store_name': person.store.name},
+        })
+
+
+class DeliveryPersonMeView(APIView):
+    authentication_classes = [DeliveryPersonTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        person = request.user
+        return Response({'id': person.id, 'login_id': str(person.login_id), 'name': person.name, 'mobile': person.mobile, 'vehicle_type': person.vehicle_type, 'vehicle_number': person.vehicle_number, 'store_id': person.store_id, 'store_name': person.store.name})
+
+
+class DeliveryJobListView(APIView):
+    authentication_classes = [DeliveryPersonTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        responses = PrescriptionResponse.objects.filter(
+            delivery_offer__assigned_delivery_person=request.user,
+            delivery_option='online',
+            user_status='out_for_delivery',
+        ).select_related('user', 'store', 'prescription', 'delivery_offer__assigned_delivery_person', 'delivery_otp').order_by('-updated_at')
+        return Response({'results': [_serialize_delivery_job(item) for item in responses]})
+
+
+class DeliveryJobDetailView(APIView):
+    authentication_classes = [DeliveryPersonTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def _job(self, request, job_id, lock=False):
+        qs = PrescriptionResponse.objects
+        if lock:
+            # Lock only the order row. delivery_otp is a nullable outer join and
+            # PostgreSQL rejects FOR UPDATE against the nullable side.
+            qs = qs.select_for_update(of=('self',))
+        return qs.filter(id=job_id, delivery_offer__assigned_delivery_person=request.user, delivery_option='online').select_related('user', 'store', 'prescription', 'delivery_offer__assigned_delivery_person', 'delivery_otp').first()
+
+    def get(self, request, job_id):
+        job = self._job(request, job_id)
+        if not job or job.user_status == 'completed':
+            raise NotFound('Active delivery job not found.')
+        return Response(_serialize_delivery_job(job))
+
+
+class DeliveryJobStatusView(DeliveryJobDetailView):
+    def post(self, request, job_id):
+        action = request.data.get('action')
+        if action not in ('picked_up', 'reached'):
+            return Response({'error': 'Action must be picked_up or reached.'}, status=400)
+        with transaction.atomic():
+            job = self._job(request, job_id, lock=True)
+            if not job or job.user_status != 'out_for_delivery':
+                raise NotFound('Active delivery job not found.')
+            now = timezone.now()
+            if action == 'picked_up':
+                job.delivery_picked_up_at = job.delivery_picked_up_at or now
+                job.save(update_fields=['delivery_picked_up_at', 'response_version', 'updated_at'])
+            else:
+                if not job.delivery_picked_up_at:
+                    return Response({'error': 'Mark the order picked up first.'}, status=409)
+                job.delivery_reached_at = job.delivery_reached_at or now
+                job.save(update_fields=['delivery_reached_at', 'response_version', 'updated_at'])
+        _broadcast_delivery_partner_update(job, f'delivery_{action}')
+        return Response(_serialize_delivery_job(job))
+
+
+class DeliveryJobRequestOTPView(DeliveryJobDetailView):
+    def post(self, request, job_id):
+        with transaction.atomic():
+            job = self._job(request, job_id, lock=True)
+            if not job or job.user_status != 'out_for_delivery':
+                raise NotFound('Active delivery job not found.')
+            if not job.delivery_reached_at:
+                return Response({'error': 'Mark Reached Customer before requesting OTP.'}, status=409)
+            otp, _ = DeliveryOTP.objects.update_or_create(response=job, defaults={'otp_code': f'{random.randint(100000, 999999)}', 'is_used': False, 'attempts': 0})
+            otp.created_at = timezone.now()
+            otp.save(update_fields=['otp_code', 'is_used', 'attempts', 'created_at'])
+            job.save(update_fields=['response_version', 'updated_at'])
+            _safe_on_commit('delivery completion OTP email', lambda: _send_completion_otp_email(job.user.email, otp.otp_code, job.store_name))
+            _safe_on_commit('delivery completion OTP WhatsApp', lambda: _send_whatsapp_otp(job.user.mobile, otp.otp_code, settings.WHATSAPP_COMPLETION_OTP_TEMPLATE))
+        _broadcast_delivery_partner_update(job, 'completion_otp_requested')
+        return Response({'message': 'OTP sent to customer.', 'expires_at': otp.expires_at}, status=202)
+
+
+class DeliveryJobVerifyOTPView(DeliveryJobDetailView):
+    def post(self, request, job_id):
+        entered = str(request.data.get('otp', '')).strip()
+        if not entered:
+            return Response({'error': 'OTP is required.'}, status=400)
+        with transaction.atomic():
+            job = self._job(request, job_id, lock=True)
+            if not job or job.user_status != 'out_for_delivery':
+                raise NotFound('Active delivery job not found.')
+            try:
+                otp = job.delivery_otp
+            except DeliveryOTP.DoesNotExist:
+                return Response({'error': 'Request a delivery OTP first.'}, status=409)
+            if not otp.is_active:
+                return Response({'error': 'OTP expired, used, or attempt limit reached.'}, status=400)
+            if otp.otp_code != entered:
+                otp.attempts += 1
+                otp.save(update_fields=['attempts'])
+                return Response({'error': 'Invalid OTP.', 'attempts_remaining': max(0, 5 - otp.attempts)}, status=400)
+            otp.is_used = True
+            otp.save(update_fields=['is_used'])
+            job.user_status = 'completed'
+            job.completed_by_store = job.store
+            job.save(user_context=job.store)
+            release_assigned_delivery_person(job)
+        _queue_user_order_progress_push(job, 'mark_completed')
+        _broadcast_delivery_partner_update(job, 'status_change')
+        return Response({'message': 'Delivery completed successfully.', 'user_status': 'completed', 'completed_at': job.completed_at})
 
 
 class PrescriptionDeliveryPreviewView(APIView):

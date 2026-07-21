@@ -23,9 +23,18 @@ from .views import (
     OrderReplacementCreateView, UserReplacementListView, UserReplacementCancelView,
     StoreReplacementListView, StoreReplacementApproveView, StoreReplacementRejectView,
     StoreReplacementInTransitView, StoreReplacementCompleteView, LanguagePreferenceView,
-    UserEmergencyRequestListView, UserEmergencyRequestDetailView, UserEmergencyRequestCancelView
+    UserEmergencyRequestListView, UserEmergencyRequestDetailView, UserEmergencyRequestCancelView,
+    DeliveryPersonLoginView, DeliveryPersonMeView, DeliveryJobListView, DeliveryJobDetailView,
+    DeliveryJobStatusView, DeliveryJobRequestOTPView, DeliveryJobVerifyOTPView
 )
 urlpatterns = [
+    path('delivery/login/', DeliveryPersonLoginView.as_view(), name='delivery-login'),
+    path('delivery/me/', DeliveryPersonMeView.as_view(), name='delivery-me'),
+    path('delivery/jobs/', DeliveryJobListView.as_view(), name='delivery-jobs'),
+    path('delivery/jobs/<int:job_id>/', DeliveryJobDetailView.as_view(), name='delivery-job-detail'),
+    path('delivery/jobs/<int:job_id>/status/', DeliveryJobStatusView.as_view(), name='delivery-job-status'),
+    path('delivery/jobs/<int:job_id>/request-otp/', DeliveryJobRequestOTPView.as_view(), name='delivery-job-request-otp'),
+    path('delivery/jobs/<int:job_id>/verify-otp/', DeliveryJobVerifyOTPView.as_view(), name='delivery-job-verify-otp'),
     path('upload/', PrescriptionUploadView.as_view(), name='upload'),
     path('send-prescription-to-stores/', PrescriptionSendToStoresView.as_view(), name='send_prescription_to_stores'),
 

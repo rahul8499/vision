@@ -34,7 +34,9 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
-const getStatusLabel = (stageInfo: StageResolution) => {
+const getStatusLabel = (stageInfo: StageResolution, order: SellerOrder) => {
+  if (order.delivery_reached_at) return 'Delivery partner reached customer';
+  if (order.delivery_picked_up_at) return 'Picked up • On the way';
   if (stageInfo.stage === 'NEW') return 'Billing Pending';
   if (stageInfo.stage === 'COMPLETED' || stageInfo.stage === 'CANCELLED') return stageInfo.config.label;
   return `${stageInfo.config.label} Stage`;
@@ -126,7 +128,7 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
 
         <View className="mt-4 rounded-[1rem] bg-[#f5f8f7] px-4 py-3">
           <Text className="text-[8px] font-black uppercase tracking-[1.8px] text-[#007a5c]">Status</Text>
-          <Text className="mt-1 text-[13px] font-black text-slate-950" numberOfLines={1}>{getStatusLabel(stageInfo)}</Text>
+          <Text className="mt-1 text-[13px] font-black text-slate-950" numberOfLines={1}>{getStatusLabel(stageInfo, order)}</Text>
         </View>
 
         {!isPickup && stageInfo.stage !== 'COMPLETED' && stageInfo.stage !== 'CANCELLED' && (

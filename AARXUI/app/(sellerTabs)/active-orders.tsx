@@ -42,6 +42,7 @@ const FILTER_OPTIONS: { key: OrderFilterMode; label: string; icon: string }[] = 
 ];
 
 type TerminalOrderStage = Extract<OrderStage, 'COMPLETED' | 'CANCELLED'>;
+type DeliveryPerson = { id:number; name:string; mobile:string; vehicle_type:string; vehicle_number?:string; is_active:boolean; is_available:boolean; can_login:boolean; current_order_count:number; max_concurrent_orders:number };
 
 const TERMINAL_ORDER_OPTIONS: { key: TerminalOrderStage; label: string; icon: string; color: string; bg: string }[] = [
   { key: 'COMPLETED', label: 'Completed', icon: 'check-decagram-outline', color: '#059669', bg: '#ecfdf5' },
@@ -158,6 +159,10 @@ export default function ActiveOrdersScreen() {
   const { user, token } = useSelector((state: RootState) => state.user);
   const [selectedOrder, setSelectedOrder] = useState<SellerOrder | null>(null);
   const [deliveryMapOrder, setDeliveryMapOrder] = useState<SellerOrder | null>(null);
+  const [dispatchOrder, setDispatchOrder] = useState<SellerOrder | null>(null);
+  const [deliveryPeople, setDeliveryPeople] = useState<DeliveryPerson[]>([]);
+  const [selectedDeliveryPersonId, setSelectedDeliveryPersonId] = useState<number | null>(null);
+  const [deliveryPeopleLoading, setDeliveryPeopleLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [completionOtpModalVisible, setCompletionOtpModalVisible] = useState(false);
   const [completionOtpTargetId, setCompletionOtpTargetId] = useState<number | null>(null);
@@ -341,6 +346,39 @@ export default function ActiveOrdersScreen() {
     } as any);
   }, [router]);
 
+  const handlePrimaryAction = useCallback(async (order: SellerOrder, progressAction: string) => {
+    if (progressAction !== 'mark_locked' || order.delivery_option !== 'online') {
+      await sellerOrders.updateProgress(order, progressAction);
+      return;
+    }
+    setDispatchOrder(order);
+    setSelectedDeliveryPersonId(null);
+    setDeliveryPeopleLoading(true);
+    try {
+      const response = await fetch(`${BASE_URL}/api/store/delivery-persons/`, { headers: { Authorization: `Bearer ${token}` } });
+      const people = await response.json();
+      if (!response.ok) throw new Error(people.error || 'Could not load delivery team.');
+      setDeliveryPeople((people || []).filter((person: DeliveryPerson) => person.is_active));
+    } catch (error: any) {
+      setDispatchOrder(null);
+      Toast.show({ type: 'error', text1: 'Delivery team unavailable', text2: error.message });
+    } finally {
+      setDeliveryPeopleLoading(false);
+    }
+  }, [BASE_URL, sellerOrders, token]);
+
+  const confirmDispatch = useCallback(async () => {
+    if (!dispatchOrder || !selectedDeliveryPersonId) {
+      Toast.show({ type: 'error', text1: 'Select a delivery partner' });
+      return;
+    }
+    const result = await sellerOrders.updateProgress(dispatchOrder, 'mark_locked', selectedDeliveryPersonId);
+    if (result.success) {
+      setDispatchOrder(null);
+      setSelectedDeliveryPersonId(null);
+    }
+  }, [dispatchOrder, selectedDeliveryPersonId, sellerOrders]);
+
   const jumpToDate = useCallback((dateKey: string) => {
     setSelectedStartDateKey(null);
     setSelectedEndDateKey(null);
@@ -401,7 +439,7 @@ export default function ActiveOrdersScreen() {
       priority={item.priority}
       sla={item.sla}
       progressLoadingId={sellerOrders.progressLoadingId}
-      onPrimaryAction={sellerOrders.updateProgress}
+      onPrimaryAction={handlePrimaryAction}
       onCall={(order) => order.user_mobile ? Linking.openURL(`tel:${order.user_mobile}`) : undefined}
       onChat={openChat}
       onViewRx={setSelectedImage}
@@ -410,7 +448,7 @@ export default function ActiveOrdersScreen() {
       onOpenMap={setDeliveryMapOrder}
       onCancel={handleStoreCancel}
     />
-  ), [BASE_URL, handleStoreCancel, openChat, raiseComplaint, sellerOrders.progressLoadingId, sellerOrders.updateProgress]);
+  ), [BASE_URL, handlePrimaryAction, handleStoreCancel, openChat, raiseComplaint, sellerOrders.progressLoadingId]);
 
   const terminalStageActive = pipeline.activeStage === 'COMPLETED' || pipeline.activeStage === 'CANCELLED';
   const activeStageConfig = ORDER_STAGE_CONFIG[pipeline.activeStage];
@@ -782,6 +820,25 @@ export default function ActiveOrdersScreen() {
         priority={selectedOrderPriority}
         onClose={() => setSelectedOrder(null)}
       />
+
+      <Modal visible={Boolean(dispatchOrder)} transparent animationType="slide" onRequestClose={() => !deliveryPeopleLoading && setDispatchOrder(null)}>
+        <View className="flex-1 justify-end bg-slate-950/60">
+          <TouchableOpacity activeOpacity={1} onPress={() => setDispatchOrder(null)} className="absolute inset-0" />
+          <View className="max-h-[82%] rounded-t-[2rem] bg-white px-5 pb-8 pt-4">
+            <View className="items-center"><View className="h-1.5 w-12 rounded-full bg-slate-200" /></View>
+            <View className="mt-4 flex-row items-start justify-between"><View className="flex-1 pr-4"><Text className="text-[9px] font-black uppercase tracking-[1.8px] text-emerald-600">Packed & ready</Text><Text className="mt-1 text-2xl font-black text-slate-950">Assign Delivery Partner</Text><Text className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">Select who will carry Order #{dispatchOrder?.response_id || dispatchOrder?.id}. Dispatch starts only after confirmation.</Text></View><TouchableOpacity onPress={() => setDispatchOrder(null)} className="h-10 w-10 items-center justify-center rounded-2xl bg-slate-100"><MaterialCommunityIcons name="close" size={20} color="#334155" /></TouchableOpacity></View>
+            {deliveryPeopleLoading ? <View className="items-center py-12"><ActivityIndicator color="#059669"/><Text className="mt-3 text-xs font-bold text-slate-400">Loading delivery team…</Text></View> : (
+              <ScrollView className="mt-5" showsVerticalScrollIndicator={false}>
+                {!deliveryPeople.length ? <View className="items-center rounded-2xl bg-amber-50 p-6"><MaterialCommunityIcons name="account-alert-outline" size={34} color="#d97706"/><Text className="mt-3 font-black text-amber-900">No active delivery partner</Text><Text className="mt-1 text-center text-xs font-semibold text-amber-700">Add a partner from Seller Settings → Delivery Team.</Text></View> : deliveryPeople.map(person=>{
+                  const full=person.current_order_count>=person.max_concurrent_orders; const selected=selectedDeliveryPersonId===person.id; const available=person.is_available&&person.can_login&&!full;
+                  return <TouchableOpacity key={person.id} disabled={!available} onPress={()=>setSelectedDeliveryPersonId(person.id)} className={`mb-3 flex-row items-center rounded-[1.2rem] border p-4 ${selected?'border-emerald-500 bg-emerald-50':available?'border-slate-200 bg-white':'border-slate-100 bg-slate-50 opacity-50'}`}><View className={`h-12 w-12 items-center justify-center rounded-2xl ${selected?'bg-emerald-600':'bg-blue-50'}`}><MaterialCommunityIcons name={person.vehicle_type==='bike'||person.vehicle_type==='scooter'?'moped':'account'} size={24} color={selected?'white':'#2563eb'}/></View><View className="ml-3 flex-1"><Text className="text-base font-black text-slate-950">{person.name}</Text><Text className="mt-0.5 text-[9px] font-bold uppercase text-slate-400">{person.vehicle_type}{person.vehicle_number?` • ${person.vehicle_number}`:''}</Text><Text className={`mt-1 text-[8px] font-black uppercase ${available?'text-emerald-600':'text-red-500'}`}>{!person.can_login?'Set partner PIN first':full?'Order limit reached':person.is_available?'Available now':'Unavailable'} • {person.current_order_count}/{person.max_concurrent_orders} jobs</Text></View><MaterialCommunityIcons name={selected?'check-circle':'circle-outline'} size={23} color={selected?'#059669':'#cbd5e1'}/></TouchableOpacity>;
+                })}
+              </ScrollView>
+            )}
+            <TouchableOpacity disabled={!selectedDeliveryPersonId || deliveryPeopleLoading || sellerOrders.progressLoadingId !== null} onPress={confirmDispatch} className={`mt-4 h-14 flex-row items-center justify-center rounded-2xl ${selectedDeliveryPersonId?'bg-emerald-600':'bg-slate-200'}`}>{sellerOrders.progressLoadingId!==null?<ActivityIndicator color="white"/>:<><MaterialCommunityIcons name="truck-fast-outline" size={21} color={selectedDeliveryPersonId?'white':'#94a3b8'}/><Text className={`ml-2 font-black uppercase tracking-[1.2px] ${selectedDeliveryPersonId?'text-white':'text-slate-400'}`}>Confirm & Dispatch</Text></>}</TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={orderFilterSheetVisible} transparent animationType="slide" onRequestClose={() => setOrderFilterSheetVisible(false)}>
         <View className="flex-1 justify-end bg-black/50">

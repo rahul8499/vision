@@ -208,10 +208,14 @@ class StoreDeliveryPerson(models.Model):
     is_active = models.BooleanField(default=True, db_index=True)
     is_available = models.BooleanField(default=True, db_index=True)
     current_order_count = models.PositiveIntegerField(default=0)
-    max_concurrent_orders = models.PositiveIntegerField(default=1)
+    max_concurrent_orders = models.PositiveIntegerField(default=100)
     last_assigned_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    login_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    pin_hash = models.CharField(max_length=255, blank=True)
+    auth_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    last_login_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-is_available', 'current_order_count', 'name']
@@ -227,6 +231,20 @@ class StoreDeliveryPerson(models.Model):
             errors['max_concurrent_orders'] = 'Must be at least 1.'
         if errors:
             raise ValidationError(errors)
+
+    @property
+    def is_delivery_person(self):
+        return True
+
+    @property
+    def is_authenticated(self):
+        return True
+
+    def set_login_pin(self, raw_pin):
+        self.pin_hash = make_password(str(raw_pin))
+
+    def check_login_pin(self, raw_pin):
+        return bool(self.pin_hash and check_password(str(raw_pin), self.pin_hash))
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -498,6 +516,8 @@ class PrescriptionResponse(models.Model):
     processing_at = models.DateTimeField(null=True, blank=True)
     locked_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    delivery_picked_up_at = models.DateTimeField(null=True, blank=True)
+    delivery_reached_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         # 🛡️ Layer 1: Atomic Integrity & Transition Validation

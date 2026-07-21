@@ -91,6 +91,9 @@ export default function SellerSettingsScreen() {
   const [deliveryPersonName, setDeliveryPersonName] = useState('');
   const [deliveryPersonMobile, setDeliveryPersonMobile] = useState('');
   const [deliveryPersonVehicle, setDeliveryPersonVehicle] = useState('bike');
+  const [deliveryPersonPin, setDeliveryPersonPin] = useState('');
+  const [partnerPinTarget, setPartnerPinTarget] = useState<any>(null);
+  const [partnerNewPin, setPartnerNewPin] = useState('');
 
   const fetchDeliveryConfiguration = async () => {
     if (!token) return;
@@ -133,25 +136,32 @@ export default function SellerSettingsScreen() {
   };
 
   const addDeliveryPerson = async () => {
-    if (!token || !deliveryPersonName.trim() || deliveryPersonMobile.replace(/\D/g, '').length < 10) {
-      Toast.show({ type: 'error', text1: 'Enter a valid name and mobile number', position: 'bottom' });
+    if (!token || !deliveryPersonName.trim() || deliveryPersonMobile.replace(/\D/g, '').length < 10 || !/^\d{4,6}$/.test(deliveryPersonPin)) {
+      Toast.show({ type: 'error', text1: 'Enter valid details', text2: 'Partner PIN must contain 4–6 digits.', position: 'bottom' });
       return;
     }
     try {
       setDeliveryBusy(true);
-      await axios.post(`${BASE_URL}/api/store/delivery-persons/`, {
+      const enteredPin = deliveryPersonPin;
+      const response = await axios.post(`${BASE_URL}/api/store/delivery-persons/`, {
         name: deliveryPersonName.trim(),
         mobile: deliveryPersonMobile.trim(),
         vehicle_type: deliveryPersonVehicle,
         is_active: true,
         is_available: true,
-        max_concurrent_orders: 1,
+        max_concurrent_orders: 100,
+        login_pin: deliveryPersonPin,
       }, { headers: { Authorization: `Bearer ${token}` } });
       setDeliveryPersonOpen(false);
       setDeliveryPersonName('');
       setDeliveryPersonMobile('');
       setDeliveryPersonVehicle('bike');
+      setDeliveryPersonPin('');
       await fetchDeliveryConfiguration();
+      await Share.share({
+        title: 'AARX Delivery Partner Login',
+        message: `AARX Delivery Partner Login\n\nPartner: ${response.data.name}\nPharmacy: ${storeData?.name || 'Your pharmacy'}\nPartner ID: ${response.data.login_id}\nPIN: ${enteredPin}\n\nOpen AARXUI → Delivery Partner → enter this Partner ID and PIN. Do not share these credentials with anyone else.`,
+      });
     } catch (error: any) {
       Toast.show({ type: 'error', text1: 'Delivery person not added', text2: error?.response?.data?.mobile?.[0] || error?.response?.data?.error, position: 'bottom' });
     } finally {
@@ -168,6 +178,38 @@ export default function SellerSettingsScreen() {
       await fetchDeliveryConfiguration();
     } catch {
       Toast.show({ type: 'error', text1: 'Availability update failed', position: 'bottom' });
+    }
+  };
+
+  const sharePartnerId = async (person: any) => {
+    await Share.share({
+      title: 'AARX Delivery Partner ID',
+      message: `AARX Delivery Partner\nPartner: ${person.name}\nPharmacy: ${storeData?.name || 'Your pharmacy'}\nPartner ID: ${person.login_id}\n\nUse the secure PIN provided separately by the pharmacy owner. Open AARXUI → Delivery Partner to sign in.`,
+    });
+  };
+
+  const resetAndSharePartnerPin = async () => {
+    if (!token || !partnerPinTarget || !/^\d{4,6}$/.test(partnerNewPin)) {
+      Toast.show({ type: 'error', text1: 'Enter a 4–6 digit PIN' });
+      return;
+    }
+    try {
+      setDeliveryBusy(true);
+      const newPin = partnerNewPin;
+      const response = await axios.patch(`${BASE_URL}/api/store/delivery-persons/${partnerPinTarget.id}/`, {
+        login_pin: newPin,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      setPartnerPinTarget(null);
+      setPartnerNewPin('');
+      await fetchDeliveryConfiguration();
+      await Share.share({
+        title: 'AARX Delivery Partner Login',
+        message: `AARX Delivery Partner Login\n\nPartner: ${response.data.name}\nPharmacy: ${storeData?.name || 'Your pharmacy'}\nPartner ID: ${response.data.login_id}\nPIN: ${newPin}\n\nOpen AARXUI → Delivery Partner and enter these credentials.`,
+      });
+    } catch (error: any) {
+      Toast.show({ type: 'error', text1: 'PIN update failed', text2: error?.response?.data?.error || 'Please retry.' });
+    } finally {
+      setDeliveryBusy(false);
     }
   };
 
@@ -815,8 +857,19 @@ export default function SellerSettingsScreen() {
                   <View className="ml-3 flex-1">
                     <Text className="font-black text-slate-900">{person.name}</Text>
                     <Text className="text-[9px] font-bold uppercase text-slate-400">{person.vehicle_type} • {person.current_order_count}/{person.max_concurrent_orders} orders</Text>
+                    <Text selectable className="mt-1 text-[8px] font-black text-blue-600">PARTNER ID: {person.login_id}</Text>
                   </View>
-                  <Switch value={Boolean(person.is_available)} onValueChange={() => toggleDeliveryPerson(person)} disabled={!person.is_active} />
+                  <View className="ml-2 items-end">
+                    <Switch value={Boolean(person.is_available)} onValueChange={() => toggleDeliveryPerson(person)} disabled={!person.is_active} />
+                    <TouchableOpacity onPress={() => sharePartnerId(person)} className="mt-1 flex-row items-center rounded-lg bg-blue-50 px-2 py-1">
+                      <MaterialCommunityIcons name="share-variant-outline" size={11} color="#2563eb" />
+                      <Text className="ml-1 text-[7px] font-black uppercase text-blue-700">Share ID</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { setPartnerPinTarget(person); setPartnerNewPin(''); }} className="mt-1 flex-row items-center rounded-lg bg-orange-50 px-2 py-1">
+                      <MaterialCommunityIcons name="key-variant" size={11} color="#ea580c" />
+                      <Text className="ml-1 text-[7px] font-black uppercase text-orange-700">Set / Share PIN</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </View>
@@ -1138,9 +1191,10 @@ export default function SellerSettingsScreen() {
         <View className="flex-1 items-center justify-center bg-slate-950/60 px-6">
           <View className="w-full rounded-[2rem] bg-white p-6">
             <Text className="text-xl font-black text-slate-950">Add delivery person</Text>
-            <Text className="mb-5 mt-1 text-[10px] font-bold text-slate-400">Details are shown to the customer only after assignment.</Text>
+            <Text className="mb-5 mt-1 text-[10px] font-bold text-slate-400">Save करने पर Partner ID automatically बनेगा और ID + PIN share sheet खुलेगी।</Text>
             <TextInput value={deliveryPersonName} onChangeText={setDeliveryPersonName} placeholder="Full name" className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold" />
             <TextInput value={deliveryPersonMobile} onChangeText={setDeliveryPersonMobile} placeholder="Mobile number" keyboardType="phone-pad" className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold" />
+            <TextInput value={deliveryPersonPin} onChangeText={setDeliveryPersonPin} placeholder="Login PIN (4–6 digits)" keyboardType="number-pad" secureTextEntry maxLength={6} className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold" />
             <Text className="mb-2 text-[8px] font-black uppercase tracking-[1.5px] text-slate-400">Vehicle</Text>
             <View className="mb-5 flex-row flex-wrap gap-2">
               {['walk', 'bicycle', 'bike', 'scooter', 'car'].map(vehicle => (
@@ -1525,6 +1579,19 @@ export default function SellerSettingsScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(partnerPinTarget)} transparent animationType="fade" onRequestClose={() => !deliveryBusy && setPartnerPinTarget(null)}>
+        <View className="flex-1 items-center justify-center bg-slate-950/65 px-6">
+          <View className="w-full rounded-[2rem] bg-white p-6">
+            <View className="h-12 w-12 items-center justify-center rounded-2xl bg-orange-50"><MaterialCommunityIcons name="key-variant" size={24} color="#ea580c" /></View>
+            <Text className="mt-4 text-xl font-black text-slate-950">Set Partner PIN</Text>
+            <Text className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">{partnerPinTarget?.name} के लिए नया PIN बनाएँ। Save के बाद Partner ID और PIN दोनों share होंगे।</Text>
+            <View className="mt-4 rounded-2xl bg-blue-50 p-3"><Text className="text-[8px] font-black uppercase text-blue-600">Partner ID</Text><Text selectable className="mt-1 text-[10px] font-bold text-blue-950">{partnerPinTarget?.login_id}</Text></View>
+            <TextInput value={partnerNewPin} onChangeText={setPartnerNewPin} placeholder="New PIN (4–6 digits)" keyboardType="number-pad" secureTextEntry maxLength={6} className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-xl font-black tracking-[6px]" />
+            <View className="mt-5 flex-row gap-3"><TouchableOpacity disabled={deliveryBusy} onPress={() => setPartnerPinTarget(null)} className="h-12 flex-1 items-center justify-center rounded-2xl bg-slate-100"><Text className="font-black text-slate-600">Cancel</Text></TouchableOpacity><TouchableOpacity disabled={deliveryBusy} onPress={resetAndSharePartnerPin} className="h-12 flex-[1.4] items-center justify-center rounded-2xl bg-orange-600">{deliveryBusy ? <ActivityIndicator color="white" /> : <Text className="font-black text-white">SAVE & SHARE</Text>}</TouchableOpacity></View>
           </View>
         </View>
       </Modal>

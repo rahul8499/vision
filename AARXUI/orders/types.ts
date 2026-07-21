@@ -33,6 +33,8 @@ export type SellerOrder = {
   updated_at?: string | null;
   created_at?: string | null;
   completed_at?: string | null;
+  delivery_picked_up_at?: string | null;
+  delivery_reached_at?: string | null;
   cancelled_by?: string | null;
   cancel_reason?: string | null;
   repeat_customer?: boolean;

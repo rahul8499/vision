@@ -12,6 +12,7 @@ type UseSellerOrdersParams = {
 };
 
 type ProgressResult = {
+  success?: boolean;
   otpRequired?: boolean;
   responseId?: number;
 };
@@ -145,12 +146,12 @@ export const useSellerOrders = ({ baseUrl, token, onOtpRequired }: UseSellerOrde
     };
   }, [baseUrl, fetchOrders, token]);
 
-  const updateProgress = useCallback(async (order: SellerOrder, progressAction: string): Promise<ProgressResult> => {
+  const updateProgress = useCallback(async (order: SellerOrder, progressAction: string, deliveryPersonId?: number): Promise<ProgressResult> => {
     if (!token) return {};
     const id = order.response_id || order.id;
     try {
       setProgressLoadingId(id);
-      const res = await axios.post(`${baseUrl}/api/responses/${id}/progress/`, { action: progressAction }, {
+      const res = await axios.post(`${baseUrl}/api/responses/${id}/progress/`, { action: progressAction, delivery_person_id: deliveryPersonId }, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (progressAction === 'mark_completed' && res.data?.otp_required) {
@@ -158,14 +159,14 @@ export const useSellerOrders = ({ baseUrl, token, onOtpRequired }: UseSellerOrde
         onOtpRequired?.(responseId);
         Toast.show({ type: 'success', text1: 'OTP Sent', text2: 'Ask the customer for the completion OTP.', position: 'bottom' });
         await fetchOrders(false);
-        return { otpRequired: true, responseId };
+        return { success: true, otpRequired: true, responseId };
       }
       Toast.show({ type: 'success', text1: 'Progress Updated', position: 'bottom' });
       await fetchOrders(false);
-      return {};
+      return { success: true };
     } catch (error: any) {
       Toast.show({ type: 'error', text1: 'Update Failed', text2: error.response?.data?.message || 'Could not update order.', position: 'bottom' });
-      return {};
+      return { success: false };
     } finally {
       setProgressLoadingId(null);
     }

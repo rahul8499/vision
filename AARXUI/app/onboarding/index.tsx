@@ -12,7 +12,7 @@ import {
   View
 } from 'react-native';
 
-type RoleId = 'buyer' | 'seller';
+type RoleId = 'buyer' | 'seller' | 'delivery';
 
 const roles = [
   {
@@ -33,6 +33,25 @@ const roles = [
       { icon: 'flash' as const, text: 'Instant Delivery', subtext: 'Get medicines in under 30 minutes' },
       { icon: 'shield-check-outline' as const, text: '100% Genuine', subtext: 'Directly sourced from verified pharmacies' },
       // { icon: 'ticket-percent-outline' as const, text: 'Flat 20% Off', subtext: 'Save big on your first prescription' },
+    ],
+  },
+  {
+    id: 'delivery' as RoleId,
+    title: 'Delivery Partner',
+    subtitle: 'Deliver assigned pharmacy orders',
+    icon: 'bike-fast' as const,
+    accent: '#ea580c',
+    gradient: ['#fb923c', '#ea580c'] as const,
+    softGradient: ['#fff7ed', '#ffedd5'] as const,
+    tint: '#fff7ed',
+    tag: 'PARTNER MODE',
+    tagIcon: 'map-marker-path' as const,
+    tagBg: 'bg-orange-50 border-orange-100',
+    tagSelectedBg: 'bg-orange-600 border-orange-600',
+    tagTextColor: 'text-orange-700',
+    benefits: [
+      { icon: 'map-marker-path' as const, text: 'Assigned Deliveries', subtext: 'See only jobs assigned by your pharmacy' },
+      { icon: 'shield-key-outline' as const, text: 'Secure OTP Handover', subtext: 'Complete delivery using customer OTP' },
     ],
   },
   {
@@ -82,6 +101,10 @@ export default function OnboardingScreen() {
     if (!role || isOpening) return;
 
     setIsOpening(true);
+    if (role === 'delivery') {
+      router.push('/delivery/login' as any);
+      return;
+    }
     router.push({
       pathname: '/onboarding/login',
       params: { userType: role },

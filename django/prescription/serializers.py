@@ -1,5 +1,6 @@
 # from rest_framework import serializers
 from datetime import timedelta
+import uuid
 from django.utils import timezone
 # from .models import Prescription
 
@@ -360,18 +361,39 @@ class StoreDeliverySettingsSerializer(serializers.ModelSerializer):
 
 
 class StoreDeliveryPersonSerializer(serializers.ModelSerializer):
+    login_pin = serializers.CharField(write_only=True, required=False, min_length=4, max_length=6)
+    can_login = serializers.SerializerMethodField()
+
     class Meta:
         model = StoreDeliveryPerson
-        fields = ['id', 'name', 'mobile', 'vehicle_type', 'vehicle_number', 'is_active', 'is_available', 'current_order_count', 'max_concurrent_orders', 'last_assigned_at', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'mobile', 'vehicle_type', 'vehicle_number', 'is_active', 'is_available', 'current_order_count', 'max_concurrent_orders', 'last_assigned_at', 'created_at', 'updated_at', 'login_id', 'login_pin', 'can_login']
         read_only_fields = ['current_order_count', 'last_assigned_at', 'created_at', 'updated_at']
 
     def create(self, validated_data):
-        return StoreDeliveryPerson.objects.create(store=self.context['store'], **validated_data)
+        login_pin = validated_data.pop('login_pin', None)
+        person = StoreDeliveryPerson.objects.create(store=self.context['store'], **validated_data)
+        if login_pin:
+            person.set_login_pin(login_pin)
+            person.save(update_fields=['pin_hash', 'updated_at'])
+        return person
+
+    def update(self, instance, validated_data):
+        login_pin = validated_data.pop('login_pin', None)
+        instance = super().update(instance, validated_data)
+        if login_pin:
+            instance.set_login_pin(login_pin)
+            instance.auth_token = uuid.uuid4()
+            instance.save(update_fields=['pin_hash', 'auth_token', 'updated_at'])
+        return instance
+
+    def get_can_login(self, obj):
+        return bool(obj.pin_hash and obj.is_active)
 
     def validate(self, attrs):
-        instance = self.instance or StoreDeliveryPerson(store=self.context['store'], **attrs)
+        model_attrs = {key: value for key, value in attrs.items() if key != 'login_pin'}
+        instance = self.instance or StoreDeliveryPerson(store=self.context['store'], **model_attrs)
         if self.instance:
-            for field, value in attrs.items():
+            for field, value in model_attrs.items():
                 setattr(instance, field, value)
         try:
             instance.clean()
@@ -488,6 +510,7 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
             'quality_score', 'smart_tags', 'store_badges', 'trust_signal',
             'medicine_breakdown', 'best_deal',
             'completion_otp', 'completion_otp_requested', 'completion_otp_expires_at',
+            'delivery_picked_up_at', 'delivery_reached_at',
             'completed_by_store', 'capabilities',
             'can_order_again', 'repeat_customer', 'repeat_order_count', 'last_order_at',
             'delivery_offer', 'payable_amount', 'completed_at',
