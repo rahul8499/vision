@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   FlatList,
   Keyboard,
   Modal,
@@ -19,6 +20,8 @@ import {
 } from 'react-native';
 import { Camera, type CameraRef, MapView, type RegionPayload, RestApi, UserLocation, Logger } from 'mappls-map-react-native';
 import { LocationStorage, RecentLocation } from '../utils/LocationStorage';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface LocationCoords {
   latitude: number;
@@ -60,6 +63,10 @@ const MapModal: React.FC<Props> = ({
   const [showMap, setShowMap] = useState(false);
   const [sessionToken, setSessionToken] = useState<string>('');
   const [resolvingPin, setResolvingPin] = useState(false);
+  const [houseNumber, setHouseNumber] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [addressType, setAddressType] = useState<'Home' | 'Work' | 'Other'>('Home');
+  const [searchPanelActive, setSearchPanelActive] = useState(true);
   const reverseGeocodeRequest = useRef(0);
   const preserveSelectedAddressRef = useRef(false);
   const pendingMapplsSelectionRef = useRef<any | null>(null);
@@ -225,8 +232,9 @@ const MapModal: React.FC<Props> = ({
       const addr = await reverseGeocodeMappls(coords.latitude, coords.longitude);
       if (addr) {
         setAddress(addr);
-        setSearchQuery(addr);
+        setSearchQuery('');
       }
+      setSearchPanelActive(false);
       setShowMap(true);
       preserveSelectedAddressRef.current = true;
       cameraRef.current?.setCamera({ centerCoordinate: [coords.longitude, coords.latitude], zoomLevel: 16, animationDuration: 1000, animationMode: 'easeTo' });
@@ -249,6 +257,7 @@ const MapModal: React.FC<Props> = ({
         setAddress(item.display_name);
         setSearchQuery('');
         setSuggestions([]);
+        setSearchPanelActive(false);
         setSessionToken('');
         setShowMap(true);
         Keyboard.dismiss();
@@ -293,6 +302,7 @@ const MapModal: React.FC<Props> = ({
       setAddress(item.display_name);
       setSearchQuery('');
       setSuggestions([]);
+      setSearchPanelActive(false);
       setSessionToken(''); 
       setShowMap(true); 
       Keyboard.dismiss();
@@ -360,6 +370,21 @@ const MapModal: React.FC<Props> = ({
     setShowMap(true);
   };
 
+  const clearRecentLocations = async () => {
+    await LocationStorage.clearRecent();
+    setRecentLocations([]);
+  };
+
+  const confirmLocation = () => {
+    if (!address || !currentlocation) {
+      Alert.alert('Select a location', 'Search an address or place the pin on your delivery location first.');
+      return;
+    }
+    const details = [houseNumber.trim(), landmark.trim() ? `Near ${landmark.trim()}` : '', address].filter(Boolean);
+    setAddress(details.join(', '));
+    setModalVisible(false);
+  };
+
   return (
     <Modal visible animationType="none" transparent>
       <Animated.View style={[styles.masterContainer, { opacity: fadeAnim }]}>
@@ -401,6 +426,11 @@ const MapModal: React.FC<Props> = ({
 
         {/* Top Search Hub */}
         <Animated.View style={[styles.topControlHub, { transform: [{ translateY: Animated.multiply(slideAnim, -1) }] }]}>
+          <View style={styles.deliveryHeader}>
+            <View style={styles.deliveryHeaderIcon}><MaterialIcons name="local-shipping" size={18} color="#ffffff" /></View>
+            <View style={styles.deliveryHeaderCopy}><Text style={styles.deliveryEyebrow}>DELIVERY LOCATION</Text><Text style={styles.deliveryHeading}>Choose the exact doorstep</Text></View>
+            <View style={styles.secureBadge}><Feather name="shield" size={12} color="#047857" /><Text style={styles.secureBadgeText}>AARX</Text></View>
+          </View>
           <BlurView intensity={40} tint="light" style={styles.searchBarContainer}>
             <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.backButton}>
               <Feather name="arrow-left" size={24} color="#334155" />
@@ -412,7 +442,7 @@ const MapModal: React.FC<Props> = ({
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              onFocus={ensureSessionToken}
+              onFocus={() => { ensureSessionToken(); setSearchPanelActive(true); }}
               autoCapitalize="words"
             />
             
@@ -427,13 +457,27 @@ const MapModal: React.FC<Props> = ({
             )}
           </BlurView>
 
+          <TouchableOpacity onPress={useCurrentLocation} activeOpacity={0.8} style={styles.quickLocationCard} disabled={fetchingGPS}>
+            <View style={styles.quickLocationIcon}>{fetchingGPS ? <ActivityIndicator size="small" color="#059669" /> : <MaterialIcons name="my-location" size={19} color="#059669" />}</View>
+            <View style={{ flex: 1 }}><Text style={styles.quickLocationTitle}>Use my current location</Text><Text style={styles.quickLocationSubtitle}>GPS-assisted doorstep pin</Text></View>
+            <Feather name="chevron-right" size={18} color="#059669" />
+          </TouchableOpacity>
+
           {/* Suggestions Dropdown */}
-          {(suggestions.length > 0 || (searchQuery.length === 0 && recentLocations.length > 0)) && (
+          {searchPanelActive && (suggestions.length > 0 || (searchQuery.length === 0 && recentLocations.length > 0)) && (
             <BlurView intensity={50} tint="light" style={styles.suggestionsCard}>
+              <View style={styles.suggestionsHeader}>
+                <View style={styles.suggestionsHeaderTitle}><MaterialIcons name={searchQuery.length > 0 ? 'search' : 'history'} size={14} color="#64748b" /><Text style={styles.sectionHeader}>{searchQuery.length > 0 ? 'SEARCH RESULTS' : 'RECENT LOCATIONS'}</Text></View>
+                {searchQuery.length === 0 ? <TouchableOpacity onPress={clearRecentLocations} hitSlop={8}><Text style={styles.clearHistoryText}>CLEAR</Text></TouchableOpacity> : <Text style={styles.mapplsPowered}>AARX LOCATION</Text>}
+              </View>
               <FlatList
                 data={searchQuery.length > 0 ? suggestions : recentLocations}
                 keyExtractor={(item) => (item.place_id || item.id).toString()}
                 keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+                style={{ maxHeight: SCREEN_HEIGHT < 720 ? 142 : 190 }}
+                persistentScrollbar
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     onPress={() => handleSelectSuggestion(item)}
@@ -454,7 +498,7 @@ const MapModal: React.FC<Props> = ({
                       <Text style={styles.suggestionSubtitle} numberOfLines={1}>
                         {item.display_name.substring(item.display_name.indexOf(',') + 1).trim() || "Location"}
                       </Text>
-                      {item.provider === 'mappls' && <Text style={styles.providerBadge}>MAPPLS RESULT</Text>}
+                      {item.provider === 'mappls' && <Text style={styles.providerBadge}>AARX VERIFIED LOCATION</Text>}
                     </View>
                   </TouchableOpacity>
                 )}
@@ -501,7 +545,7 @@ const MapModal: React.FC<Props> = ({
               </View>
               <View style={styles.accuracyPill}>
                 <View style={styles.accuracyDot} />
-                <Text style={styles.accuracyText}>Mappls</Text>
+                <Text style={styles.accuracyText}>AARX</Text>
               </View>
             </View>
             
@@ -517,8 +561,20 @@ const MapModal: React.FC<Props> = ({
               </View>
             </View>
 
+            <View style={styles.detailRow}>
+              <View style={styles.detailInputWrap}><Text style={styles.detailLabel}>FLAT / HOUSE</Text><TextInput value={houseNumber} onChangeText={setHouseNumber} onFocus={() => setSearchPanelActive(false)} placeholder="e.g. D-2, Flat 301" placeholderTextColor="#94a3b8" style={styles.detailInput} /></View>
+              <View style={styles.detailInputWrap}><Text style={styles.detailLabel}>LANDMARK</Text><TextInput value={landmark} onChangeText={setLandmark} onFocus={() => setSearchPanelActive(false)} placeholder="Optional" placeholderTextColor="#94a3b8" style={styles.detailInput} /></View>
+            </View>
+
+            <View style={styles.addressTypeRow}>
+              {(['Home', 'Work', 'Other'] as const).map(type => {
+                const selected = addressType === type;
+                return <TouchableOpacity key={type} onPress={() => setAddressType(type)} style={[styles.addressTypeChip, selected && styles.addressTypeChipSelected]}><MaterialIcons name={type === 'Home' ? 'home' : type === 'Work' ? 'work' : 'place'} size={15} color={selected ? '#ffffff' : '#64748b'} /><Text style={[styles.addressTypeText, selected && styles.addressTypeTextSelected]}>{type}</Text></TouchableOpacity>;
+              })}
+            </View>
+
             <TouchableOpacity
-              onPress={() => setModalVisible(false)}
+              onPress={confirmLocation}
               activeOpacity={0.8}
             >
               <LinearGradient
@@ -527,8 +583,8 @@ const MapModal: React.FC<Props> = ({
                 end={{ x: 1, y: 0 }}
                 style={styles.confirmBtn}
               >
-                <Text style={styles.confirmBtnText}>Confirm Location</Text>
-                <Feather name="arrow-right" size={20} color="white" />
+                <View style={styles.confirmBtnCopy}><Text style={styles.confirmBtnText}>Confirm {addressType}</Text><Text style={styles.confirmBtnHint}>Save this doorstep for medicine delivery</Text></View>
+                <View style={styles.confirmArrow}><Feather name="arrow-right" size={20} color="#059669" /></View>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -584,6 +640,14 @@ const styles = StyleSheet.create({
     elevation: 10,
     overflow: 'hidden',
   },
+  quickLocationCard: {
+    marginTop: 9, height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 11,
+    borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 1, borderColor: '#d1fae5',
+    shadowColor: '#0f172a', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 5,
+  },
+  quickLocationIcon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ecfdf5', marginRight: 10 },
+  quickLocationTitle: { fontSize: 12, fontWeight: '800', color: '#047857' },
+  quickLocationSubtitle: { marginTop: 1, fontSize: 9, fontWeight: '600', color: '#94a3b8' },
   backButton: {
     paddingHorizontal: 17,
     paddingVertical: 16,
@@ -614,8 +678,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.4)',
-    maxHeight: 390,
+    maxHeight: SCREEN_HEIGHT < 720 ? 190 : 238,
   },
+  suggestionsHeader: { height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  suggestionsHeaderTitle: { flexDirection: 'row', alignItems: 'center' },
+  clearHistoryText: { fontSize: 9, fontWeight: '900', color: '#dc2626', letterSpacing: 1.1 },
   currentLocationRow: {
     flexDirection: 'row', alignItems: 'center', marginHorizontal: 10, paddingHorizontal: 10, paddingVertical: 11,
     borderRadius: 16, backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#d1fae5',
@@ -686,7 +753,7 @@ const styles = StyleSheet.create({
   },
   floatingControls: {
     position: 'absolute',
-    bottom: 286,
+    bottom: 410,
     right: 20,
     alignItems: 'center',
   },
@@ -718,9 +785,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#94a3b8',
     letterSpacing: 1.2,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingHorizontal: 7,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   pickOnMapText: {
     color: '#059669',
@@ -797,6 +864,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 22,
   },
+  detailRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  detailInputWrap: { flex: 1, minHeight: 62, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', paddingHorizontal: 12, paddingTop: 9 },
+  detailLabel: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1, color: '#94a3b8' },
+  detailInput: { height: 35, paddingVertical: 4, color: '#0f172a', fontSize: 12, fontWeight: '700' },
+  addressTypeRow: { flexDirection: 'row', gap: 9, marginBottom: 16 },
+  addressTypeChip: { height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 15, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' },
+  addressTypeChipSelected: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  addressTypeText: { fontSize: 10, fontWeight: '800', color: '#64748b' },
+  addressTypeTextSelected: { color: '#ffffff' },
   confirmBtn: {
     borderRadius: 18,
     height: 62,
