@@ -421,6 +421,8 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
     user_address = serializers.SerializerMethodField()
     user_contact = serializers.SerializerMethodField()
+    user_latitude = serializers.SerializerMethodField()
+    user_longitude = serializers.SerializerMethodField()
     is_store_verified = serializers.SerializerMethodField()
     is_store_active = serializers.SerializerMethodField()
     is_ratable = serializers.BooleanField(read_only=True)
@@ -475,7 +477,7 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'total_amount', 'prescription', 'prescription_medicine_name', 'prescription_description', 'prescription_upload_type', 'prescription_ai_classification', 'prescription_ai_score', 'prescription_ai_status', 'prescription_ai_reason', 'prescription_is_emergency', 'user', 'response_text', 'image',
             'store', 'store_name', 'store_contact', 'created_at', 'updated_at',
-            'store_latitude', 'store_longitude', 'store_address', 'distance_km','user_name', 'user_address', 'user_contact',
+            'store_latitude', 'store_longitude', 'store_address', 'distance_km','user_name', 'user_address', 'user_contact', 'user_latitude', 'user_longitude',
             'medicines', 'is_store_verified', 'is_store_active',  'user_status', 'store_contact_note', 'store_report_count', 'user_report_note', 'user_report_count',
             'chat_thread_id', 'delivery_option', 'stock_verified_at', 'quotation_scenario',
             'is_locked', 'is_unresponsive', 'response_version', 'last_refresh_requested_at',
@@ -589,6 +591,16 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
             return "xxxx xxxx, xxxx"
         return safe_get(obj, "prescription.user_address", "")
 
+    def get_user_latitude(self, obj):
+        if not self._request_store_is_verified():
+            return None
+        return safe_get(obj, "prescription.latitude", None)
+
+    def get_user_longitude(self, obj):
+        if not self._request_store_is_verified():
+            return None
+        return safe_get(obj, "prescription.longitude", None)
+
     def get_user_contact(self, obj):
         if not self._request_store_is_verified():
             return None
@@ -627,6 +639,8 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
             data['user_name'] = 'Patient'
             data['user_address'] = 'xxxx xxxx, xxxx'
             data['user_contact'] = None
+            data['user_latitude'] = None
+            data['user_longitude'] = None
             data['image'] = None
 
         # 🛡️ SECURITY: Redact sensitive info if order is completed
@@ -634,7 +648,7 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
             sensitive_fields = [
                 'store_name', 'store_contact', 'store_address',
                 'store_latitude', 'store_longitude', 'distance_km',
-                'user_name', 'user_address', 'user_contact', 'image'
+                'user_name', 'user_address', 'user_contact', 'user_latitude', 'user_longitude', 'image'
             ]
             for field in sensitive_fields:
                 if field in data:

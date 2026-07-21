@@ -31,6 +31,7 @@ import RatingBottomSheet from '../../components/RatingBottomSheet';
 import UnavailableOverlay, { CapabilityFlags, shouldShowOverlay } from '../../components/UnavailableOverlay';
 import { SellerHistoryScreen } from './history';
 import RemoteImageWithStatus from '../../components/RemoteImageWithStatus';
+import { Camera, Logger, MapView, UserLocation } from 'mappls-map-react-native';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 const AI_SCAN_TIMEOUT_MS = 2 * 60 * 1000;
@@ -113,6 +114,10 @@ type ResponseItem = {
   distance_km: number;
   uploaded_at: string;
   user_address?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  user_latitude?: number | string | null;
+  user_longitude?: number | string | null;
   user_name?: string;
   user_mobile?: string;
   has_responded?: boolean;
@@ -455,6 +460,105 @@ const WorkflowHeroArt = ({ onRefresh }: { onRefresh: () => void }) => (
   </View>
 );
 
+const DeliveryDestinationModal = ({ item, onClose }: { item: ResponseItem | null; onClose: () => void }) => {
+  const cameraRef = useRef<any>(null);
+  const latitude = Number(item?.user_latitude ?? item?.latitude);
+  const longitude = Number(item?.user_longitude ?? item?.longitude);
+  const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0;
+  const destination = hasCoordinates ? [longitude, latitude] as [number, number] : [73.8567, 18.5204] as [number, number];
+
+  useEffect(() => {
+    const optionalUnprovisionedMethods = ['setLogoGravity', 'enableTraffic', 'enableTrafficClosure', 'enableTrafficFreeFlow', 'enableTrafficNonFreeFlow', 'enableTrafficStopIcon'];
+    Logger.setLogCallback((log) =>
+      log.message.includes('Method not Provisioned') &&
+      optionalUnprovisionedMethods.some((method) => log.message.includes(method))
+    );
+    return () => Logger.setLogCallback(() => false);
+  }, []);
+
+  const recenter = () => cameraRef.current?.setCamera({
+    centerCoordinate: destination,
+    zoomLevel: 16,
+    animationDuration: 700,
+    animationMode: 'easeTo',
+  });
+
+  const openNavigation = async () => {
+    if (!hasCoordinates) return;
+    const label = encodeURIComponent(item?.user_address || 'Delivery destination');
+    const navigationUrl = `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`;
+    try {
+      await Linking.openURL(navigationUrl);
+    } catch {
+      Toast.show({ type: 'error', text1: 'Navigation app unavailable', text2: 'Use the in-app Mappls map to reach this address.' });
+    }
+  };
+
+  return (
+    <Modal visible={Boolean(item)} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <View className="flex-1 bg-slate-950">
+        {hasCoordinates ? (
+          <MapView style={{ flex: 1 }} logoEnabled attributionEnabled compassEnabled>
+            <Camera ref={cameraRef} defaultSettings={{ centerCoordinate: destination, zoomLevel: 16 }} />
+            <UserLocation visible />
+          </MapView>
+        ) : (
+          <View className="flex-1 items-center justify-center bg-slate-100 px-8">
+            <MaterialCommunityIcons name="map-marker-alert-outline" size={46} color="#64748b" />
+            <Text className="mt-4 text-center text-base font-black text-slate-900">Location pin unavailable</Text>
+            <Text className="mt-2 text-center text-xs font-semibold leading-5 text-slate-500">Customer address is available, but this order has no saved coordinates.</Text>
+          </View>
+        )}
+
+        {hasCoordinates && (
+          <View pointerEvents="none" className="absolute left-0 right-0 top-0 bottom-[190px] items-center justify-center">
+            <View className="h-14 w-14 items-center justify-center rounded-full bg-emerald-500/20">
+              <View className="h-10 w-10 items-center justify-center rounded-full border-[3px] border-white bg-emerald-600 shadow-lg">
+                <MaterialCommunityIcons name="home-map-marker" size={22} color="#ffffff" />
+              </View>
+            </View>
+          </View>
+        )}
+
+        <View className="absolute left-4 right-4 top-12 flex-row items-center justify-between">
+          <TouchableOpacity onPress={onClose} className="h-11 w-11 items-center justify-center rounded-2xl border border-white/30 bg-slate-950/85">
+            <MaterialCommunityIcons name="arrow-left" size={23} color="#ffffff" />
+          </TouchableOpacity>
+          <View className="rounded-full border border-white/30 bg-slate-950/85 px-4 py-2">
+            <Text className="text-[9px] font-black uppercase tracking-[1.8px] text-white">Delivery destination</Text>
+          </View>
+          <TouchableOpacity onPress={recenter} disabled={!hasCoordinates} className="h-11 w-11 items-center justify-center rounded-2xl border border-white/30 bg-slate-950/85">
+            <MaterialCommunityIcons name="crosshairs-gps" size={22} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+
+        <View className="absolute bottom-0 left-0 right-0 rounded-t-[2rem] border-t border-slate-200 bg-white px-5 pb-7 pt-5 shadow-2xl">
+          <View className="mb-4 flex-row items-start">
+            <View className="h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50">
+              <MaterialCommunityIcons name="account-location" size={25} color="#059669" />
+            </View>
+            <View className="ml-3 flex-1">
+              <Text className="text-[8px] font-black uppercase tracking-[1.8px] text-emerald-700">Deliver to</Text>
+              <Text className="mt-0.5 text-base font-black text-slate-950">{item?.user_name || 'Customer'}</Text>
+              <Text className="mt-1 text-[11px] font-semibold leading-4 text-slate-600">{item?.user_address || 'Address not available'}</Text>
+            </View>
+          </View>
+          <View className="flex-row gap-3">
+            <TouchableOpacity onPress={recenter} disabled={!hasCoordinates} className="h-12 flex-1 flex-row items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
+              <MaterialCommunityIcons name="map-marker-radius" size={18} color="#0f172a" />
+              <Text className="ml-2 text-[10px] font-black uppercase tracking-[1px] text-slate-900">Show pin</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openNavigation} disabled={!hasCoordinates} className={`h-12 flex-[1.35] flex-row items-center justify-center rounded-2xl ${hasCoordinates ? 'bg-emerald-600' : 'bg-slate-300'}`}>
+              <MaterialCommunityIcons name="navigation-variant" size={18} color="#ffffff" />
+              <Text className="ml-2 text-[10px] font-black uppercase tracking-[1px] text-white">Start navigation</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 
 // 💎 Production Optimization: memoized Card Component to prevent laggy scrolling
 const PrescriptionCard = React.memo(({
@@ -469,6 +573,7 @@ const PrescriptionCard = React.memo(({
   onStoreCancel,
   onManualReviewInfo,
   onAiInfo,
+  onOpenMap,
 }: {
   item: ResponseItem;
   BASE_URL: string;
@@ -481,6 +586,7 @@ const PrescriptionCard = React.memo(({
   onStoreCancel: (item: ResponseItem, type?: 'cancel_order' | 'reject_enquiry') => void;
   onManualReviewInfo?: () => void;
   onAiInfo?: (type: 'mismatch' | 'rx' | 'medicine' | 'unknown', score?: number) => void;
+  onOpenMap: (item: ResponseItem) => void;
 }) => {
   const uploadedAt = new Date(item.uploaded_at);
   const formattedDate = uploadedAt.toLocaleString('en-IN', {
@@ -811,13 +917,19 @@ const PrescriptionCard = React.memo(({
               </View>
             </View>
           ) : (
-            <View className="bg-slate-50 border border-slate-100 rounded-[0.95rem] px-4 py-3 mb-4">
-              <View className="flex-row items-center mb-1.5">
-                <MaterialCommunityIcons name="map-marker-outline" size={12} color="#059669" />
-                <Text className="text-emerald-700 text-[7.5px] font-black uppercase tracking-[1.7px] ml-1.5">Patient Address</Text>
+            <TouchableOpacity activeOpacity={0.78} onPress={() => onOpenMap(item)} className="bg-emerald-50/60 border border-emerald-100 rounded-[0.95rem] px-4 py-3 mb-4">
+              <View className="flex-row items-center justify-between mb-1.5">
+                <View className="flex-row items-center">
+                  <MaterialCommunityIcons name="map-marker-outline" size={12} color="#059669" />
+                  <Text className="text-emerald-700 text-[7.5px] font-black uppercase tracking-[1.7px] ml-1.5">Patient Address</Text>
+                </View>
+                <View className="flex-row items-center rounded-full bg-emerald-600 px-2.5 py-1">
+                  <Text className="text-[7px] font-black uppercase tracking-[1px] text-white">View map</Text>
+                  <MaterialCommunityIcons name="chevron-right" size={11} color="#ffffff" />
+                </View>
               </View>
               <Text className="text-slate-800 text-[13px] font-semibold leading-5" numberOfLines={2}>{item.user_address || 'Address not available'}</Text>
-            </View>
+            </TouchableOpacity>
           )}
 
           {item.user_status === 'cancelled' && item.cancel_reason && (
@@ -1192,6 +1304,7 @@ export default function Prescription() {
   const [showAiInfoModal, setShowAiInfoModal] = useState<{ type: 'mismatch' | 'rx' | 'medicine' | 'unknown'; score?: number } | null>(null);
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [currentItem, setCurrentItem] = useState<ResponseItem | null>(null);
+  const [deliveryMapItem, setDeliveryMapItem] = useState<ResponseItem | null>(null);
   const [prescriptionDetail, setPrescriptionDetail] = useState<any>(null);
   const [medicines, setMedicines] = useState<{ medicine_name: string; price: string; is_available: boolean; medicine_brand: string; medicine_type: string }[]>([
     { medicine_name: '', price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' },
@@ -2189,6 +2302,7 @@ export default function Prescription() {
       onStoreCancel={handleStoreCancel}
       onManualReviewInfo={() => setShowManualReviewInfo(true)}
       onAiInfo={(type, score) => setShowAiInfoModal({ type, score })}
+      onOpenMap={setDeliveryMapItem}
       onOpenStatus={(item) => {
         setReportModalVisible(true);
         setSelectedReportId(item.id);
@@ -2456,12 +2570,16 @@ export default function Prescription() {
                     {currentItem?.user_name || 'Patient'}
                   </Text>
 
-                  <View className="mt-1.5 flex-row items-start">
+                  <TouchableOpacity onPress={() => currentItem && setDeliveryMapItem(currentItem)} activeOpacity={0.75} className="mt-1.5 flex-row items-start rounded-xl border border-emerald-100 bg-white px-2.5 py-2">
                     <MaterialCommunityIcons name="map-marker-radius-outline" size={12} color="#059669" style={{ marginTop: 1 }} />
                     <Text className="ml-2 flex-1 text-[9px] leading-4 font-semibold text-slate-600" numberOfLines={2}>
                       {currentAddressLabel}
                     </Text>
-                  </View>
+                    <View className="ml-2 flex-row items-center self-center">
+                      <Text className="text-[7px] font-black uppercase tracking-[1px] text-emerald-700">Map</Text>
+                      <MaterialCommunityIcons name="chevron-right" size={13} color="#047857" />
+                    </View>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -3854,6 +3972,8 @@ export default function Prescription() {
       </Modal>
 
 
+
+      <DeliveryDestinationModal item={deliveryMapItem} onClose={() => setDeliveryMapItem(null)} />
 
       <RatingBottomSheet
         isVisible={ratingModalVisible}

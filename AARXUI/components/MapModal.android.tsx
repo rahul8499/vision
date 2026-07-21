@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Dimensions,
   FlatList,
   Keyboard,
   Modal,
@@ -18,10 +17,8 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Camera, type CameraRef, MapView, type RegionPayload, RestApi, UserLocation, Logger } from 'mappls-map-react-native';
 import { LocationStorage, RecentLocation } from '../utils/LocationStorage';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface LocationCoords {
   latitude: number;
@@ -62,8 +59,12 @@ const MapModal: React.FC<Props> = ({
   const [fetchingGPS, setFetchingGPS] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [sessionToken, setSessionToken] = useState<string>('');
+  const [resolvingPin, setResolvingPin] = useState(false);
+  const reverseGeocodeRequest = useRef(0);
+  const preserveSelectedAddressRef = useRef(false);
+  const pendingMapplsSelectionRef = useRef<any | null>(null);
   
-  const mapRef = useRef<MapView>(null);
+  const cameraRef = useRef<CameraRef>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const searchCache = useRef<Map<string, any[]>>(new Map());
 
@@ -86,6 +87,22 @@ const MapModal: React.FC<Props> = ({
       })
     ]).start();
   }, []);
+
+  useEffect(() => {
+    const optionalUnprovisionedMethods = ['setLogoGravity', 'enableTraffic', 'enableTrafficClosure', 'enableTrafficFreeFlow', 'enableTrafficNonFreeFlow', 'enableTrafficStopIcon'];
+    Logger.setLogCallback((log) =>
+      log.message.includes('Method not Provisioned') &&
+      optionalUnprovisionedMethods.some((method) => log.message.startsWith(method))
+    );
+    return () => Logger.setLogCallback(() => false);
+  }, []);
+
+  const reverseGeocodeMappls = async (latitude: number, longitude: number) => {
+    const response = await RestApi.reverseGeocode({ latitude, longitude });
+    const place = response.results?.[0];
+    if (!place) return '';
+    return place.formatted_address || [place.poi, place.street, place.locality, place.city, place.state, place.pincode].filter(Boolean).join(', ');
+  };
 
   const generateToken = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
@@ -150,8 +167,10 @@ const MapModal: React.FC<Props> = ({
       });
       const data = await res.json();
 
-      searchCache.current.set(query, data);
-      setSuggestions(data);
+      if (!res.ok) throw new Error(`Location search failed (${res.status})`);
+      const normalized = Array.isArray(data) ? data : [];
+      searchCache.current.set(query, normalized);
+      setSuggestions(normalized);
     } catch (error: any) {
       if (error.name === 'AbortError') return;
       console.error('Search error:', error);
@@ -203,22 +222,14 @@ const MapModal: React.FC<Props> = ({
       setMapRegion(coords);
       setCurrentLocation(coords);
 
-      const revGeo = await Location.reverseGeocodeAsync({
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-      });
-
-      if (revGeo && revGeo.length > 0) {
-        const place = revGeo[0];
-        const addr = [
-          place.name, place.street, place.district, place.city, place.region, place.postalCode
-        ].filter(Boolean).join(', ');
-        
+      const addr = await reverseGeocodeMappls(coords.latitude, coords.longitude);
+      if (addr) {
         setAddress(addr);
         setSearchQuery(addr);
       }
       setShowMap(true);
-      mapRef.current?.animateToRegion(coords, 1000);
+      preserveSelectedAddressRef.current = true;
+      cameraRef.current?.setCamera({ centerCoordinate: [coords.longitude, coords.latitude], zoomLevel: 16, animationDuration: 1000, animationMode: 'easeTo' });
     } catch (error) {
       Alert.alert('GPS Error', 'Could not determine your location. Please try again.');
     } finally {
@@ -232,10 +243,27 @@ const MapModal: React.FC<Props> = ({
       let latitude = parseFloat(item.lat);
       let longitude = parseFloat(item.lon);
 
-      if (item.is_prediction && (!latitude || !longitude)) {
+      if (item.provider === 'mappls' && (!Number.isFinite(latitude) || !Number.isFinite(longitude))) {
+        const mapplsPin = String(item.place_id).replace(/^mappls:\s*/, '');
+        preserveSelectedAddressRef.current = true;
+        setAddress(item.display_name);
+        setSearchQuery('');
+        setSuggestions([]);
+        setSessionToken('');
+        setShowMap(true);
+        Keyboard.dismiss();
+        setTimeout(() => {
+          pendingMapplsSelectionRef.current = item;
+          cameraRef.current?.setCamera({ centerMapplsPin: mapplsPin, zoomLevel: 16, animationDuration: 1000, animationMode: 'easeTo' });
+        }, 100);
+        return;
+      }
+
+      if (item.is_prediction && (!Number.isFinite(latitude) || !Number.isFinite(longitude))) {
         const BASE_URL = Constants.expoConfig?.extra?.BASE_URL;
-        const url = `${BASE_URL}/api/location-details/?place_id=${item.place_id}&sessiontoken=${sessionToken}`;
+        const url = `${BASE_URL}/api/location-details/?place_id=${encodeURIComponent(item.place_id)}&sessiontoken=${sessionToken}&q=${encodeURIComponent(item.display_name)}`;
         const res = await fetch(url);
+        if (!res.ok) throw new Error(`Location details failed (${res.status})`);
         const details = await res.json();
         
         if (details.lat && details.lon) {
@@ -247,6 +275,11 @@ const MapModal: React.FC<Props> = ({
         }
       }
 
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        Alert.alert("Error", "Could not fetch valid location coordinates.");
+        return;
+      }
+
       const coords = {
         latitude,
         longitude,
@@ -256,6 +289,7 @@ const MapModal: React.FC<Props> = ({
 
       setMapRegion(coords);
       setCurrentLocation(coords);
+      preserveSelectedAddressRef.current = true;
       setAddress(item.display_name);
       setSearchQuery('');
       setSuggestions([]);
@@ -274,7 +308,7 @@ const MapModal: React.FC<Props> = ({
       const updatedRecent = await LocationStorage.getRecentLocations();
       setRecentLocations(updatedRecent);
       
-      setTimeout(() => mapRef.current?.animateToRegion(coords, 1000), 100);
+      setTimeout(() => cameraRef.current?.setCamera({ centerCoordinate: [coords.longitude, coords.latitude], zoomLevel: 16, animationDuration: 1000, animationMode: 'easeTo' }), 100);
     } catch (error) {
       Alert.alert("Error", "Something went wrong while selecting location.");
     } finally {
@@ -282,10 +316,48 @@ const MapModal: React.FC<Props> = ({
     }
   };
 
-  const onRegionChangeComplete = (region: LocationCoords) => {
-    if (region && !isNaN(region.latitude) && !isNaN(region.longitude)) {
-      setMapRegion(region);
+  const onRegionChangeComplete = async (feature: GeoJSON.Feature<GeoJSON.Point, RegionPayload>) => {
+    const [longitude, latitude] = feature.geometry.coordinates;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    const region = { latitude, longitude, latitudeDelta: mapRegion.latitudeDelta, longitudeDelta: mapRegion.longitudeDelta };
+    setMapRegion(region);
+    setCurrentLocation(region);
+
+    const pendingSelection = pendingMapplsSelectionRef.current;
+    if (pendingSelection) {
+      pendingMapplsSelectionRef.current = null;
+      preserveSelectedAddressRef.current = false;
+      await LocationStorage.saveLocation({
+        id: pendingSelection.place_id,
+        display_name: pendingSelection.display_name,
+        lat: latitude.toString(),
+        lon: longitude.toString(),
+        place_id: pendingSelection.place_id,
+      });
+      setRecentLocations(await LocationStorage.getRecentLocations());
+      return;
     }
+
+    if (preserveSelectedAddressRef.current || !feature.properties.isUserInteraction) {
+      preserveSelectedAddressRef.current = false;
+      return;
+    }
+
+    const requestId = ++reverseGeocodeRequest.current;
+    setResolvingPin(true);
+    try {
+      const nextAddress = await reverseGeocodeMappls(region.latitude, region.longitude);
+      if (requestId !== reverseGeocodeRequest.current) return;
+      if (nextAddress) setAddress(nextAddress);
+    } catch {
+      // Keep the selected coordinates when Mappls reverse-geocoding is unavailable.
+    } finally {
+      if (requestId === reverseGeocodeRequest.current) setResolvingPin(false);
+    }
+  };
+
+  const openMap = () => {
+    setShowMap(true);
   };
 
   return (
@@ -294,22 +366,27 @@ const MapModal: React.FC<Props> = ({
         
         {/* Map Background */}
         {showMap ? (
+          <>
           <MapView
-            ref={mapRef}
             style={styles.map}
-            region={mapRegion}
-            onRegionChangeComplete={onRegionChangeComplete}
-            showsUserLocation={true}
-            showsMyLocationButton={false}
-             // Premium map style
+            onRegionDidChange={onRegionChangeComplete}
+            onMapError={(error) => console.error('Mappls map error:', error.code, error.message)}
+            logoEnabled
+            attributionEnabled
+            compassEnabled
           >
-            <Marker coordinate={mapRegion}>
-              <View style={styles.markerContainer}>
-                <View style={styles.markerCore} />
-                <View style={styles.markerPulse} />
-              </View>
-            </Marker>
+            <Camera ref={cameraRef} defaultSettings={{ centerCoordinate: [mapRegion.longitude, mapRegion.latitude], zoomLevel: 16 }} />
+            <UserLocation visible />
           </MapView>
+          <View pointerEvents="none" style={styles.centerPinWrap}>
+            <View style={styles.centerPinHalo} />
+            <View style={styles.centerPin}>
+              <Ionicons name="location" size={25} color="#ffffff" />
+            </View>
+            <View style={styles.centerPinShadow} />
+            <Text style={styles.moveMapHint}>{resolvingPin ? 'Finding address…' : 'Move map to adjust pin'}</Text>
+          </View>
+          </>
         ) : (
           <View style={styles.emptyMapPlaceholder}>
             <LinearGradient
@@ -353,9 +430,6 @@ const MapModal: React.FC<Props> = ({
           {/* Suggestions Dropdown */}
           {(suggestions.length > 0 || (searchQuery.length === 0 && recentLocations.length > 0)) && (
             <BlurView intensity={50} tint="light" style={styles.suggestionsCard}>
-              {searchQuery.length === 0 && recentLocations.length > 0 && (
-                <Text style={styles.sectionHeader}>RECENTLY SEARCHED</Text>
-              )}
               <FlatList
                 data={searchQuery.length > 0 ? suggestions : recentLocations}
                 keyExtractor={(item) => (item.place_id || item.id).toString()}
@@ -380,6 +454,7 @@ const MapModal: React.FC<Props> = ({
                       <Text style={styles.suggestionSubtitle} numberOfLines={1}>
                         {item.display_name.substring(item.display_name.indexOf(',') + 1).trim() || "Location"}
                       </Text>
+                      {item.provider === 'mappls' && <Text style={styles.providerBadge}>MAPPLS RESULT</Text>}
                     </View>
                   </TouchableOpacity>
                 )}
@@ -392,7 +467,7 @@ const MapModal: React.FC<Props> = ({
         <View style={styles.floatingControls}>
           {!showMap && (
              <TouchableOpacity
-             onPress={() => setShowMap(true)}
+             onPress={openMap}
              style={styles.secondaryFloatingBtn}
              activeOpacity={0.8}
            >
@@ -420,12 +495,14 @@ const MapModal: React.FC<Props> = ({
             <View style={styles.handle} />
             
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>CONFIRM LOCATION</Text>
-              {!showMap && (
-                <TouchableOpacity onPress={() => setShowMap(true)}>
-                  <Text style={styles.pickOnMapText}>Pick on Map</Text>
-                </TouchableOpacity>
-              )}
+              <View>
+                <Text style={styles.cardTitle}>CONFIRM DELIVERY LOCATION</Text>
+                <Text style={styles.cardSubtitle}>Your order will be delivered to this pin</Text>
+              </View>
+              <View style={styles.accuracyPill}>
+                <View style={styles.accuracyDot} />
+                <Text style={styles.accuracyText}>Mappls</Text>
+              </View>
             </View>
             
             <View style={styles.addressBox}>
@@ -433,7 +510,7 @@ const MapModal: React.FC<Props> = ({
                 <Ionicons name="location" size={24} color="#059669" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.addressTitle}>Delivery Address</Text>
+                <Text style={styles.addressTitle}>DELIVERING TO</Text>
                 <Text style={styles.addressText} numberOfLines={2}>
                   {address || "Pinpoint your exact location on the map"}
                 </Text>
@@ -471,23 +548,45 @@ const styles = StyleSheet.create({
   },
   topControlHub: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 30,
-    left: 16,
-    right: 16,
+    top: Platform.OS === 'ios' ? 52 : 24,
+    left: 14,
+    right: 14,
     zIndex: 10,
   },
+  deliveryHeader: {
+    minHeight: 58, flexDirection: 'row', alignItems: 'center', marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  deliveryHeaderIcon: {
+    width: 34, height: 34, borderRadius: 12, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#059669', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 6,
+  },
+  deliveryHeaderCopy: { flex: 1, marginLeft: 11 },
+  deliveryEyebrow: { fontSize: 9, fontWeight: '900', color: '#64748b', letterSpacing: 1.5 },
+  deliveryHeading: { marginTop: 2, fontSize: 16, fontWeight: '900', color: '#0f172a' },
+  secureBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(236, 253, 245, 0.96)', borderWidth: 1, borderColor: '#a7f3d0',
+  },
+  secureBadgeText: { fontSize: 10, fontWeight: '800', color: '#047857' },
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderRadius: 20,
-    height: 60,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    height: 62,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 10,
     overflow: 'hidden',
   },
   backButton: {
-    padding: 16,
+    paddingHorizontal: 17,
+    paddingVertical: 16,
   },
   searchInput: {
     flex: 1,
@@ -502,31 +601,47 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   suggestionsCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    marginTop: 12,
-    borderRadius: 24,
-    paddingVertical: 12,
+    backgroundColor: '#ffffff',
+    marginTop: 10,
+    borderRadius: 22,
+    paddingTop: 8,
+    paddingBottom: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 14,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.4)',
-    maxHeight: 300,
+    maxHeight: 390,
   },
+  currentLocationRow: {
+    flexDirection: 'row', alignItems: 'center', marginHorizontal: 10, paddingHorizontal: 10, paddingVertical: 11,
+    borderRadius: 16, backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#d1fae5',
+  },
+  currentLocationIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
+  currentLocationCopy: { flex: 1, marginLeft: 12 },
+  currentLocationTitle: { fontSize: 14, fontWeight: '800', color: '#047857' },
+  currentLocationSubtitle: { marginTop: 2, fontSize: 11, fontWeight: '600', color: '#6b7280' },
+  resultsHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 18, marginTop: 8 },
+  mapplsPowered: { fontSize: 9, fontWeight: '700', color: '#94a3b8' },
   suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(241, 245, 249, 0.8)',
   },
   suggestionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f1f5f9',
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#f0fdf4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   suggestionTextContainer: {
     flex: 1,
@@ -571,7 +686,7 @@ const styles = StyleSheet.create({
   },
   floatingControls: {
     position: 'absolute',
-    bottom: 250,
+    bottom: 286,
     right: 20,
     alignItems: 'center',
   },
@@ -625,11 +740,11 @@ const styles = StyleSheet.create({
   },
   bottomCard: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 38 : 22,
   },
   handle: {
     width: 40,
@@ -639,6 +754,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 20,
   },
+  cardSubtitle: { marginTop: 5, fontSize: 12, fontWeight: '600', color: '#64748b' },
+  accuracyPill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ecfdf5', paddingHorizontal: 10, height: 28, borderRadius: 14 },
+  accuracyDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#10b981' },
+  accuracyText: { fontSize: 10, fontWeight: '800', color: '#047857' },
   cardTitle: {
     fontSize: 12,
     fontWeight: '800',
@@ -648,11 +767,11 @@ const styles = StyleSheet.create({
   addressBox: {
     flexDirection: 'row',
     backgroundColor: '#f8fafc',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    marginBottom: 24,
+    marginBottom: 18,
     alignItems: 'center',
   },
   addressIconWrapper: {
@@ -679,23 +798,49 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   confirmBtn: {
-    borderRadius: 20,
-    height: 64,
+    borderRadius: 18,
+    height: 62,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
     shadowColor: '#059669',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
     shadowRadius: 15,
     elevation: 10,
   },
+  confirmBtnCopy: { flex: 1 },
+  confirmBtnHint: { marginTop: 2, color: 'rgba(255,255,255,0.78)', fontSize: 10, fontWeight: '600' },
+  confirmArrow: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   confirmBtnText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.5,
-    marginRight: 12,
+    marginRight: 0,
+  },
+  providerBadge: {
+    color: '#047857', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, marginTop: 4,
+  },
+  centerPinWrap: {
+    position: 'absolute', top: '50%', left: '50%', alignItems: 'center',
+    transform: [{ translateX: -70 }, { translateY: -58 }], width: 140,
+  },
+  centerPinHalo: {
+    position: 'absolute', top: 4, width: 54, height: 54, borderRadius: 27,
+    backgroundColor: 'rgba(5, 150, 105, 0.16)',
+  },
+  centerPin: {
+    width: 46, height: 46, borderRadius: 23, backgroundColor: '#059669',
+    borderWidth: 4, borderColor: '#ffffff', alignItems: 'center', justifyContent: 'center', elevation: 12,
+  },
+  centerPinShadow: {
+    width: 18, height: 6, borderRadius: 9, backgroundColor: 'rgba(15, 23, 42, 0.24)', marginTop: 6,
+  },
+  moveMapHint: {
+    marginTop: 10, backgroundColor: 'rgba(15, 23, 42, 0.86)', color: '#ffffff',
+    fontSize: 11, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, overflow: 'hidden',
   },
   markerContainer: {
     alignItems: 'center',
@@ -724,43 +869,5 @@ const styles = StyleSheet.create({
     zIndex: 1,
   }
 });
-
-const mapStyle = [
-  {
-    "featureType": "all",
-    "elementType": "geometry",
-    "stylers": [{"color": "#f3f4f6"}]
-  },
-  {
-    "featureType": "all",
-    "elementType": "labels.text.fill",
-    "stylers": [{"color": "#64748b"}]
-  },
-  {
-    "featureType": "all",
-    "elementType": "labels.text.stroke",
-    "stylers": [{"color": "#ffffff"}]
-  },
-  {
-    "featureType": "poi",
-    "elementType": "geometry",
-    "stylers": [{"color": "#e2e8f0"}]
-  },
-  {
-    "featureType": "road",
-    "elementType": "geometry",
-    "stylers": [{"color": "#ffffff"}]
-  },
-  {
-    "featureType": "road.arterial",
-    "elementType": "labels.icon",
-    "stylers": [{"visibility": "off"}]
-  },
-  {
-    "featureType": "water",
-    "elementType": "geometry",
-    "stylers": [{"color": "#cbd5e1"}]
-  }
-];
 
 export default MapModal;

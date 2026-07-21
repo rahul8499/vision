@@ -1,4 +1,10 @@
 pluginManagement {
+  repositories {
+    google()
+    mavenCentral()
+    gradlePluginPortal()
+    maven { url 'https://maven.mappls.com/repository/mappls/' }
+  }
   def reactNativeGradlePlugin = new File(
     providers.exec {
       workingDir(rootDir)

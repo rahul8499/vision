@@ -59,6 +59,7 @@
     "glob": "^11.0.3",
     "i18next": "^26.3.6",
     "leaflet": "^1.9.4",
+    "mappls-map-react-native": "^2.0.2",
     "nativewind": "4.1.23",
     "react": "19.0.0",
     "react-dom": "19.0.0",

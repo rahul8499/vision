@@ -1,0 +1,19 @@
+diff --git a/node_modules/mappls-map-react-native/src/MapplsGLModule.ts b/node_modules/mappls-map-react-native/src/MapplsGLModule.ts
+index 6ef7fab..8ff94bb 100644
+--- a/node_modules/mappls-map-react-native/src/MapplsGLModule.ts
++++ b/node_modules/mappls-map-react-native/src/MapplsGLModule.ts
+@@ -56,6 +56,14 @@ interface IMapplsGLModule {
+ 
+ const MapplsGL: IMapplsGLModule = NativeRCTMGLModule == null ? Object.create(NativeModules.MGLModule): NativeRCTMGLModule;
+ 
++// Mappls v2.0.2 exposes event constants through getConstants() when React
++// Native's New Architecture is enabled, rather than as direct properties.
++// MapView expects this named export when registering region callbacks.
++export const EventTypes =
++  NativeRCTMGLModule?.getConstants?.().EventTypes ??
++  NativeModules.MGLModule?.EventTypes ??
++  {};
++
+ const setInternalClusterId = (clusterId: string|null, vin?: string|null) => {
+   if (vin) {
+     MapplsGL.settingClusterId(clusterId, vin);

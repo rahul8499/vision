@@ -31,6 +31,7 @@ import { useSellerOrders } from '../../orders/hooks/useSellerOrders';
 import type { OrderFilterMode, OrderStage, SellerOrder } from '../../orders/types';
 import { AppDispatch, RootState } from '../../redux/store';
 import { fetchUserProfile } from '../../redux/userSlice';
+import DeliveryDestinationModal from '../../components/DeliveryDestinationModal';
 
 const FILTER_OPTIONS: { key: OrderFilterMode; label: string; icon: string }[] = [
   { key: 'all', label: 'All', icon: 'view-grid-outline' },
@@ -156,6 +157,7 @@ export default function ActiveOrdersScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const { user, token } = useSelector((state: RootState) => state.user);
   const [selectedOrder, setSelectedOrder] = useState<SellerOrder | null>(null);
+  const [deliveryMapOrder, setDeliveryMapOrder] = useState<SellerOrder | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [completionOtpModalVisible, setCompletionOtpModalVisible] = useState(false);
   const [completionOtpTargetId, setCompletionOtpTargetId] = useState<number | null>(null);
@@ -405,6 +407,7 @@ export default function ActiveOrdersScreen() {
       onViewRx={setSelectedImage}
       onOpenDetails={setSelectedOrder}
       onRaiseComplaint={raiseComplaint}
+      onOpenMap={setDeliveryMapOrder}
       onCancel={handleStoreCancel}
     />
   ), [BASE_URL, handleStoreCancel, openChat, raiseComplaint, sellerOrders.progressLoadingId, sellerOrders.updateProgress]);
@@ -443,6 +446,7 @@ export default function ActiveOrdersScreen() {
 
   return (
     <View className="flex-1 bg-[#f7faf9]">
+      <DeliveryDestinationModal destination={deliveryMapOrder} onClose={() => setDeliveryMapOrder(null)} />
       <View className="overflow-hidden rounded-[1.45rem] shadow-sm shadow-slate-300">
 
         <View className="px-4 pt-2">

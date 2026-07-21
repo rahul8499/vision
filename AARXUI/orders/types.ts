@@ -14,6 +14,10 @@ export type SellerOrder = {
   user_name?: string | null;
   user_mobile?: string | null;
   user_address?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  user_latitude?: number | string | null;
+  user_longitude?: number | string | null;
   store?: number;
   response_text?: string | null;
   total_amount?: number | string | null;

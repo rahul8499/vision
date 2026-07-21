@@ -367,9 +367,9 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Location Service API Keys
-# Set GOOGLE_PLACES_API_KEY once billing is enabled in Google Cloud Console.
-# Mapbox key is always used as fallback.
+# Location providers. Mappls is primary; the others are automatic fallbacks.
+MAPPLS_CLIENT_ID = os.getenv('MAPPLS_CLIENT_ID') or None
+MAPPLS_CLIENT_SECRET = os.getenv('MAPPLS_CLIENT_SECRET') or None
 GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY') or None
 MAPBOX_API_KEY = os.getenv('MAPBOX_API_KEY') or None
 

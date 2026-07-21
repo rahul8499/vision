@@ -53,6 +53,7 @@ type Props = {
   onViewRx: (url: string) => void;
   onOpenDetails: (order: SellerOrder) => void;
   onRaiseComplaint: (order: SellerOrder) => void;
+  onOpenMap: (order: SellerOrder) => void;
   onCancel?: (order: SellerOrder) => void;
 };
 
@@ -63,7 +64,7 @@ const FooterButton = ({ icon, label, onPress }: { icon: string; label: string; o
   </TouchableOpacity>
 );
 
-export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, progressLoadingId, onPrimaryAction, onCall, onChat, onViewRx, onOpenDetails, onRaiseComplaint, onCancel }: Props) {
+export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, progressLoadingId, onPrimaryAction, onCall, onChat, onViewRx, onOpenDetails, onRaiseComplaint, onOpenMap, onCancel }: Props) {
   const primaryAction = getPrimaryAction(order);
   const id = getOrderId(order);
   const imageUrl = buildMediaUrl(baseUrl, order.image);
@@ -127,6 +128,14 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
           <Text className="text-[8px] font-black uppercase tracking-[1.8px] text-[#007a5c]">Status</Text>
           <Text className="mt-1 text-[13px] font-black text-slate-950" numberOfLines={1}>{getStatusLabel(stageInfo)}</Text>
         </View>
+
+        {!isPickup && stageInfo.stage !== 'COMPLETED' && stageInfo.stage !== 'CANCELLED' && (
+          <TouchableOpacity onPress={() => onOpenMap(order)} activeOpacity={0.78} className="mt-3 flex-row items-center rounded-[1rem] border border-emerald-100 bg-emerald-50 px-4 py-3.5">
+            <View className="h-10 w-10 items-center justify-center rounded-2xl bg-emerald-600"><MaterialCommunityIcons name="map-marker-path" size={20} color="white" /></View>
+            <View className="ml-3 flex-1"><Text className="text-[8px] font-black uppercase tracking-[1.5px] text-emerald-700">Delivery location</Text><Text className="mt-1 text-[11px] font-bold leading-4 text-slate-700" numberOfLines={2}>{order.user_address || 'Customer address unavailable'}</Text></View>
+            <View className="ml-2 flex-row items-center rounded-full bg-white px-3 py-2"><Text className="text-[8px] font-black uppercase text-emerald-700">View map</Text><MaterialCommunityIcons name="chevron-right" size={14} color="#047857" /></View>
+          </TouchableOpacity>
+        )}
 
         <View className="mt-3 flex-row gap-3">
           {primaryAction ? (

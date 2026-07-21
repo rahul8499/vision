@@ -4046,7 +4046,7 @@ class LocationSearchView(APIView):
         from asgiref.sync import sync_to_async
         import hashlib
         query_hash = hashlib.md5(query.encode('utf-8')).hexdigest()
-        cache_key = f"location_search_{query_hash}_{lat}_{lon}"
+        cache_key = f"location_search_mappls_v1_{query_hash}_{lat}_{lon}"
 
         # 1. Check Redis Cache (Async Context Safe)
         cached_data = await sync_to_async(cache.get)(cache_key)
@@ -4070,72 +4070,15 @@ class LocationSearchView(APIView):
         timeout_val = 3.0 # 2. Timeout Handling properly (3s)
         
         try:
-            google_key = getattr(settings, 'GOOGLE_PLACES_API_KEY', None)
-            mapbox_key = getattr(settings, 'MAPBOX_API_KEY', None) or 'pk.eyJ1IjoicmFodWw4NDk5IiwiYSI6ImNreWZoaGZ5aDE1YWUydXVydmRqYXRidDUifQ.t5UNUnDH9pGxp91_sTMD-A'
-
+            from .services import mappls
             async with httpx.AsyncClient(timeout=timeout_val) as client: # 1. Blocking API Calls fix (Async)
                 for attempt in range(2): # 3. Retry Logic
                     try:
-                        if google_key:
-                            session_token = request.query_params.get('sessiontoken', '')
-                            url = f"https://maps.googleapis.com/maps/api/place/autocomplete/json?input={query}&components=country:in&key={google_key}"
-                            if session_token:
-                                url += f"&sessiontoken={session_token}"
-                            
-                            # Add proximity bias if coordinates are provided
-                            if lat and lon:
-                                url += f"&location={lat},{lon}&radius=50000"
+                        try:
+                            data = await mappls.search(client, query, lat, lon)
+                        except (httpx.HTTPError, ValueError, TypeError) as exc:
+                            logger.warning("Mappls location search unavailable: %s", type(exc).__name__)
 
-                            res = await client.get(url)
-                            json_res = res.json()
-                            if json_res.get('status') == 'OK':
-                                predictions = json_res.get('predictions', [])
-                                for item in predictions[:5]:
-                                    data.append({
-                                        "place_id": item.get('place_id'),
-                                        "display_name": item.get('description'),
-                                        "lat": "", # Google Autocomplete doesn't return lat/lon directly
-                                        "lon": "",
-                                        "is_prediction": True
-                                    })
-                            else:
-                                logger.warning(f"Google Autocomplete API failed: {json_res}")
-                        
-                        # Fallback to Mapbox if Google didn't return data (e.g. no key, billing error)
-                        if not data and mapbox_key:
-                            proximity_param = f"&proximity={lon},{lat}" if lat and lon else ""
-                            url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{query}.json?access_token={mapbox_key}&limit=5&country=in{proximity_param}"
-                            res = await client.get(url)
-                            if res.status_code == 200:
-                                features = res.json().get('features', [])
-                                for item in features:
-                                    data.append({
-                                        "place_id": item.get('id'),
-                                        "display_name": item.get('place_name'),
-                                        "lat": str(item['center'][1]),
-                                        "lon": str(item['center'][0]),
-                                    })
-                            else:
-                                logger.warning(f"Mapbox API failed: {res.text}")
-                        
-                        # Fallback to Nominatim if Mapbox also failed
-                        if not data:
-                            url = f"https://nominatim.openstreetmap.org/search?q={query}&format=json&addressdetails=1&limit=5&countrycodes=in"
-                            headers = {
-                                'User-Agent': 'AarxElite/1.0',
-                                'Referer': settings.ALLOWED_HOSTS[0] if settings.ALLOWED_HOSTS else 'https://aarx.elite.in',
-                            }
-                            res = await client.get(url, headers=headers)
-                            if res.status_code == 200:
-                                nominatim_data = res.json()
-                                for item in nominatim_data:
-                                    data.append({
-                                        "place_id": str(item.get('place_id')),
-                                        "display_name": item.get('display_name'),
-                                        "lat": item.get('lat'),
-                                        "lon": item.get('lon'),
-                                    })
-                        
                         if data: break # Success, break retry loop
 
                     except (httpx.RequestError, httpx.TimeoutException) as exc:
@@ -4155,6 +4098,7 @@ class LocationSearchView(APIView):
                 future.set_exception(e)
             logger.error(f"Location search failure for {query}: {e}") # 6. Logging System
             return Response({"error": "Failed to fetch suggestions"}, status=400)
+        finally:
             _inflight_location_searches.pop(cache_key, None)
 
 # --- Chat API Views ---
@@ -4675,37 +4619,23 @@ class LocationDetailsView(APIView):
 
     async def _async_get(self, request):
         place_id = request.query_params.get('place_id')
-        session_token = request.query_params.get('sessiontoken', '')
-        
         if not place_id:
             return Response({"error": "place_id is required"}, status=400)
-            
-        from django.conf import settings
-        google_key = getattr(settings, 'GOOGLE_PLACES_API_KEY', None)
-        
-        if not google_key:
-            return Response({"error": "Google API key not configured"}, status=400)
-            
-        url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=geometry&key={google_key}"
-        if session_token:
-            url += f"&sessiontoken={session_token}"
-            
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            try:
-                res = await client.get(url)
-                res.raise_for_status()
-                json_res = res.json()
-                
-                if json_res.get('status') == 'OK':
-                    location = json_res['result']['geometry']['location']
-                    return Response({
-                        "lat": str(location['lat']),
-                        "lon": str(location['lng'])
-                    }, status=200)
-                else:
-                    return Response({"error": f"Google API error: {json_res.get('status')}"}, status=400)
-            except Exception as e:
-                return Response({"error": "Request could not be completed."}, status=400)
+
+        from .services import mappls
+
+        if place_id.startswith('mappls:'):
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                try:
+                    details = await mappls.place_details(client, place_id)
+                    if details:
+                        return Response(details, status=200)
+                except (httpx.HTTPError, ValueError, TypeError) as exc:
+                    logger.warning("Mappls place details unavailable: %s", type(exc).__name__)
+
+                return Response({"error": "Mappls location coordinates are unavailable"}, status=404)
+
+        return Response({"error": "Only Mappls place IDs are supported"}, status=400)
 
 from .models import AppRating
 from django.views.decorators.csrf import csrf_exempt

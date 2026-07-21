@@ -4,6 +4,7 @@ buildscript {
   repositories {
     google()
     mavenCentral()
+    maven { url 'https://maven.mappls.com/repository/mappls/' }
   }
   dependencies {
         classpath 'com.google.gms:google-services:4.4.1'
@@ -30,6 +31,7 @@ allprojects {
 
     google()
     mavenCentral()
+    maven { url 'https://maven.mappls.com/repository/mappls/' }
     maven { url 'https://www.jitpack.io' }
   }
 }
