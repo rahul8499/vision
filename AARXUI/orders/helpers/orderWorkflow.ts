@@ -160,11 +160,11 @@ export const resolveOrderStage = (order: SellerOrder): StageResolution => {
 
 export const getPrimaryAction = (order: SellerOrder): { action: OrderAction; label: string; icon: string; progressAction: string } | null => {
   const { stage, capabilities } = resolveOrderStage(order);
-  if (capabilities.canStartBilling) return { action: 'START_BILLING', label: 'Start Billing', icon: 'script-text-outline', progressAction: 'start_processing' };
-  if (capabilities.canPack) return { action: 'MARK_PACKED', label: 'Mark Packed', icon: 'package-variant-closed', progressAction: 'mark_packed' };
-  if (capabilities.canMarkReady) return { action: 'READY_PICKUP', label: 'Ready Pickup', icon: 'store-check-outline', progressAction: 'mark_locked' };
-  if (capabilities.canSendDelivery) return { action: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', icon: 'truck-delivery', progressAction: 'mark_locked' };
-  if (capabilities.canComplete) return { action: 'COMPLETE', label: 'Complete / Dispense', icon: 'check-decagram-outline', progressAction: 'mark_completed' };
+  if (capabilities.canStartBilling) return { action: 'START_BILLING', label: 'बिल बनाना शुरू करें', icon: 'script-text-outline', progressAction: 'start_processing' };
+  if (capabilities.canPack) return { action: 'MARK_PACKED', label: 'Packing पूरी हो गई', icon: 'package-variant-closed', progressAction: 'mark_packed' };
+  if (capabilities.canMarkReady) return { action: 'READY_PICKUP', label: 'Customer के लिए तैयार', icon: 'store-check-outline', progressAction: 'mark_locked' };
+  if (capabilities.canSendDelivery) return { action: 'OUT_FOR_DELIVERY', label: 'Delivery Partner चुनें', icon: 'truck-delivery', progressAction: 'mark_locked' };
+  if (capabilities.canComplete) return { action: 'COMPLETE', label: 'OTP लेकर पूरा करें', icon: 'check-decagram-outline', progressAction: 'mark_completed' };
   if (stage === 'COMPLETED') return null;
   return null;
 };

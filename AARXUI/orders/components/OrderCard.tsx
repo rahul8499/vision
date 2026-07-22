@@ -42,6 +42,24 @@ const getStatusLabel = (stageInfo: StageResolution, order: SellerOrder) => {
   return `${stageInfo.config.label} Stage`;
 };
 
+const getSellerGuidance = (order: SellerOrder, stageInfo: StageResolution) => {
+  switch (stageInfo.stage) {
+    case 'NEW': return { title: 'दवाइयों का बिल बनाना शुरू करें', next: 'बटन दबाने के बाद यह order Billing में मिलेगा।', icon: 'receipt-text-outline' };
+    case 'BILLING': return { title: 'बिल बनाकर दवाइयां pack करें', next: 'Packing पूरी होने पर यह order Packed में मिलेगा।', icon: 'package-variant' };
+    case 'PACKED':
+      return order.delivery_option === 'online'
+        ? { title: 'Delivery के लिए partner चुनें', next: 'Partner चुनते ही order Delivery में चला जाएगा।', icon: 'moped' }
+        : { title: 'Order customer को देने के लिए तैयार रखें', next: 'बटन दबाने के बाद यह Ready for Pickup में मिलेगा।', icon: 'store-check-outline' };
+    case 'READY': return { title: 'Customer आने पर OTP लेकर order दें', next: 'सही OTP डालने के बाद order Completed हो जाएगा।', icon: 'account-check-outline' };
+    case 'DELIVERY':
+      return order.delivery_reached_at
+        ? { title: 'Partner customer के पास पहुंच गया है', next: 'Customer का OTP verify होते ही order Completed होगा।', icon: 'map-marker-check-outline' }
+        : { title: 'Delivery partner यह order पहुंचा रहा है', next: 'Pickup, रास्ते और delivery की स्थिति यहीं update होगी।', icon: 'truck-fast-outline' };
+    case 'OTP': return { title: 'Customer से मिला OTP verify करें', next: 'सही OTP के बाद order Completed में सुरक्षित हो जाएगा।', icon: 'shield-key-outline' };
+    default: return null;
+  }
+};
+
 type Props = {
   order: SellerOrder;
   baseUrl: string;
@@ -73,8 +91,9 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
   const medicineCount = order.medicines?.length || 0;
   const isPickup = order.delivery_option === 'walk_in';
   const deliveryTone = isPickup
-    ? { bg: '#ecfdf5', fg: '#007a5c', icon: 'walk', label: 'Pickup' }
-    : { bg: '#eff6ff', fg: '#2563eb', icon: 'truck-delivery-outline', label: 'Delivery' };
+    ? { bg: '#f8fafc', fg: '#475569', icon: 'store-marker-outline', label: 'Customer collection' }
+    : { bg: '#f8fafc', fg: '#475569', icon: 'home-map-marker', label: 'Doorstep order' };
+  const sellerGuidance = getSellerGuidance(order, stageInfo);
 
   return (
     <View className="mb-4 overflow-hidden rounded-[1.25rem] border border-slate-100 bg-white shadow-lg shadow-slate-200/60">
@@ -91,6 +110,17 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
             <MaterialCommunityIcons name={deliveryTone.icon as any} size={15} color={deliveryTone.fg} />
             <Text style={{ color: deliveryTone.fg }} className="ml-1.5 text-[10px] font-black uppercase">{deliveryTone.label}</Text>
           </View>
+        </View>
+
+        <View className="mt-3 flex-row items-center rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <View className="h-10 w-10 items-center justify-center rounded-[0.85rem] bg-white border border-slate-200">
+            <MaterialCommunityIcons name={isPickup ? 'storefront-outline' : 'moped'} size={20} color="#0f172a" />
+          </View>
+          <View className="ml-3 flex-1">
+            <Text className="text-[11px] font-black text-slate-900">{isPickup ? 'Store pickup' : 'Home delivery'}</Text>
+            <Text className="mt-0.5 text-[8.5px] font-bold text-slate-500" numberOfLines={1}>{isPickup ? 'Customer will collect from your pharmacy' : 'Assign a partner after packing the order'}</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={19} color="#94a3b8" />
         </View>
 
         <View className="mt-3 flex-row items-start">
@@ -130,6 +160,19 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
           <Text className="text-[8px] font-black uppercase tracking-[1.8px] text-[#007a5c]">Status</Text>
           <Text className="mt-1 text-[13px] font-black text-slate-950" numberOfLines={1}>{getStatusLabel(stageInfo, order)}</Text>
         </View>
+
+        {sellerGuidance && (
+          <View className="mt-2.5 flex-row items-center rounded-[1rem] border border-amber-100 bg-amber-50 px-3.5 py-3">
+            <View className="h-10 w-10 items-center justify-center rounded-xl bg-white">
+              <MaterialCommunityIcons name={sellerGuidance.icon as any} size={21} color="#b45309" />
+            </View>
+            <View className="ml-3 flex-1">
+              <Text className="text-[8px] font-black uppercase tracking-[1.4px] text-amber-700">अब आपको क्या करना है?</Text>
+              <Text className="mt-1 text-[12px] font-black leading-4 text-slate-900">{sellerGuidance.title}</Text>
+              <Text className="mt-1 text-[9px] font-semibold leading-4 text-slate-500">{sellerGuidance.next}</Text>
+            </View>
+          </View>
+        )}
 
         {!isPickup && stageInfo.stage !== 'COMPLETED' && stageInfo.stage !== 'CANCELLED' && (
           <TouchableOpacity onPress={() => onOpenMap(order)} activeOpacity={0.78} className="mt-3 flex-row items-center rounded-[1rem] border border-emerald-100 bg-emerald-50 px-4 py-3.5">
