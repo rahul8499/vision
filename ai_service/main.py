@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 import asyncio
 import logging
@@ -5,10 +9,12 @@ import shutil
 import os
 import uuid
 from classifier import classify_image
+from ocr_extractor import extract_prescription_text
+from gemini_extractor import extract_with_gemini
 
 app = FastAPI(title="AARX AI Image Classifier")
 logger = logging.getLogger(__name__)
-AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", "12"))
+AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", "40"))
 
 UPLOAD_DIR = "temp_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -30,8 +36,21 @@ async def classify_prescription_image(
             
         # Run fast classification
         try:
+            def analyze_image():
+                result = classify_image(temp_file_path, user_upload_type)
+                if user_upload_type == "prescription":
+                    extraction = extract_with_gemini(temp_file_path)
+                    
+                    if extraction and extraction.get("extracted_medicines"):
+                        result.update(extraction)
+                    else:
+                        result.update(extract_prescription_text(temp_file_path))
+                else:
+                    result.update({"extracted_medicines": [], "ocr_engine": "not_applicable"})
+                return result
+
             result = await asyncio.wait_for(
-                asyncio.to_thread(classify_image, temp_file_path, user_upload_type),
+                asyncio.to_thread(analyze_image),
                 timeout=AI_TIMEOUT_SECONDS,
             )
             return result
@@ -41,7 +60,9 @@ async def classify_prescription_image(
                 "classification": "unknown",
                 "score": 0.0,
                 "reason": f"AI OCR timed out after {AI_TIMEOUT_SECONDS}s",
-                "ocr_text": ""
+                "ocr_text": "",
+                "extracted_medicines": [],
+                "ocr_engine": "timeout"
             }
         
     except Exception as e:
@@ -50,7 +71,9 @@ async def classify_prescription_image(
             "classification": "unknown",
             "score": 0.0,
             "reason": f"AI service error: {str(e)}",
-            "ocr_text": ""
+            "ocr_text": "",
+            "extracted_medicines": [],
+            "ocr_engine": "failed"
         }
     finally:
         # Clean up

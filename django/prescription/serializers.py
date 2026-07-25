@@ -77,8 +77,10 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             'cancelled_by', 'cancel_reason', 'capabilities',
             'repeat_customer', 'repeat_order_count', 'last_order_at', 'preferred_store_id',
             'repeat_customer', 'repeat_order_count', 'last_order_at', 'preferred_store_id',
-            'medicine_name', 'description', 'user_upload_type', 'ai_classification', 'ai_score', 'ai_status', 'ai_reason', 'ocr_text'
+            'medicine_name', 'description', 'user_upload_type', 'ai_classification', 'ai_score', 'ai_status', 'ai_reason', 'ocr_text',
+            'extracted_medicines', 'ocr_engine'
         ]
+        read_only_fields = ['extracted_medicines', 'ocr_engine']
 
     def validate(self, attrs):
         image = attrs.get('image')

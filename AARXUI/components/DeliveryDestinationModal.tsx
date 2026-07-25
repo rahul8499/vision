@@ -23,7 +23,13 @@ export default function DeliveryDestinationModal({ destination: item, onClose }:
 
   useEffect(() => {
     const optionalMethods = ['setLogoGravity', 'enableTraffic', 'enableTrafficClosure', 'enableTrafficFreeFlow', 'enableTrafficNonFreeFlow', 'enableTrafficStopIcon'];
-    Logger.setLogCallback((log) => log.message.includes('Method not Provisioned') && optionalMethods.some(method => log.message.includes(method)));
+    Logger.setLogCallback((log) => {
+      const isOptionalMethodWarning = log.message.includes('Method not Provisioned') &&
+        optionalMethods.some((method) => log.message.includes(method));
+      const isUnprovisionedTile = (log.message.includes('source Indoor') || log.message.includes('source maplayout')) &&
+        log.message.includes('HTTP status code 412');
+      return isOptionalMethodWarning || isUnprovisionedTile;
+    });
     return () => Logger.setLogCallback(() => false);
   }, []);
 

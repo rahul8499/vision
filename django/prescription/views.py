@@ -802,6 +802,10 @@ class SubmitResponseToUserPrescription(APIView):
             response.delete()
             return Response({"error": "Stockout: At least one medicine must be available to send a quote."}, status=400)
 
+        if any(not med.get('is_available', True) for med in medicines_data if isinstance(med, dict)):
+            response.quotation_scenario = 'partial'
+            response.save(update_fields=['quotation_scenario', 'updated_at'])
+
         QuoteDeliveryOffer.objects.create(response=response, **delivery_result)
         response.stock_verified_at = timezone.now()
         response.save()

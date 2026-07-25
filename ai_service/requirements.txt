@@ -4,3 +4,6 @@ python-multipart
 onnxruntime
 Pillow
 numpy
+rapidocr==3.9.2
+requests>=2.31,<3
+python-dotenv>=1.0,<2

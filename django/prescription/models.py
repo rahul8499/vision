@@ -330,6 +330,8 @@ class Prescription(models.Model):
     ai_status = models.CharField(max_length=20, choices=AI_STATUS_CHOICES, default='pending')
     ai_reason = models.TextField(null=True, blank=True)
     ocr_text = models.TextField(null=True, blank=True)
+    extracted_medicines = models.JSONField(default=list, blank=True)
+    ocr_engine = models.CharField(max_length=40, blank=True, default='')
 
     uploaded_at = models.DateTimeField(auto_now_add=True, db_index=True)
     latitude = models.FloatField(null=True, blank=True)

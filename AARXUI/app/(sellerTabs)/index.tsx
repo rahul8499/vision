@@ -169,6 +169,18 @@ type ResponseItem = {
   prescription_ai_classification?: 'prescription' | 'medicine' | 'unknown';
   prescription_ai_score?: number | null;
   prescription_ai_reason?: string;
+  extracted_medicines?: {
+    raw_text: string;
+    suggested_name: string;
+    medicine_name?: string;
+    strength?: string;
+    dosage?: string;
+    frequency?: string;
+    duration?: string;
+    confidence: number;
+    needs_verification: boolean;
+  }[];
+  ocr_engine?: string;
 };
 
 type DeliveryOffer = {
@@ -472,9 +484,9 @@ const DeliveryDestinationModal = ({ item, onClose }: { item: ResponseItem | null
     Logger.setLogCallback((log) => {
       const isOptionalMethodWarning = log.message.includes('Method not Provisioned') &&
         optionalUnprovisionedMethods.some((method) => log.message.includes(method));
-      const isUnprovisionedIndoorTile = log.message.includes('source Indoor') &&
+      const isUnprovisionedTile = (log.message.includes('source Indoor') || log.message.includes('source maplayout')) &&
         log.message.includes('HTTP status code 412');
-      return isOptionalMethodWarning || isUnprovisionedIndoorTile;
+      return isOptionalMethodWarning || isUnprovisionedTile;
     });
     return () => Logger.setLogCallback(() => false);
   }, []);
@@ -626,6 +638,7 @@ const PrescriptionCard = React.memo(({
   const _aiClass = item.prescription_ai_classification || item.ai_classification;
   const _aiScore = item.prescription_ai_score ?? item.ai_score;
   const _aiCompleted = _aiStatus === 'completed' && !!_aiClass;
+  const _aiIsChecking = _aiStatus === 'pending' || _aiStatus === 'processing' || (_aiUploadType === 'prescription' && !_aiCompleted && isAiAnalysisFresh(item.uploaded_at));
   const _aiIsRx = _aiClass === 'prescription';
   const _aiIsMed = _aiClass === 'medicine';
   const _aiMismatch = _aiUploadType === 'prescription' && _aiCompleted && (_aiClass === 'medicine' || (_aiClass === 'unknown' && (_aiScore ?? 1) < 0.5));
@@ -695,10 +708,10 @@ const PrescriptionCard = React.memo(({
                   <MaterialCommunityIcons name="information-outline" size={8} color={_aiMismatch ? '#d97706' : _aiIsRx ? '#059669' : _aiIsMed ? '#2563eb' : '#64748b'} style={{ marginLeft: 2 }} />
                 </TouchableOpacity>
               )}
-              {item.image && _aiStatus === 'pending' && (
+              {item.image && _aiIsChecking && (
                 <View className="flex-row items-center bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5 mr-1.5 mb-1 shadow-sm">
-                  <ActivityIndicator size={8} color="#64748b" />
-                  <Text className="text-[7px] font-black text-slate-500 uppercase tracking-wider ml-1">AI Scan</Text>
+                  <ActivityIndicator size="small" color="#64748b" />
+                  <Text className="text-[7px] font-black text-slate-500 uppercase tracking-wider ml-1">AI Verifying...</Text>
                 </View>
               )}
               {(isAccepted || item.is_locked) && item.delivery_option && (
@@ -1833,7 +1846,7 @@ export default function Prescription() {
     }
   }, [isFocused, token]);
 
-  const fetchPrescriptionDetails = async (id: number) => {
+  const fetchPrescriptionDetails = async (id: number, applyOcrPrefill = false) => {
 
     try {
       const url = `${BASE_URL}/api/prescription/${id}/`;
@@ -1841,6 +1854,23 @@ export default function Prescription() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setPrescriptionDetail(response.data);
+      const detail = response.data?.prescription as ResponseItem | undefined;
+      if (detail) {
+        setCurrentItem(previous => previous?.id === id ? { ...previous, ...detail } : previous);
+        if (applyOcrPrefill && detail.extracted_medicines?.length) {
+          setMedicines(current => {
+            const manualPrefillName = getRequestMedicineName(detail);
+            const isUntouchedManualPrefill = current.length === 1 &&
+              current[0].medicine_name === manualPrefillName &&
+              current[0].price === '' && current[0].medicine_brand === '' &&
+              current[0].medicine_type === 'brand' && current[0].is_available;
+            if (!isUntouchedManualPrefill) return current;
+            return detail.extracted_medicines!
+              .filter(suggestion => suggestion?.suggested_name?.trim())
+              .map(suggestion => ({ medicine_name: suggestion.suggested_name.trim(), price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }));
+          });
+        }
+      }
     } catch (error) {
       console.error("Error fetching prescription detail:", error);
       Toast.show({
@@ -1865,9 +1895,14 @@ export default function Prescription() {
 
     setCurrentItem(item);
     const prefillName = getRequestMedicineName(item);
-    setMedicines([{ medicine_name: prefillName, price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }]);
+    const extractedRows = (item.extracted_medicines || [])
+      .filter(suggestion => suggestion?.suggested_name?.trim())
+      .map(suggestion => ({ medicine_name: suggestion.suggested_name.trim(), price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }));
+    setMedicines(extractedRows.length
+      ? extractedRows
+      : [{ medicine_name: prefillName, price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }]);
     setShowPriceModal(true);
-    fetchPrescriptionDetails(item.id); // Fetch details
+    fetchPrescriptionDetails(item.id, true); // Fetch latest OCR suggestions and details
     fetchDeliveryPreview(item.id);
   };
   const [showItemsModal, setShowItemsModal] = useState(false);
@@ -1931,10 +1966,13 @@ export default function Prescription() {
 
 
     const formData = new FormData();
+    const resolvedQuotationScenario = medicines.some(medicine => !medicine.is_available)
+      ? 'partial'
+      : quotationScenario;
     formData.append('response_text', note || '');
     formData.append('total_amount', totalPrice.toString());
     formData.append('prescription_id', prescription.id.toString());
-    formData.append('quotation_scenario', quotationScenario);
+    formData.append('quotation_scenario', resolvedQuotationScenario);
     formData.append('delivery_offer', JSON.stringify({
       home_delivery_available: quoteHomeDelivery,
       delivery_charge: quoteHomeDelivery ? quoteDeliveryCharge : '0',
@@ -1984,7 +2022,7 @@ export default function Prescription() {
           has_responded: true,
           response_id: submittedResponseId || item.response_id,
           total_amount: Number(submittedQuote?.total_amount ?? totalPrice),
-          quotation_scenario: submittedQuote?.quotation_scenario ?? quotationScenario,
+          quotation_scenario: submittedQuote?.quotation_scenario ?? resolvedQuotationScenario,
         };
       }));
 
@@ -3249,9 +3287,26 @@ export default function Prescription() {
                 )}
 
                 {/* Medicine Cards */}
+                {!!currentItem?.extracted_medicines?.length && (
+                  <View className="mb-3 rounded-[1rem] border border-amber-200 bg-amber-50 px-3 py-3">
+                    <View className="flex-row items-center">
+                      <MaterialCommunityIcons name="text-recognition" size={17} color="#b45309" />
+                      <Text className="ml-2 text-[9px] font-black uppercase tracking-[1.2px] text-amber-800">AI suggestions — verification required</Text>
+                    </View>
+                    <Text className="mt-1.5 text-[9px] font-semibold leading-4 text-amber-700">Prescription handwriting can be misread. Compare every medicine with the original image, edit incorrect names, and mark actual store stock before sending.</Text>
+                  </View>
+                )}
                 <View className="gap-2">
                   {medicines.map((med, idx) => {
                     const isExpanded = expandedMedIdx === idx;
+                    const aiSuggestion = currentItem?.extracted_medicines?.find(
+                      suggestion => suggestion.suggested_name?.trim() === med.medicine_name.trim()
+                    );
+                    const instructionParts = [
+                      aiSuggestion?.dosage,
+                      aiSuggestion?.frequency,
+                      aiSuggestion?.duration,
+                    ].filter(Boolean);
                     return (
                       <View key={idx} className={`rounded-[1rem] border overflow-hidden ${med.is_available ? 'border-emerald-100 bg-white' : 'border-red-100 bg-red-50/30'}`}>
                         {/* Row 1: Name + Stock Toggle + Delete */}
@@ -3287,6 +3342,17 @@ export default function Prescription() {
                             <MaterialCommunityIcons name="trash-can-outline" size={15} color="#94a3b8" />
                           </TouchableOpacity>
                         </View>
+
+                        {!!aiSuggestion && (
+                          <View className="mx-3 mb-2 flex-row items-center justify-between rounded-lg bg-amber-50 px-2.5 py-2">
+                            <Text className="mr-2 flex-1 text-[9px] font-semibold text-amber-800">
+                              {instructionParts.length ? instructionParts.join(' • ') : 'Instructions unclear — verify original'}
+                            </Text>
+                            <Text className="text-[8px] font-black uppercase text-amber-700">
+                              AI {Math.round(Math.max(0, Math.min(1, aiSuggestion.confidence || 0)) * 100)}%
+                            </Text>
+                          </View>
+                        )}
 
                         {/* Row 2: Type Selector */}
                         <View className="flex-row mx-3 mb-2 rounded-lg overflow-hidden border border-slate-100">

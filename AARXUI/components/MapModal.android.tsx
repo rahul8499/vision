@@ -97,10 +97,13 @@ const MapModal: React.FC<Props> = ({
 
   useEffect(() => {
     const optionalUnprovisionedMethods = ['setLogoGravity', 'enableTraffic', 'enableTrafficClosure', 'enableTrafficFreeFlow', 'enableTrafficNonFreeFlow', 'enableTrafficStopIcon'];
-    Logger.setLogCallback((log) =>
-      log.message.includes('Method not Provisioned') &&
-      optionalUnprovisionedMethods.some((method) => log.message.startsWith(method))
-    );
+    Logger.setLogCallback((log) => {
+      const isOptionalMethodWarning = log.message.includes('Method not Provisioned') &&
+        optionalUnprovisionedMethods.some((method) => log.message.startsWith(method));
+      const isUnprovisionedTile = (log.message.includes('source Indoor') || log.message.includes('source maplayout')) &&
+        log.message.includes('HTTP status code 412');
+      return isOptionalMethodWarning || isUnprovisionedTile;
+    });
     return () => Logger.setLogCallback(() => false);
   }, []);
 

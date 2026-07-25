@@ -7,6 +7,10 @@ from decimal import Decimal
 import math
 import uuid
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 logger = logging.getLogger(__name__)
 
 
@@ -582,6 +586,8 @@ def _broadcast_ai_analysis_update(prescription):
         if not store_ids:
             return
 
+        _bump_store_prescription_cache(store_ids)
+
         payload = {
             'prescription_id': prescription.id,
             'prescription_upload_type': prescription.user_upload_type,
@@ -594,6 +600,8 @@ def _broadcast_ai_analysis_update(prescription):
             'ai_classification': prescription.ai_classification,
             'ai_score': prescription.ai_score,
             'ai_reason': prescription.ai_reason,
+            'extracted_medicines': prescription.extracted_medicines,
+            'ocr_engine': prescription.ocr_engine,
         }
         seq = int(timezone.now().timestamp() * 1000)
         channel_layer = get_channel_layer()
@@ -1271,26 +1279,71 @@ def analyze_prescription_image_task(self, prescription_id):
             # other remote Django storage backends. Never access .path because
             # cloud storage intentionally has no absolute local filesystem path.
             import mimetypes
+            from io import BytesIO
+            from PIL import Image, ImageOps
+
             filename = os.path.basename(prescription.image.name) or f'prescription-{prescription.id}.jpg'
             content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
             prescription.image.open('rb')
             try:
-                response = requests.post(
-                    ai_url,
-                    files={'file': (filename, prescription.image.file, content_type)},
-                    data={'user_upload_type': prescription.user_upload_type},
-                    timeout=60,
-                )
+                raw_image = prescription.image.file.read()
             finally:
                 prescription.image.close()
+
+            upload_file = None
+            upload_name = filename
+            upload_type = content_type
+            try:
+                with Image.open(BytesIO(raw_image)) as source:
+                    image = ImageOps.exif_transpose(source).convert('RGB')
+                    max_side = max(image.size)
+                    if max_side > 1800:
+                        scale = 1800 / max_side
+                        image = image.resize(
+                            (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+                            Image.Resampling.LANCZOS,
+                        )
+                    buffer = BytesIO()
+                    image.save(buffer, format='JPEG', quality=80, optimize=True)
+                    buffer.seek(0)
+                    upload_file = buffer
+                    upload_name = os.path.splitext(filename)[0] + '.jpg'
+                    upload_type = 'image/jpeg'
+            except Exception:
+                upload_file = BytesIO(raw_image)
+
+            session = requests.Session()
+            retry = Retry(
+                total=2,
+                connect=2,
+                read=2,
+                status=2,
+                backoff_factor=0.75,
+                status_forcelist=(408, 429, 500, 502, 503, 504),
+                allowed_methods=frozenset({'POST'}),
+                raise_on_status=False,
+            )
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+
+            response = session.post(
+                ai_url,
+                files={'file': (upload_name, upload_file, upload_type)},
+                data={'user_upload_type': prescription.user_upload_type},
+                timeout=(10, 120),
+            )
         except requests.RequestException as exc:
             prescription.ai_classification = 'unknown'
             prescription.ai_score = 0.0
             prescription.ai_reason = f"AI service unavailable: {exc}"
             prescription.ocr_text = ''
+            prescription.extracted_medicines = []
+            prescription.ocr_engine = 'unavailable'
             prescription.ai_status = 'completed'
             prescription.save(update_fields=[
-                'ai_classification', 'ai_score', 'ai_reason', 'ocr_text', 'ai_status'
+                'ai_classification', 'ai_score', 'ai_reason', 'ocr_text',
+                'extracted_medicines', 'ocr_engine', 'ai_status'
             ])
             _broadcast_ai_analysis_update(prescription)
             logger.warning(f"[AI] Prescription {prescription_id} completed as unknown: {prescription.ai_reason}")
@@ -1314,6 +1367,9 @@ def analyze_prescription_image_task(self, prescription_id):
             prescription.ai_score = max(0.0, min(1.0, score))
             prescription.ai_reason = data.get("reason", "")
             prescription.ocr_text = data.get("ocr_text", "")
+            extracted_medicines = data.get("extracted_medicines", [])
+            prescription.extracted_medicines = extracted_medicines if isinstance(extracted_medicines, list) else []
+            prescription.ocr_engine = str(data.get("ocr_engine", ""))[:40]
             prescription.ai_status = 'completed'
         else:
             detail = data.get("reason") or data.get("detail") or response.text[:200]
@@ -1321,10 +1377,13 @@ def analyze_prescription_image_task(self, prescription_id):
             prescription.ai_score = 0.0
             prescription.ai_reason = f"AI service returned {response.status_code}: {detail}"
             prescription.ocr_text = data.get("ocr_text", "")
+            prescription.extracted_medicines = []
+            prescription.ocr_engine = str(data.get("ocr_engine", "failed"))[:40]
             prescription.ai_status = 'completed'
 
         prescription.save(update_fields=[
-            'ai_classification', 'ai_score', 'ai_reason', 'ocr_text', 'ai_status'
+            'ai_classification', 'ai_score', 'ai_reason', 'ocr_text',
+            'extracted_medicines', 'ocr_engine', 'ai_status'
         ])
         _broadcast_ai_analysis_update(prescription)
         logger.info(
