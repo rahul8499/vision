@@ -4,6 +4,24 @@ export type SellerOrderMedicine = {
   is_available?: boolean;
 };
 
+export type DeliveryPersonSummary = {
+  id?: number;
+  name?: string | null;
+  mobile?: string | null;
+  vehicle_type?: string | null;
+  vehicle_number?: string | null;
+  current_order_count?: number;
+  max_concurrent_orders?: number;
+};
+
+export type DeliveryOfferSummary = {
+  home_delivery_available?: boolean;
+  pickup_available?: boolean;
+  delivery_message?: string | null;
+  assigned_delivery_person?: DeliveryPersonSummary | null;
+  assignment_status?: string | null;
+};
+
 export type SellerOrder = {
   id: number;
   response_id?: number;
@@ -23,6 +41,7 @@ export type SellerOrder = {
   total_amount?: number | string | null;
   medicines?: SellerOrderMedicine[];
   delivery_option?: string | null;
+  delivery_offer?: DeliveryOfferSummary | null;
   user_status?: string | null;
   is_processing_started?: boolean;
   is_packed?: boolean;

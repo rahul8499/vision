@@ -1570,6 +1570,24 @@ class StoreUpdateProgressView(APIView):
                     response.delivery_option = 'walk_in'
                     response.user_status = 'processing'
                     response.is_locked = False
+                    pickup_data = {
+                        'type': 'DELIVERY_TO_PICKUP',
+                        'response_id': response.id,
+                        'prescription_id': response.prescription_id,
+                        'delivery_option': 'walk_in',
+                        'message': 'Delivery partner unavailable, so your order is now continuing as store pickup.',
+                    }
+                    _safe_on_commit(
+                        'pickup fallback user notification',
+                        lambda response=response, pickup_data=pickup_data: send_user_app_notification(
+                            response.user,
+                            'Store pickup confirmed',
+                            'Delivery partner unavailable, so your order is now continuing as store pickup.',
+                            pickup_data,
+                            notification_type='DELIVERY_TO_PICKUP',
+                            dedupe_key=f'delivery-to-pickup-user-{response.id}-{response.response_version}',
+                        ),
+                    )
 
                 elif action == 'mark_completed':
                     log_activity(

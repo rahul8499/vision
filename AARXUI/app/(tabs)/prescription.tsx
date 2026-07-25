@@ -1507,7 +1507,7 @@ export default function Prescription() {
           : item.delivery_picked_up_at
             ? { title: 'Medicines रास्ते में हैं', subtitle: 'Partner pharmacy से order लेकर निकल चुका है', icon: 'bike-fast', color: '#2563eb', background: '#eff6ff' }
             : item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery'
-              ? { title: 'Delivery Partner assigned', subtitle: 'Partner pharmacy से order collect करेगा', icon: 'account-check-outline', color: '#0891b2', background: '#ecfeff' }
+              ? { title: 'Delivery Partner accepted', subtitle: 'Your order is now moving ahead for delivery', icon: 'account-check-outline', color: '#0891b2', background: '#ecfeff' }
               : item.delivery_assignment_status === 'pending'
                 ? { title: 'Delivery Partner से confirmation बाकी है', subtitle: 'Pharmacy ने delivery request भेज दी है', icon: 'account-clock-outline', color: '#d97706', background: '#fffbeb' }
                 : item.delivery_assignment_status === 'rejected'
@@ -1555,6 +1555,13 @@ export default function Prescription() {
       Number(item.medicine_breakdown.substitute || 0) > 0 ||
       Number(item.medicine_breakdown.unavailable || 0) > 0
     );
+    const pickupFallbackApplied = item.delivery_option !== 'online' && (
+      item.delivery_assignment_status === 'rejected' ||
+      item.delivery_issue_code === 'no_delivery_person' ||
+      (item.delivery_offer && !item.delivery_offer.home_delivery_available)
+    );
+    const pickupFallbackMessage = item.delivery_offer?.delivery_message
+      || 'Delivery partner unavailable ke wajah se home delivery possible nahi hai. Please store pickup / walk-in mode me continue karein.';
 
     const renderStoreInfo = () => (
       <View className="mb-3">
@@ -2049,6 +2056,15 @@ export default function Prescription() {
     || data.find(item => item.id === selectedResponseId)?.delivery_offer
     || null;
   const selectedMedicineAmount = selectedDeliveryQuote?.medicine_amount;
+  const selectedDeliveryCharge = selectedDeliveryQuote?.home_delivery_available ? Number(selectedDeliveryQuote?.delivery_charge || 0) : 0;
+  const selectedPickupTotal = Number(selectedDeliveryQuote?.pickup_payable_amount ?? selectedMedicineAmount ?? 0);
+  const selectedDeliveryTotal = Number(selectedDeliveryQuote?.delivery_payable_amount ?? 0);
+  const selectedPickupFallbackApplied = !!selectedDeliveryQuote && (
+    selectedDeliveryQuote.home_delivery_available === false ||
+    !selectedDeliveryQuote.home_delivery_available
+  );
+  const selectedPickupFallbackMessage = selectedDeliveryQuote?.delivery_message
+    || 'Delivery partner unavailable ke wajah se home delivery possible nahi hai. Please store pickup / walk-in mode me continue karein.';
 
   return (
     <View className="flex-1 bg-[#fbfcfd]">
@@ -2689,6 +2705,14 @@ export default function Prescription() {
                       </Text>
                     </View>
                   )}
+                  {selectedPickupFallbackApplied && (
+                    <View className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                      <Text className="text-[9px] font-black uppercase tracking-[1.5px] text-emerald-700">Store pickup confirmed</Text>
+                      <Text className="mt-1 text-[11px] font-semibold leading-4 text-emerald-800">
+                        {selectedPickupFallbackMessage}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -2931,7 +2955,7 @@ export default function Prescription() {
                     </View>
                     <View className="mt-3 flex-row justify-between border-t border-slate-200 pt-3">
                       <Text className="text-sm font-black text-slate-900">Total payable</Text>
-                      <Text className="text-lg font-black text-slate-900">₹{selectedDeliveryQuote?.pickup_payable_amount}</Text>
+                      <Text className="text-lg font-black text-slate-900">₹{selectedPickupTotal}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -2961,11 +2985,17 @@ export default function Prescription() {
                     </View>
                     <View className="mt-2 flex-row justify-between">
                       <Text className="text-xs font-bold text-slate-500">Home delivery charge</Text>
-                      <Text className="text-xs font-black text-blue-700">₹{selectedDeliveryQuote.delivery_charge}</Text>
+                      <Text className="text-xs font-black text-blue-700">₹{selectedDeliveryCharge}</Text>
+                    </View>
+                    <View className="mt-2 flex-row justify-between">
+                      <Text className="text-xs font-bold text-slate-500">ETA</Text>
+                      <Text className="text-xs font-black text-blue-700">
+                        {selectedDeliveryQuote.estimated_delivery_minutes ? `Approx. ${selectedDeliveryQuote.estimated_delivery_minutes} min` : 'Live ETA not set'}
+                      </Text>
                     </View>
                     <View className="mt-3 flex-row justify-between border-t border-blue-100 pt-3">
                       <Text className="text-sm font-black text-slate-900">Total payable</Text>
-                      <Text className="text-lg font-black text-blue-700">₹{selectedDeliveryQuote.delivery_payable_amount}</Text>
+                      <Text className="text-lg font-black text-blue-700">₹{selectedDeliveryTotal}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -3322,11 +3352,11 @@ export default function Prescription() {
                     date: item.is_packed ? 'System Update Logged' : 'Pending Update'
                   },
                   ...(item.delivery_option === 'online' ? [{
-                    label: item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Delivery Partner Accepted' : 'Finding Delivery Partner',
-                    subtext: item.delivery_assignment_status === 'pending' ? 'Pharmacy has sent the delivery request to a partner' : item.delivery_assignment_status === 'rejected' ? 'Pharmacy is assigning another available partner' : item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Your delivery partner has accepted the order' : 'Pharmacy will assign a partner after packing',
+                    label: item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Partner accepted' : 'Finding delivery partner',
+                    subtext: item.delivery_assignment_status === 'pending' ? 'Pharmacy has sent the delivery request' : item.delivery_assignment_status === 'rejected' ? 'A new partner is being checked' : item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Your delivery partner accepted the order' : 'Pharmacy will assign the best available partner after packing',
                     icon: 'account-clock-outline' as const,
                     done: item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed',
-                    date: item.delivery_assignment_status === 'pending' ? 'Waiting for partner' : item.delivery_assignment_status === 'rejected' ? 'Reassigning' : item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Partner confirmed' : 'Not assigned yet'
+                    date: item.delivery_assignment_status === 'pending' ? 'Waiting for partner' : item.delivery_assignment_status === 'rejected' ? 'Reassigning' : item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Partner accepted' : 'Not assigned yet'
                   }, {
                     label: 'Picked Up from Pharmacy',
                     subtext: 'Your medicines are with the delivery partner',
@@ -3346,6 +3376,13 @@ export default function Prescription() {
                     icon: 'store-clock' as const,
                     done: !!(['locked', 'out_for_delivery', 'completed'].includes(item.user_status || '') || item.is_locked),
                     date: item.locked_at ? new Date(item.locked_at).toLocaleString() : item.is_locked || item.user_status === 'out_for_delivery' ? 'Store Authenticated' : 'Pending Update'
+                  }] : []),
+                  ...(pickupFallbackApplied ? [{
+                    label: 'Pickup Confirmed',
+                    subtext: 'Delivery partner unavailable, so this order will continue as store pickup',
+                    icon: 'store-check' as const,
+                    done: true,
+                    date: item.updated_at ? new Date(item.updated_at).toLocaleString() : 'System Update Logged'
                   }] : []),
                   {
                     label: 'Completed',

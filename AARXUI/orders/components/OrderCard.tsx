@@ -98,6 +98,10 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
     ? { bg: '#f8fafc', fg: '#475569', icon: 'store-marker-outline', label: 'Customer collection' }
     : { bg: '#f8fafc', fg: '#475569', icon: 'home-map-marker', label: 'Doorstep order' };
   const sellerGuidance = getSellerGuidance(order, stageInfo);
+  const assignedDeliveryPerson = order.delivery_offer?.assigned_delivery_person;
+  const assignedLoad = assignedDeliveryPerson?.current_order_count != null && assignedDeliveryPerson?.max_concurrent_orders != null
+    ? `${assignedDeliveryPerson.current_order_count}/${assignedDeliveryPerson.max_concurrent_orders}`
+    : null;
 
   return (
     <View className="mb-4 overflow-hidden rounded-[1.25rem] border border-slate-100 bg-white shadow-lg shadow-slate-200/60">
@@ -175,6 +179,29 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
               <Text className="mt-1 text-[12px] font-black leading-4 text-slate-900">{sellerGuidance.title}</Text>
               <Text className="mt-1 text-[9px] font-semibold leading-4 text-slate-500">{sellerGuidance.next}</Text>
             </View>
+          </View>
+        )}
+
+        {assignedDeliveryPerson && (
+          <View className="mt-2.5 flex-row items-start rounded-[1rem] border border-blue-100 bg-blue-50 px-3.5 py-3">
+            <View className="h-10 w-10 items-center justify-center rounded-xl bg-white">
+              <MaterialCommunityIcons name="account-check-outline" size={20} color="#2563eb" />
+            </View>
+            <View className="ml-3 flex-1">
+              <Text className="text-[8px] font-black uppercase tracking-[1.4px] text-blue-700">Assigned delivery partner</Text>
+              <Text className="mt-1 text-[12px] font-black text-slate-900" numberOfLines={1}>
+                {assignedDeliveryPerson.name || 'Delivery partner'}
+              </Text>
+              <Text className="mt-1 text-[9px] font-semibold text-slate-500" numberOfLines={1}>
+                {assignedDeliveryPerson.vehicle_type || 'vehicle'}{assignedDeliveryPerson.vehicle_number ? ` • ${assignedDeliveryPerson.vehicle_number}` : ''}
+                {assignedLoad ? ` • load ${assignedLoad}` : ''}
+              </Text>
+            </View>
+            {assignedDeliveryPerson.mobile ? (
+              <TouchableOpacity onPress={() => onCall(order)} className="ml-2 rounded-xl bg-white px-3 py-2">
+                <Text className="text-[9px] font-black uppercase text-blue-700">Call</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
 

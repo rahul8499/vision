@@ -35,6 +35,29 @@ type OrderMedicine = {
   is_available?: boolean;
 };
 
+type DeliveryPersonSummary = {
+  id?: number;
+  name?: string | null;
+  mobile?: string | null;
+  vehicle_type?: string | null;
+  vehicle_number?: string | null;
+  current_order_count?: number;
+  max_concurrent_orders?: number;
+};
+
+type DeliveryOfferSummary = {
+  home_delivery_available?: boolean;
+  pickup_available?: boolean;
+  delivery_message?: string | null;
+  medicine_amount?: number | string | null;
+  delivery_charge?: number | string | null;
+  pickup_payable_amount?: number | string | null;
+  delivery_payable_amount?: number | string | null;
+  estimated_delivery_minutes?: number | string | null;
+  assigned_delivery_person?: DeliveryPersonSummary | null;
+  assignment_status?: string | null;
+};
+
 type OrderResponse = {
   id: number;
   prescription?: number | string | null;
@@ -50,6 +73,7 @@ type OrderResponse = {
   medicines?: OrderMedicine[];
   user_status?: string | null;
   delivery_option?: string | null;
+  delivery_offer?: DeliveryOfferSummary | null;
   created_at?: string | null;
   updated_at?: string | null;
   is_locked?: boolean;
@@ -999,6 +1023,19 @@ export default function OrdersScreen() {
     const ratingLabel = formatStoreRating(item.store_overall_rating);
     const ratingCountLabel = item.store_total_ratings ? String(item.store_total_ratings) + ' reviews' : 'Reviews';
     const isBestDealOrder = item.best_deal?.is_best === true;
+    const orderDeliveryOffer = item.delivery_offer;
+    const medicineAmount = orderDeliveryOffer?.medicine_amount != null ? Number(orderDeliveryOffer.medicine_amount) : null;
+    const deliveryCharge = orderDeliveryOffer?.home_delivery_available ? Number(orderDeliveryOffer.delivery_charge || 0) : 0;
+    const pickupTotal = orderDeliveryOffer?.pickup_payable_amount != null ? Number(orderDeliveryOffer.pickup_payable_amount) : null;
+    const deliveryTotal = orderDeliveryOffer?.delivery_payable_amount != null ? Number(orderDeliveryOffer.delivery_payable_amount) : null;
+    const etaMinutes = orderDeliveryOffer?.estimated_delivery_minutes != null ? Number(orderDeliveryOffer.estimated_delivery_minutes) : null;
+    const isHomeDeliveryOrder = item.delivery_option === 'online';
+    const isWalkInOrder = item.delivery_option === 'walk_in';
+    const showOrderBreakdown = medicineAmount != null || pickupTotal != null || deliveryTotal != null || orderDeliveryOffer?.delivery_message;
+    const selectedOrderTotal = Number(item.total_amount || 0);
+    const displayedFinalTotal = isHomeDeliveryOrder
+      ? (deliveryTotal ?? (medicineAmount != null ? medicineAmount + deliveryCharge : selectedOrderTotal))
+      : (pickupTotal ?? (medicineAmount ?? selectedOrderTotal));
 
     return (
       <View className="bg-white rounded-[2rem] mb-5 border border-slate-200/70 shadow-xl shadow-slate-200/60 overflow-hidden">
@@ -1208,10 +1245,46 @@ export default function OrdersScreen() {
                   </View>
                 )}
                 <Text className="text-right text-lg font-black text-emerald-700" numberOfLines={1}>
-                  {formatCurrency(item.total_amount)}
+                  {/* {formatCurrency(selectedOrderTotal)} */}
+                  {formatCurrency(displayedFinalTotal)}
                 </Text>
               </View>
             </View>
+
+            {showOrderBreakdown && (
+              <View className="mb-3 rounded-[1.2rem] border border-slate-100 bg-slate-50 p-3">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-[8px] font-black uppercase tracking-[2px] text-slate-400">Medicines total</Text>
+                  <Text className="text-[8px] font-black uppercase tracking-[2px] text-slate-500">
+                    {isHomeDeliveryOrder ? 'Home delivery' : 'Store pickup'}
+                  </Text>
+                </View>
+                {medicineAmount != null && (
+                  <View className="mt-2 flex-row items-center justify-between">
+                    <Text className="text-[10px] font-semibold text-slate-500">Medicine amount</Text>
+                    <Text className="text-[10px] font-black text-slate-800">{formatCurrency(medicineAmount)}</Text>
+                  </View>
+                )}
+                {isHomeDeliveryOrder && (
+                  <View className="mt-2 flex-row items-center justify-between">
+                    <Text className="text-[10px] font-semibold text-slate-500">Delivery charge</Text>
+                    <Text className="text-[10px] font-black text-blue-700">{formatCurrency(deliveryCharge)}</Text>
+                  </View>
+                )}
+                {isHomeDeliveryOrder && etaMinutes != null && (
+                  <View className="mt-2 flex-row items-center justify-between">
+                    <Text className="text-[10px] font-semibold text-slate-500">ETA</Text>
+                    <Text className="text-[10px] font-black text-blue-700">Approx. {etaMinutes} min</Text>
+                  </View>
+                )}
+                <View className="mt-2 flex-row items-center justify-between border-t border-slate-200 pt-2">
+                  <Text className="text-[10px] font-black uppercase tracking-[1.2px] text-slate-700">
+                    Total payable
+                  </Text>
+                  <Text className="text-[11px] font-black text-slate-900">{formatCurrency(displayedFinalTotal)}</Text>
+                </View>
+              </View>
+            )}
 
             <View className="flex-row items-center gap-2">
               <TouchableOpacity

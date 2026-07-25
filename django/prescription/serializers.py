@@ -898,23 +898,29 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
 
         if obj.total_amount is None or obj.user_status in inactive_statuses:
             return None
-        
-        # Get competing active quotes for the EXACT SAME prescription
+
+        # Compare the actual payable amount so delivery charge is included for home delivery.
         competing_quotes = PrescriptionResponse.objects.filter(
             prescription=obj.prescription,
             total_amount__isnull=False
         ).exclude(
             user_status__in=inactive_statuses
-        ).values_list('total_amount', flat=True)
+        ).select_related('delivery_offer')
 
         if len(competing_quotes) < 2:
             return None
-            
-        sorted_quotes = sorted([float(q) for q in competing_quotes])
+
+        payable_quotes = []
+        for quote in competing_quotes:
+            payable_quotes.append(float(self.get_payable_amount(quote)))
+
+        sorted_quotes = sorted(payable_quotes)
         lowest = sorted_quotes[0]
         second_lowest = sorted_quotes[1]
-        
-        if float(obj.total_amount) == lowest:
+
+        current_payable = float(self.get_payable_amount(obj))
+
+        if current_payable == lowest:
             return {
                 'is_best': True,
                 'savings': int(round(second_lowest - lowest))

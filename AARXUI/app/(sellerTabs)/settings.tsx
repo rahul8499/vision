@@ -181,6 +181,89 @@ export default function SellerSettingsScreen() {
     }
   };
 
+  const deactivateDeliveryPerson = async (person: any) => {
+    if (!token) return;
+    Alert.alert(
+      'Deactivate partner?',
+      'Is partner ko inactive kar diya jayega. Active deliveries complete hone ke baad hi safe hota hai.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeliveryBusy(true);
+              await axios.delete(`${BASE_URL}/api/store/delivery-persons/${person.id}/`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              Toast.show({
+                type: 'success',
+                text1: 'Partner deactivated',
+                text2: 'Active deliveries complete hone ke baad partner hidden/inactive ho gaya.',
+                position: 'bottom',
+              });
+              await fetchDeliveryConfiguration();
+            } catch (error: any) {
+              Toast.show({
+                type: 'error',
+                text1: 'Cannot deactivate now',
+                text2: error?.response?.data?.error || 'Active deliveries complete hone ke baad try karein.',
+                position: 'bottom',
+              });
+            } finally {
+              setDeliveryBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const deleteDeliveryPerson = async (person: any) => {
+    if (!token) return;
+    const hasActiveJobs = Number(person.current_order_count || 0) > 0;
+    Alert.alert(
+      'Delete delivery partner?',
+      hasActiveJobs
+        ? 'Is partner ke active jobs hain. Delete block ho sakta hai jab tak delivery complete na ho.'
+        : 'Delete karne se partner inactive bhi ho jayega. Ye action reversible nahi hota.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeliveryBusy(true);
+              await axios.delete(`${BASE_URL}/api/store/delivery-persons/${person.id}/`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              Toast.show({
+                type: 'success',
+                text1: 'Partner removed',
+                text2: hasActiveJobs
+                  ? 'Remove request sent. Active deliveries khatam hone ke baad try karein.'
+                  : 'Partner successfully removed.',
+                position: 'bottom',
+              });
+              await fetchDeliveryConfiguration();
+            } catch (error: any) {
+              Toast.show({
+                type: 'error',
+                text1: 'Delete blocked',
+                text2: error?.response?.data?.error || 'Active deliveries complete hone ke baad delete karein.',
+                position: 'bottom',
+              });
+            } finally {
+              setDeliveryBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const sharePartnerId = async (person: any) => {
     await Share.share({
       title: 'AARX Delivery Partner ID',
@@ -861,6 +944,11 @@ export default function SellerSettingsScreen() {
                   </View>
                   <View className="ml-2 items-end">
                     <Switch value={Boolean(person.is_available)} onValueChange={() => toggleDeliveryPerson(person)} disabled={!person.is_active} />
+                    <View className="mt-1 rounded-full bg-slate-100 px-2 py-0.5">
+                      <Text className={`text-[7px] font-black uppercase ${person.is_active ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        {person.is_active ? 'Active' : 'Inactive'}
+                      </Text>
+                    </View>
                     <TouchableOpacity onPress={() => sharePartnerId(person)} className="mt-1 flex-row items-center rounded-lg bg-blue-50 px-2 py-1">
                       <MaterialCommunityIcons name="share-variant-outline" size={11} color="#2563eb" />
                       <Text className="ml-1 text-[7px] font-black uppercase text-blue-700">Share ID</Text>
@@ -868,6 +956,14 @@ export default function SellerSettingsScreen() {
                     <TouchableOpacity onPress={() => { setPartnerPinTarget(person); setPartnerNewPin(''); }} className="mt-1 flex-row items-center rounded-lg bg-orange-50 px-2 py-1">
                       <MaterialCommunityIcons name="key-variant" size={11} color="#ea580c" />
                       <Text className="ml-1 text-[7px] font-black uppercase text-orange-700">Set / Share PIN</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => deactivateDeliveryPerson(person)} className="mt-1 flex-row items-center rounded-lg bg-amber-50 px-2 py-1">
+                      <MaterialCommunityIcons name="pause-circle-outline" size={11} color="#d97706" />
+                      <Text className="ml-1 text-[7px] font-black uppercase text-amber-700">Deactivate</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => deleteDeliveryPerson(person)} className="mt-1 flex-row items-center rounded-lg bg-rose-50 px-2 py-1">
+                      <MaterialCommunityIcons name="delete-outline" size={11} color="#e11d48" />
+                      <Text className="ml-1 text-[7px] font-black uppercase text-rose-700">Delete</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
