@@ -155,6 +155,12 @@ type ResponseItem = {
   completion_otp?: string | null;
   completion_otp_requested?: boolean;
   completion_otp_expires_at?: string | null;
+  delivery_picked_up_at?: string | null;
+  delivery_reached_at?: string | null;
+  delivery_assignment_status?: string;
+  delivery_assignment_rejection_reason?: string | null;
+  delivery_issue_code?: string | null;
+  delivery_issue_note?: string | null;
   can_order_again?: boolean;
   repeat_customer?: boolean;
   repeat_order_count?: number;
@@ -167,6 +173,9 @@ type ResponseItem = {
     eligibility_code: string;
     unavailable_reason?: string;
     delivery_charge: number | string;
+    medicine_amount: number | string;
+    pickup_payable_amount: number | string;
+    delivery_payable_amount: number | string;
     estimated_delivery_minutes?: number | null;
     delivery_message?: string;
     assigned_delivery_person?: {
@@ -1177,7 +1186,7 @@ export default function Prescription() {
               Toast.show({
                 type: 'info',
                 text1: 'Completion OTP Requested',
-                text2: 'Share the OTP shown on your order card with the store.',
+                text2: 'Share the OTP only at the final medicine handover.',
                 position: 'bottom',
                 visibilityTime: 5000
               });
@@ -1490,6 +1499,21 @@ export default function Prescription() {
     });
 
     const status = item.user_status || 'pending';
+    const homeDeliveryStatus = item.delivery_option === 'online' && ['accepted', 'processing', 'locked', 'out_for_delivery', 'completed'].includes(status)
+      ? item.user_status === 'completed'
+        ? { title: 'Delivered successfully', subtitle: 'OTP verified · Delivery completed', icon: 'check-decagram', color: '#059669', background: '#ecfdf5' }
+        : item.delivery_reached_at
+          ? { title: 'Partner आपके location पर पहुंच गया', subtitle: 'Delivery OTP तैयार रखें', icon: 'map-marker-check-outline', color: '#7c3aed', background: '#f5f3ff' }
+          : item.delivery_picked_up_at
+            ? { title: 'Medicines रास्ते में हैं', subtitle: 'Partner pharmacy से order लेकर निकल चुका है', icon: 'bike-fast', color: '#2563eb', background: '#eff6ff' }
+            : item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery'
+              ? { title: 'Delivery Partner assigned', subtitle: 'Partner pharmacy से order collect करेगा', icon: 'account-check-outline', color: '#0891b2', background: '#ecfeff' }
+              : item.delivery_assignment_status === 'pending'
+                ? { title: 'Delivery Partner से confirmation बाकी है', subtitle: 'Pharmacy ने delivery request भेज दी है', icon: 'account-clock-outline', color: '#d97706', background: '#fffbeb' }
+                : item.delivery_assignment_status === 'rejected'
+                  ? { title: 'दूसरा Delivery Partner खोजा जा रहा है', subtitle: 'Pharmacy जल्द नया partner assign करेगी', icon: 'account-switch-outline', color: '#d97706', background: '#fffbeb' }
+                  : { title: 'Order delivery के लिए तैयार हो रहा है', subtitle: 'Packing के बाद partner assign होगा', icon: 'package-variant-closed', color: '#475569', background: '#f8fafc' }
+      : null;
     const isExpired = !!item.stock_verified_at && (new Date().getTime() - new Date(item.stock_verified_at).getTime()) > 30 * 60000;
 
     const getStatusTheme = () => {
@@ -1705,7 +1729,7 @@ export default function Prescription() {
           </TouchableOpacity>
 
           <View className="flex-row items-center gap-1.5">
-            {isActiveOrder && (
+            {isActiveOrder && item.delivery_option === 'online' && (
               <TouchableOpacity
                 onPress={() => {
                   setTrackingOrderTarget(item);
@@ -1777,7 +1801,7 @@ export default function Prescription() {
                 <MaterialCommunityIcons name="shield-key" size={20} color="#a5b4fc" />
                 <View className="ml-2 flex-1">
                   <Text className="text-indigo-200 text-[8px] font-black uppercase tracking-[2px]">Action Required</Text>
-                  <Text className="text-white text-xs font-black mt-0.5">Show OTP to Store</Text>
+                  <Text className="text-white text-xs font-black mt-0.5">{item.delivery_option === 'online' ? 'Show OTP to Delivery Partner' : 'Show OTP to Store'}</Text>
                 </View>
               </View>
               <View className="min-w-[90px] px-2 py-1.5 rounded-xl bg-white/95 items-center">
@@ -1792,6 +1816,20 @@ export default function Prescription() {
         <View className="px-3.5 pt-3 pb-3 relative">
           {renderStoreInfo()}
           {renderPricingAndBadges()}
+          {!!homeDeliveryStatus && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => { setTrackingOrderTarget(item); setTrackingModalVisible(true); }}
+              style={{ backgroundColor: homeDeliveryStatus.background }}
+              className="mb-3 flex-row items-center rounded-[1rem] border border-slate-100 px-3 py-3"
+            >
+              <View style={{ backgroundColor: homeDeliveryStatus.color }} className="h-10 w-10 items-center justify-center rounded-xl">
+                <MaterialCommunityIcons name={homeDeliveryStatus.icon as any} size={20} color="white" />
+              </View>
+              <View className="ml-3 flex-1"><Text className="text-[8px] font-black uppercase tracking-[1.4px] text-slate-400">Home Delivery Status</Text><Text className="mt-1 text-[11px] font-black text-slate-900">{homeDeliveryStatus.title}</Text><Text className="mt-0.5 text-[9px] font-semibold text-slate-500">{homeDeliveryStatus.subtitle}</Text></View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color="#64748b" />
+            </TouchableOpacity>
+          )}
           {renderActionToolbar()}
 
           {/* Conditional Actions based on status */}
@@ -2010,6 +2048,7 @@ export default function Prescription() {
   const selectedDeliveryQuote = offerDetails?.delivery_offer
     || data.find(item => item.id === selectedResponseId)?.delivery_offer
     || null;
+  const selectedMedicineAmount = selectedDeliveryQuote?.medicine_amount;
 
   return (
     <View className="flex-1 bg-[#fbfcfd]">
@@ -2600,7 +2639,7 @@ export default function Prescription() {
 
               </View>
 
-              {!!offerDetails?.user_status && !['pending', 'rejected'].includes(offerDetails.user_status) && (
+              {offerDetails?.delivery_option === 'online' && !!offerDetails?.user_status && !['pending', 'rejected'].includes(offerDetails.user_status) && (
                 <TouchableOpacity
                   onPress={() => { setTrackingOrderTarget(offerDetails as any); setTrackingModalVisible(true); }}
                   className="bg-emerald-50 border border-emerald-100 p-5 rounded-[1.75rem] mb-6 flex-row items-center justify-between shadow-sm"
@@ -2626,11 +2665,16 @@ export default function Prescription() {
                       <Text className="text-[9px] font-black uppercase tracking-[1.5px] text-slate-500">Fulfillment options</Text>
                       <Text className="mt-1 text-xs font-black text-slate-900">
                         {offerDetails.delivery_offer.home_delivery_available
-                          ? `Home delivery ₹${offerDetails.delivery_offer.delivery_charge}${offerDetails.delivery_offer.estimated_delivery_minutes ? ` • ${offerDetails.delivery_offer.estimated_delivery_minutes} min` : ''}`
+                          ? `Optional home delivery • ₹${offerDetails.delivery_offer.delivery_charge} extra${offerDetails.delivery_offer.estimated_delivery_minutes ? ` • approx. ${offerDetails.delivery_offer.estimated_delivery_minutes} min` : ''}`
                           : 'Store pickup available'}
                       </Text>
                     </View>
                   </View>
+                  {offerDetails.delivery_offer.home_delivery_available && (
+                    <Text className="mt-3 text-[10px] font-bold leading-4 text-blue-700">
+                      Delivery charge applies only if you choose Home Delivery while accepting this offer. It is not included in the medicine quote above.
+                    </Text>
+                  )}
                   {!!offerDetails.delivery_offer.delivery_message && (
                     <Text className="mt-3 text-[11px] font-semibold leading-4 text-slate-600">{offerDetails.delivery_offer.delivery_message}</Text>
                   )}
@@ -2864,34 +2908,66 @@ export default function Prescription() {
               {(selectedDeliveryQuote?.pickup_available ?? true) && (
                 <TouchableOpacity
                   onPress={() => updateDeliveryOption("walk_in")}
-                  className="flex-row items-center bg-slate-50 border-2 border-slate-900/5 p-6 rounded-[2rem] shadow-sm active:bg-slate-100"
+                  className="bg-slate-50 border-2 border-slate-900/5 p-6 rounded-[2rem] shadow-sm active:bg-slate-100"
                 >
-                  <View className="w-14 h-14 bg-white rounded-2xl items-center justify-center shadow-sm">
-                    <MaterialCommunityIcons name="walk" size={28} color="#0f172a" />
+                  <View className="flex-row items-center">
+                    <View className="w-14 h-14 bg-white rounded-2xl items-center justify-center shadow-sm">
+                      <MaterialCommunityIcons name="walk" size={28} color="#0f172a" />
+                    </View>
+                    <View className="ml-5 flex-1">
+                      <Text className="text-lg font-black text-slate-900 tracking-tight uppercase">Store Pickup</Text>
+                      <Text className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest mt-0.5">Collect from the pharmacy</Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={24} color="#0f172a" />
                   </View>
-                  <View className="ml-5 flex-1">
-                    <Text className="text-lg font-black text-slate-900 tracking-tight uppercase">Store Pickup</Text>
-                    <Text className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest mt-0.5">Collect from the pharmacy</Text>
+                  <View className="mt-5 border-t border-slate-200 pt-4">
+                    <View className="flex-row justify-between">
+                      <Text className="text-xs font-bold text-slate-500">Medicines</Text>
+                      <Text className="text-xs font-black text-slate-800">₹{selectedMedicineAmount}</Text>
+                    </View>
+                    <View className="mt-2 flex-row justify-between">
+                      <Text className="text-xs font-bold text-slate-500">Pickup</Text>
+                      <Text className="text-xs font-black text-emerald-600">FREE</Text>
+                    </View>
+                    <View className="mt-3 flex-row justify-between border-t border-slate-200 pt-3">
+                      <Text className="text-sm font-black text-slate-900">Total payable</Text>
+                      <Text className="text-lg font-black text-slate-900">₹{selectedDeliveryQuote?.pickup_payable_amount}</Text>
+                    </View>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" size={24} color="#0f172a" />
                 </TouchableOpacity>
               )}
 
               {selectedDeliveryQuote?.home_delivery_available && (
                 <TouchableOpacity
                   onPress={() => updateDeliveryOption("online")}
-                  className="flex-row items-center bg-blue-50 border-2 border-blue-100 p-6 rounded-[2rem] shadow-sm active:bg-blue-100"
+                  className="bg-blue-50 border-2 border-blue-100 p-6 rounded-[2rem] shadow-sm active:bg-blue-100"
                 >
-                  <View className="w-14 h-14 bg-white rounded-2xl items-center justify-center shadow-sm">
-                    <MaterialCommunityIcons name="moped" size={28} color="#2563eb" />
+                  <View className="flex-row items-center">
+                    <View className="w-14 h-14 bg-white rounded-2xl items-center justify-center shadow-sm">
+                      <MaterialCommunityIcons name="moped" size={28} color="#2563eb" />
+                    </View>
+                    <View className="ml-5 flex-1">
+                      <Text className="text-lg font-black text-slate-900 tracking-tight uppercase">Home Delivery</Text>
+                      <Text className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-0.5">
+                        {selectedDeliveryQuote.estimated_delivery_minutes ? `Approx. ${selectedDeliveryQuote.estimated_delivery_minutes} min` : 'Delivered to your address'}
+                      </Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={24} color="#2563eb" />
                   </View>
-                  <View className="ml-5 flex-1">
-                    <Text className="text-lg font-black text-slate-900 tracking-tight uppercase">Home Delivery</Text>
-                    <Text className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-0.5">
-                      ₹{selectedDeliveryQuote.delivery_charge}{selectedDeliveryQuote.estimated_delivery_minutes ? ` • ${selectedDeliveryQuote.estimated_delivery_minutes} min` : ''}
-                    </Text>
+                  <View className="mt-5 border-t border-blue-100 pt-4">
+                    <View className="flex-row justify-between">
+                      <Text className="text-xs font-bold text-slate-500">Medicines</Text>
+                      <Text className="text-xs font-black text-slate-800">₹{selectedMedicineAmount}</Text>
+                    </View>
+                    <View className="mt-2 flex-row justify-between">
+                      <Text className="text-xs font-bold text-slate-500">Home delivery charge</Text>
+                      <Text className="text-xs font-black text-blue-700">₹{selectedDeliveryQuote.delivery_charge}</Text>
+                    </View>
+                    <View className="mt-3 flex-row justify-between border-t border-blue-100 pt-3">
+                      <Text className="text-sm font-black text-slate-900">Total payable</Text>
+                      <Text className="text-lg font-black text-blue-700">₹{selectedDeliveryQuote.delivery_payable_amount}</Text>
+                    </View>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" size={24} color="#2563eb" />
                 </TouchableOpacity>
               )}
 
@@ -2902,11 +2978,8 @@ export default function Prescription() {
               )}
             </View>
 
-            <TouchableOpacity
-              onPress={() => setDeliveryModalVisible(false)}
-              className="mt-10 py-5 items-center"
-            >
-              <Text className="text-gray-400 font-bold text-xs uppercase tracking-[3px]">Select Later</Text>
+            <TouchableOpacity onPress={() => setDeliveryModalVisible(false)} className="mt-8 py-4 items-center">
+              <Text className="text-gray-400 font-bold text-xs uppercase tracking-[3px]">Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -3248,13 +3321,32 @@ export default function Prescription() {
                     done: !!(['locked', 'out_for_delivery', 'completed'].includes(item.user_status || '') || item.is_locked || item.is_packed),
                     date: item.is_packed ? 'System Update Logged' : 'Pending Update'
                   },
-                  {
-                    label: item.delivery_option === 'online' ? 'Out for Delivery' : 'Ready for Pickup',
-                    subtext: item.delivery_option === 'online' ? 'Our delivery partner is on the way' : 'Your order is waiting at the counter',
-                    icon: item.delivery_option === 'online' ? 'truck-delivery' as const : 'store-clock' as const,
+                  ...(item.delivery_option === 'online' ? [{
+                    label: item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Delivery Partner Accepted' : 'Finding Delivery Partner',
+                    subtext: item.delivery_assignment_status === 'pending' ? 'Pharmacy has sent the delivery request to a partner' : item.delivery_assignment_status === 'rejected' ? 'Pharmacy is assigning another available partner' : item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Your delivery partner has accepted the order' : 'Pharmacy will assign a partner after packing',
+                    icon: 'account-clock-outline' as const,
+                    done: item.delivery_assignment_status === 'accepted' || item.user_status === 'out_for_delivery' || item.user_status === 'completed',
+                    date: item.delivery_assignment_status === 'pending' ? 'Waiting for partner' : item.delivery_assignment_status === 'rejected' ? 'Reassigning' : item.user_status === 'out_for_delivery' || item.user_status === 'completed' ? 'Partner confirmed' : 'Not assigned yet'
+                  }, {
+                    label: 'Picked Up from Pharmacy',
+                    subtext: 'Your medicines are with the delivery partner',
+                    icon: 'package-variant-closed' as const,
+                    done: !!item.delivery_picked_up_at || item.user_status === 'completed',
+                    date: item.delivery_picked_up_at ? new Date(item.delivery_picked_up_at).toLocaleString() : 'Pending Update'
+                  }, {
+                    label: 'Partner Reached Your Location',
+                    subtext: 'Keep the completion OTP ready for handover',
+                    icon: 'map-marker-check-outline' as const,
+                    done: !!item.delivery_reached_at || item.user_status === 'completed',
+                    date: item.delivery_reached_at ? new Date(item.delivery_reached_at).toLocaleString() : 'Pending Update'
+                  }] : []),
+                  ...(item.delivery_option !== 'online' ? [{
+                    label: 'Ready for Pickup',
+                    subtext: 'Your order is waiting at the pharmacy counter',
+                    icon: 'store-clock' as const,
                     done: !!(['locked', 'out_for_delivery', 'completed'].includes(item.user_status || '') || item.is_locked),
                     date: item.locked_at ? new Date(item.locked_at).toLocaleString() : item.is_locked || item.user_status === 'out_for_delivery' ? 'Store Authenticated' : 'Pending Update'
-                  },
+                  }] : []),
                   {
                     label: 'Completed',
                     subtext: 'Order perfectly fulfilled',
@@ -3266,6 +3358,12 @@ export default function Prescription() {
 
                 return (
                   <View className="relative pl-6 pt-2">
+                    {!!item.delivery_issue_code && item.user_status !== 'completed' && (
+                      <View className="mr-2 mb-4 flex-row items-start rounded-[1.3rem] border border-amber-200 bg-amber-50 p-4">
+                        <MaterialCommunityIcons name="alert-circle-outline" size={21} color="#d97706" />
+                        <View className="ml-3 flex-1"><Text className="text-[9px] font-black uppercase tracking-[1.5px] text-amber-700">Delivery update</Text><Text className="mt-1 text-xs font-bold leading-5 text-amber-900">Delivery partner ने pharmacy को एक समस्या बताई है। Pharmacy इसे resolve कर रही है।</Text></View>
+                      </View>
+                    )}
                     {!!item.completion_otp_requested && !!item.completion_otp && item.user_status !== 'completed' && (
                       <TouchableOpacity
                         onPress={() => setVisibleCompletionOtpId((current) => current === item.id ? null : item.id)}
@@ -3275,7 +3373,7 @@ export default function Prescription() {
                           <View className="flex-row items-center flex-1 pr-3">
                             <MaterialCommunityIcons name="shield-key-outline" size={22} color="#34d399" />
                             <View className="ml-3 flex-1">
-                              <Text className="text-emerald-400 text-[9px] font-black uppercase tracking-[2px]">Store Completion OTP</Text>
+                              <Text className="text-emerald-400 text-[9px] font-black uppercase tracking-[2px]">{item.delivery_option === 'online' ? 'Delivery Completion OTP' : 'Store Completion OTP'}</Text>
                               <Text className="text-white/50 text-[8px] font-bold uppercase tracking-[1.5px] mt-1">Tap to reveal only at handover</Text>
                             </View>
                           </View>

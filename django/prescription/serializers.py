@@ -405,10 +405,23 @@ class StoreDeliveryPersonSerializer(serializers.ModelSerializer):
 
 class QuoteDeliveryOfferSerializer(serializers.ModelSerializer):
     assigned_delivery_person = serializers.SerializerMethodField()
+    medicine_amount = serializers.SerializerMethodField()
+    pickup_payable_amount = serializers.SerializerMethodField()
+    delivery_payable_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = QuoteDeliveryOffer
-        fields = ['distance_km', 'pickup_available', 'home_delivery_available', 'eligibility_code', 'unavailable_reason', 'delivery_charge', 'estimated_delivery_minutes', 'delivery_message', 'assigned_delivery_person']
+        fields = ['distance_km', 'pickup_available', 'home_delivery_available', 'eligibility_code', 'unavailable_reason', 'delivery_charge', 'medicine_amount', 'pickup_payable_amount', 'delivery_payable_amount', 'estimated_delivery_minutes', 'delivery_message', 'assigned_delivery_person', 'assignment_status', 'assigned_at', 'assignment_responded_at', 'assignment_rejection_reason', 'delivery_issue_code', 'delivery_issue_note', 'delivery_issue_reported_at']
+
+    def get_medicine_amount(self, obj):
+        return str(obj.response.total_amount or 0)
+
+    def get_pickup_payable_amount(self, obj):
+        return str(obj.response.total_amount or 0)
+
+    def get_delivery_payable_amount(self, obj):
+        medicine_amount = obj.response.total_amount or 0
+        return str(medicine_amount + obj.delivery_charge)
 
     def get_assigned_delivery_person(self, obj):
         if not obj.assigned_delivery_person_id:
@@ -469,6 +482,49 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     can_request_replacement = serializers.SerializerMethodField()
     replacement_status = serializers.SerializerMethodField()
     replacement_id = serializers.SerializerMethodField()
+    delivery_assignment_status = serializers.SerializerMethodField()
+    delivery_assignment_rejection_reason = serializers.SerializerMethodField()
+    delivery_issue_code = serializers.SerializerMethodField()
+    delivery_issue_note = serializers.SerializerMethodField()
+    delivery_return = serializers.SerializerMethodField()
+
+    def _delivery_offer_value(self, obj, field, default=''):
+        try:
+            return getattr(obj.delivery_offer, field, default)
+        except QuoteDeliveryOffer.DoesNotExist:
+            return default
+
+    def get_delivery_assignment_status(self, obj):
+        return self._delivery_offer_value(obj, 'assignment_status', 'unassigned')
+
+    def get_delivery_assignment_rejection_reason(self, obj):
+        return self._delivery_offer_value(obj, 'assignment_rejection_reason')
+
+    def get_delivery_issue_code(self, obj):
+        return self._delivery_offer_value(obj, 'delivery_issue_code')
+
+    def get_delivery_issue_note(self, obj):
+        return self._delivery_offer_value(obj, 'delivery_issue_note')
+
+    def get_delivery_return(self, obj):
+        try:
+            item = obj.delivery_return
+        except Exception:
+            return None
+        return {
+            'id': item.id,
+            'reason': item.reason,
+            'reason_label': item.get_reason_display(),
+            'note': item.note,
+            'package_condition': item.package_condition,
+            'package_condition_label': item.get_package_condition_display(),
+            'status': item.status,
+            'status_label': item.get_status_display(),
+            'store_note': item.store_note,
+            'requested_at': item.requested_at,
+            'received_at': item.received_at,
+            'disputed_at': item.disputed_at,
+        }
 
     def _replacement_for_order(self, obj):
         try:
@@ -510,7 +566,9 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
             'quality_score', 'smart_tags', 'store_badges', 'trust_signal',
             'medicine_breakdown', 'best_deal',
             'completion_otp', 'completion_otp_requested', 'completion_otp_expires_at',
-            'delivery_picked_up_at', 'delivery_reached_at',
+            'delivery_picked_up_at', 'delivery_reached_at', 'delivery_assignment_status',
+            'delivery_assignment_rejection_reason', 'delivery_issue_code', 'delivery_issue_note',
+            'delivery_return',
             'completed_by_store', 'capabilities',
             'can_order_again', 'repeat_customer', 'repeat_order_count', 'last_order_at',
             'delivery_offer', 'payable_amount', 'completed_at',

@@ -163,7 +163,8 @@ export const getPrimaryAction = (order: SellerOrder): { action: OrderAction; lab
   if (capabilities.canStartBilling) return { action: 'START_BILLING', label: 'बिल बनाना शुरू करें', icon: 'script-text-outline', progressAction: 'start_processing' };
   if (capabilities.canPack) return { action: 'MARK_PACKED', label: 'Packing पूरी हो गई', icon: 'package-variant-closed', progressAction: 'mark_packed' };
   if (capabilities.canMarkReady) return { action: 'READY_PICKUP', label: 'Customer के लिए तैयार', icon: 'store-check-outline', progressAction: 'mark_locked' };
-  if (capabilities.canSendDelivery) return { action: 'OUT_FOR_DELIVERY', label: 'Delivery Partner चुनें', icon: 'truck-delivery', progressAction: 'mark_locked' };
+  if (capabilities.canSendDelivery && order.delivery_assignment_status === 'pending') return null;
+  if (capabilities.canSendDelivery) return { action: 'OUT_FOR_DELIVERY', label: order.delivery_assignment_status === 'rejected' ? 'दूसरा Partner चुनें' : 'Delivery Partner चुनें', icon: 'truck-delivery', progressAction: 'mark_locked' };
   if (capabilities.canComplete) return { action: 'COMPLETE', label: 'OTP लेकर पूरा करें', icon: 'check-decagram-outline', progressAction: 'mark_completed' };
   if (stage === 'COMPLETED') return null;
   return null;

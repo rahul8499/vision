@@ -140,10 +140,13 @@ def apply_quote_delivery_override(calculated, override):
 
 def release_assigned_delivery_person(response):
     try:
-        person = response.delivery_offer.assigned_delivery_person
+        offer = response.delivery_offer
+        person = offer.assigned_delivery_person
     except Exception:
+        offer = None
         person = None
-    if not person:
+    # Pending offers do not consume capacity; only accepted deliveries do.
+    if not person or getattr(offer, 'assignment_status', 'accepted') != 'accepted':
         return
     person.current_order_count = max(0, person.current_order_count - 1)
     person.save(update_fields=['current_order_count', 'updated_at'])

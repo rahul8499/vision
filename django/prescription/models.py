@@ -741,6 +741,19 @@ class PrescriptionResponseStatusHistory(models.Model):
         return f"Order {self.response_id}: {self.from_status} -> {self.to_status} at {self.created_at}"
 
 class QuoteDeliveryOffer(models.Model):
+    ASSIGNMENT_STATUS_CHOICES = [
+        ('unassigned', 'Unassigned'),
+        ('pending', 'Waiting for Partner'),
+        ('accepted', 'Accepted by Partner'),
+        ('rejected', 'Rejected by Partner'),
+    ]
+    DELIVERY_ISSUE_CHOICES = [
+        ('customer_unreachable', 'Customer not answering'),
+        ('wrong_address', 'Address is incorrect'),
+        ('customer_unavailable', 'Customer unavailable'),
+        ('order_not_ready', 'Order not ready at store'),
+        ('vehicle_problem', 'Vehicle problem'),
+    ]
     ELIGIBILITY_CHOICES = [
         ('eligible', 'Eligible'),
         ('delivery_disabled', 'Delivery Disabled'),
@@ -769,6 +782,13 @@ class QuoteDeliveryOffer(models.Model):
         blank=True,
         related_name='assigned_offers',
     )
+    assignment_status = models.CharField(max_length=20, choices=ASSIGNMENT_STATUS_CHOICES, default='unassigned', db_index=True)
+    assigned_at = models.DateTimeField(null=True, blank=True)
+    assignment_responded_at = models.DateTimeField(null=True, blank=True)
+    assignment_rejection_reason = models.CharField(max_length=240, blank=True)
+    delivery_issue_code = models.CharField(max_length=40, choices=DELIVERY_ISSUE_CHOICES, blank=True)
+    delivery_issue_note = models.CharField(max_length=240, blank=True)
+    delivery_issue_reported_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -794,6 +814,50 @@ class QuoteDeliveryOffer(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class DeliveryIssueReport(models.Model):
+    STATUS_CHOICES = [('open', 'Open'), ('resolved', 'Resolved')]
+    response = models.ForeignKey(PrescriptionResponse, on_delete=models.CASCADE, related_name='delivery_issue_reports')
+    delivery_person = models.ForeignKey(StoreDeliveryPerson, on_delete=models.CASCADE, related_name='issue_reports')
+    issue_code = models.CharField(max_length=40, choices=QuoteDeliveryOffer.DELIVERY_ISSUE_CHOICES)
+    note = models.CharField(max_length=240, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open', db_index=True)
+    resolution_note = models.CharField(max_length=240, blank=True)
+    resolution_source = models.CharField(max_length=30, blank=True)
+    reported_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-reported_at']
+        indexes = [models.Index(fields=['delivery_person', 'status', 'reported_at'])]
+
+
+class DeliveryReturnRequest(models.Model):
+    REASON_CHOICES = [
+        ('customer_unreachable', 'Customer unreachable'),
+        ('wrong_address', 'Wrong or incomplete address'),
+        ('customer_refused', 'Customer refused delivery'),
+        ('otp_unavailable', 'Customer could not provide OTP'),
+        ('unsafe_location', 'Unsafe delivery location'),
+        ('other', 'Other'),
+    ]
+    CONDITION_CHOICES = [('sealed', 'Sealed / intact'), ('opened', 'Package opened'), ('damaged', 'Package damaged')]
+    STATUS_CHOICES = [('returning', 'Returning to pharmacy'), ('received', 'Received by pharmacy'), ('disputed', 'Return disputed')]
+    response = models.OneToOneField(PrescriptionResponse, on_delete=models.CASCADE, related_name='delivery_return')
+    delivery_person = models.ForeignKey(StoreDeliveryPerson, on_delete=models.PROTECT, related_name='delivery_returns')
+    reason = models.CharField(max_length=40, choices=REASON_CHOICES)
+    note = models.CharField(max_length=240, blank=True)
+    package_condition = models.CharField(max_length=20, choices=CONDITION_CHOICES, default='sealed')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='returning', db_index=True)
+    store_note = models.CharField(max_length=240, blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+    disputed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-requested_at']
+        indexes = [models.Index(fields=['status', 'requested_at'])]
 
 
 class PrescriptionTargetStore(models.Model):

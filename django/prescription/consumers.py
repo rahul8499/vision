@@ -621,3 +621,55 @@ class StoreFulfillmentConsumer(RedisSafeAsyncWebsocketConsumer):
             'action': event.get('action', 'status_change'),
             'data': data
         }))
+
+
+class DeliveryPartnerConsumer(RedisSafeAsyncWebsocketConsumer):
+    """An isolated live signal channel for one authenticated delivery partner."""
+    MAX_WS_CONNECTIONS = settings.WEBSOCKET_RATE_LIMITS["max_connections_per_account"]
+
+    async def connect(self):
+        self.user = self.scope.get('user')
+        if not self.user or isinstance(self.user, AnonymousUser) or not getattr(self.user, 'is_delivery_person', False):
+            await self.close()
+            return
+        self.conn_key = f"ws_conn:delivery_{self.user.id}"
+        self.conn_slot_acquired = False
+        try:
+            count = await sync_to_async(FulfillmentConsumer._incr_conn)(self.conn_key)
+            self.conn_slot_acquired = True
+            if count > self.MAX_WS_CONNECTIONS:
+                await self._release_conn_slot()
+                await self.close(code=4029)
+                return
+            self.group_name = f'delivery_partner_{self.user.id}'
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+            await self.accept()
+        except (RedisError, asyncio.TimeoutError):
+            await self._release_conn_slot()
+            await self.close(code=1011)
+
+    async def disconnect(self, close_code):
+        if hasattr(self, 'group_name'):
+            try:
+                await self.channel_layer.group_discard(self.group_name, self.channel_name)
+            except (RedisError, asyncio.TimeoutError):
+                logger.warning("Delivery partner WS group discard failed.", exc_info=True)
+        await self._release_conn_slot()
+
+    async def _release_conn_slot(self):
+        if not getattr(self, 'conn_slot_acquired', False):
+            return
+        self.conn_slot_acquired = False
+        try:
+            await sync_to_async(FulfillmentConsumer._decr_conn)(self.conn_key)
+        except Exception:
+            logger.warning("Delivery partner WS counter release failed.", exc_info=True)
+
+    async def fulfillment_update(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'delivery_jobs_changed',
+            'event_id': event.get('event_id'),
+            'seq': event.get('seq'),
+            'action': event.get('action', 'status_change'),
+            'data': event.get('data', {}),
+        }))

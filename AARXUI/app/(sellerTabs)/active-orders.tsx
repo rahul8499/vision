@@ -43,6 +43,7 @@ const FILTER_OPTIONS: { key: OrderFilterMode; label: string; icon: string }[] = 
 
 type TerminalOrderStage = Extract<OrderStage, 'COMPLETED' | 'CANCELLED'>;
 type DeliveryPerson = { id:number; name:string; mobile:string; vehicle_type:string; vehicle_number?:string; is_active:boolean; is_available:boolean; can_login:boolean; current_order_count:number; max_concurrent_orders:number };
+type DeliveryReturn = { id:number; order_id:number; customer_name:string; partner_name:string; partner_mobile?:string; reason_label:string; note?:string; package_condition_label:string; status:'returning'|'received'|'disputed'; status_label:string; store_note?:string; requested_at?:string; received_at?:string };
 
 const TERMINAL_ORDER_OPTIONS: { key: TerminalOrderStage; label: string; icon: string; color: string; bg: string }[] = [
   { key: 'COMPLETED', label: 'Completed', icon: 'check-decagram-outline', color: '#059669', bg: '#ecfdf5' },
@@ -178,6 +179,11 @@ export default function ActiveOrdersScreen() {
   const [selectedEndDateKey, setSelectedEndDateKey] = useState<string | null>(null);
   const [orderFilterSheetVisible, setOrderFilterSheetVisible] = useState(false);
   const [orderArchiveMenuVisible, setOrderArchiveMenuVisible] = useState(false);
+  const [deliveryReturns, setDeliveryReturns] = useState<DeliveryReturn[]>([]);
+  const [returnsVisible, setReturnsVisible] = useState(false);
+  const [returnDecision, setReturnDecision] = useState<DeliveryReturn | null>(null);
+  const [returnStoreNote, setReturnStoreNote] = useState('');
+  const [returnBusy, setReturnBusy] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState<'single' | 'start' | 'end' | null>(null);
 
   const { stage: stageParam, focus: focusParam, orderId: orderIdParam } = useLocalSearchParams<{ stage?: string; focus?: string; orderId?: string }>();
@@ -193,6 +199,34 @@ export default function ActiveOrdersScreen() {
   }, []);
 
   const sellerOrders = useSellerOrders({ baseUrl: BASE_URL, token, onOtpRequired: openOtpModal });
+  const fetchDeliveryReturns = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${BASE_URL}/api/store/delivery-returns/`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not load returns.');
+      setDeliveryReturns(data.results || []);
+    } catch (error: any) {
+      Toast.show({ type: 'error', text1: 'Returns unavailable', text2: error.message });
+    }
+  }, [BASE_URL, token]);
+  useEffect(() => { fetchDeliveryReturns(); }, [fetchDeliveryReturns, sellerOrders.orders]);
+  const decideReturn = useCallback(async (action: 'receive' | 'dispute') => {
+    if (!returnDecision || (action === 'dispute' && returnStoreNote.trim().length < 3)) {
+      if (action === 'dispute') Toast.show({ type: 'error', text1: 'Verification note required' });
+      return;
+    }
+    setReturnBusy(true);
+    try {
+      const response = await fetch(`${BASE_URL}/api/store/delivery-returns/${returnDecision.id}/decision/`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, note: returnStoreNote.trim() }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not update return.');
+      Toast.show({ type: 'success', text1: data.message });
+      setReturnDecision(null); setReturnStoreNote('');
+      await Promise.all([fetchDeliveryReturns(), sellerOrders.fetchOrders(false)]);
+    } catch (error: any) { Toast.show({ type: 'error', text1: 'Return update failed', text2: error.message }); }
+    finally { setReturnBusy(false); }
+  }, [BASE_URL, fetchDeliveryReturns, returnDecision, returnStoreNote, sellerOrders, token]);
   const selectedDateOrders = useMemo(() => (
     sellerOrders.orders.filter((order) => {
       const orderDateKey = getOrderDateKey(order);
@@ -358,7 +392,9 @@ export default function ActiveOrdersScreen() {
       const response = await fetch(`${BASE_URL}/api/store/delivery-persons/`, { headers: { Authorization: `Bearer ${token}` } });
       const people = await response.json();
       if (!response.ok) throw new Error(people.error || 'Could not load delivery team.');
-      setDeliveryPeople((people || []).filter((person: DeliveryPerson) => person.is_active));
+      setDeliveryPeople((people || []).filter((person: DeliveryPerson) => (
+        person.is_active && person.is_available && person.can_login && person.current_order_count < person.max_concurrent_orders
+      )));
     } catch (error: any) {
       setDispatchOrder(null);
       Toast.show({ type: 'error', text1: 'Delivery team unavailable', text2: error.message });
@@ -378,6 +414,35 @@ export default function ActiveOrdersScreen() {
       setSelectedDeliveryPersonId(null);
     }
   }, [dispatchOrder, selectedDeliveryPersonId, sellerOrders]);
+
+  const confirmPickupFallback = useCallback(() => {
+    if (!dispatchOrder) return;
+    Alert.alert(
+      'Customer ने Store Pickup confirm किया?',
+      'केवल customer की अनुमति मिलने के बाद delivery order को pickup में बदलें।',
+      [
+        { text: 'नहीं', style: 'cancel' },
+        { text: 'हाँ, Pickup करें', onPress: async () => {
+          const result = await sellerOrders.updateProgress(dispatchOrder, 'convert_to_pickup');
+          if (result.success) setDispatchOrder(null);
+        } },
+      ],
+    );
+  }, [dispatchOrder, sellerOrders]);
+
+  const pauseHomeDelivery = useCallback(() => {
+    Alert.alert('Home Delivery बंद करें?', 'नए customers को Home Delivery उपलब्ध नहीं दिखाई देगी। चालू deliveries पर असर नहीं पड़ेगा।', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Temporarily बंद करें', style: 'destructive', onPress: async () => {
+        try {
+          const response = await fetch(`${BASE_URL}/api/store/delivery-settings/`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ home_delivery_enabled: false }) });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || data.home_delivery_enabled?.[0] || 'Could not pause home delivery.');
+          Toast.show({ type: 'success', text1: 'Home Delivery temporarily बंद है', text2: 'Settings से दोबारा चालू कर सकते हैं।' });
+        } catch (error:any) { Toast.show({ type: 'error', text1: 'Setting update failed', text2: error.message }); }
+      } },
+    ]);
+  }, [BASE_URL, token]);
 
   const jumpToDate = useCallback((dateKey: string) => {
     setSelectedStartDateKey(null);
@@ -703,6 +768,15 @@ export default function ActiveOrdersScreen() {
               </View>
               <TouchableOpacity
                 activeOpacity={0.86}
+                onPress={() => { setOrderArchiveMenuVisible(false); setReturnsVisible(true); fetchDeliveryReturns(); }}
+                className="flex-row items-center border-b border-orange-100 bg-amber-50 px-4 py-3.5"
+              >
+                <View className="h-9 w-9 items-center justify-center rounded-xl bg-white"><MaterialCommunityIcons name="package-variant-closed" size={19} color="#d97706" /></View>
+                <View className="ml-3 flex-1"><Text className="text-[12px] font-black text-slate-950">Delivery Returns</Text><Text className="mt-0.5 text-[8px] font-black uppercase tracking-[0.8px] text-amber-700">{deliveryReturns.filter(item => item.status !== 'received').length} need verification</Text></View>
+                {deliveryReturns.some(item => item.status !== 'received') && <View className="min-w-[22px] items-center rounded-full bg-rose-500 px-1.5 py-1"><Text className="text-[8px] font-black text-white">{deliveryReturns.filter(item => item.status !== 'received').length}</Text></View>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.86}
                 onPress={() => { setOrderArchiveMenuVisible(false); router.push('/(sellerTabs)/replacements'); }}
                 className="flex-row items-center bg-orange-50 px-4 py-3.5"
               >
@@ -829,7 +903,7 @@ export default function ActiveOrdersScreen() {
             <View className="mt-4 flex-row items-start justify-between"><View className="flex-1 pr-4"><Text className="text-[9px] font-black uppercase tracking-[1.8px] text-emerald-600">Packed & ready</Text><Text className="mt-1 text-2xl font-black text-slate-950">Assign Delivery Partner</Text><Text className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">Select who will carry Order #{dispatchOrder?.response_id || dispatchOrder?.id}. Dispatch starts only after confirmation.</Text></View><TouchableOpacity onPress={() => setDispatchOrder(null)} className="h-10 w-10 items-center justify-center rounded-2xl bg-slate-100"><MaterialCommunityIcons name="close" size={20} color="#334155" /></TouchableOpacity></View>
             {deliveryPeopleLoading ? <View className="items-center py-12"><ActivityIndicator color="#059669"/><Text className="mt-3 text-xs font-bold text-slate-400">Loading delivery team…</Text></View> : (
               <ScrollView className="mt-5" showsVerticalScrollIndicator={false}>
-                {!deliveryPeople.length ? <View className="items-center rounded-2xl bg-amber-50 p-6"><MaterialCommunityIcons name="account-alert-outline" size={34} color="#d97706"/><Text className="mt-3 font-black text-amber-900">No active delivery partner</Text><Text className="mt-1 text-center text-xs font-semibold text-amber-700">Add a partner from Seller Settings → Delivery Team.</Text></View> : deliveryPeople.map(person=>{
+                {!deliveryPeople.length ? <View className="rounded-2xl bg-amber-50 p-5"><View className="items-center"><MaterialCommunityIcons name="account-alert-outline" size={34} color="#d97706"/><Text className="mt-3 font-black text-amber-900">अभी कोई Delivery Partner नहीं है</Text><Text className="mt-1 text-center text-xs font-semibold leading-5 text-amber-700">इस order के लिए नीचे सही विकल्प चुनें।</Text></View><TouchableOpacity onPress={()=>{setDispatchOrder(null);router.push('/(sellerTabs)/settings' as any);}} className="mt-4 h-12 flex-row items-center justify-center rounded-2xl bg-slate-950"><MaterialCommunityIcons name="account-plus-outline" size={19} color="white"/><Text className="ml-2 font-black text-white">DELIVERY PARTNER जोड़ें</Text></TouchableOpacity><TouchableOpacity onPress={confirmPickupFallback} className="mt-2 h-12 flex-row items-center justify-center rounded-2xl bg-emerald-600"><MaterialCommunityIcons name="store-check-outline" size={19} color="white"/><Text className="ml-2 font-black text-white">CUSTOMER ने PICKUP कहा है</Text></TouchableOpacity><TouchableOpacity onPress={pauseHomeDelivery} className="mt-2 h-11 items-center justify-center rounded-2xl border border-amber-200 bg-white"><Text className="text-[10px] font-black text-amber-700">नए orders के लिए Home Delivery बंद करें</Text></TouchableOpacity></View> : deliveryPeople.map(person=>{
                   const full=person.current_order_count>=person.max_concurrent_orders; const selected=selectedDeliveryPersonId===person.id; const available=person.is_available&&person.can_login&&!full;
                   return <TouchableOpacity key={person.id} disabled={!available} onPress={()=>setSelectedDeliveryPersonId(person.id)} className={`mb-3 flex-row items-center rounded-[1.2rem] border p-4 ${selected?'border-emerald-500 bg-emerald-50':available?'border-slate-200 bg-white':'border-slate-100 bg-slate-50 opacity-50'}`}><View className={`h-12 w-12 items-center justify-center rounded-2xl ${selected?'bg-emerald-600':'bg-blue-50'}`}><MaterialCommunityIcons name={person.vehicle_type==='bike'||person.vehicle_type==='scooter'?'moped':'account'} size={24} color={selected?'white':'#2563eb'}/></View><View className="ml-3 flex-1"><Text className="text-base font-black text-slate-950">{person.name}</Text><Text className="mt-0.5 text-[9px] font-bold uppercase text-slate-400">{person.vehicle_type}{person.vehicle_number?` • ${person.vehicle_number}`:''}</Text><Text className={`mt-1 text-[8px] font-black uppercase ${available?'text-emerald-600':'text-red-500'}`}>{!person.can_login?'Set partner PIN first':full?'Order limit reached':person.is_available?'Available now':'Unavailable'} • {person.current_order_count}/{person.max_concurrent_orders} jobs</Text></View><MaterialCommunityIcons name={selected?'check-circle':'circle-outline'} size={23} color={selected?'#059669':'#cbd5e1'}/></TouchableOpacity>;
                 })}
@@ -985,6 +1059,34 @@ export default function ActiveOrdersScreen() {
           onChange={handleOrderDatePickerChange}
         />
       )}
+
+      <Modal visible={returnsVisible} transparent animationType="slide" onRequestClose={() => setReturnsVisible(false)}>
+        <View className="flex-1 justify-end bg-black/60">
+          <View className="max-h-[88%] rounded-t-[2rem] bg-[#f8fafc] p-5">
+            <View className="flex-row items-center justify-between"><View><Text className="text-xl font-black text-slate-950">Delivery Returns</Text><Text className="mt-1 text-xs font-semibold text-slate-500">Medicines देखकर ही receive confirm करें।</Text></View><TouchableOpacity onPress={() => setReturnsVisible(false)} className="h-10 w-10 items-center justify-center rounded-full bg-white"><MaterialCommunityIcons name="close" size={22} color="#334155"/></TouchableOpacity></View>
+            <ScrollView className="mt-4" showsVerticalScrollIndicator={false}>
+              {deliveryReturns.length === 0 ? <View className="items-center rounded-2xl bg-white p-8"><MaterialCommunityIcons name="package-variant-closed" size={34} color="#94a3b8"/><Text className="mt-3 font-black text-slate-700">No delivery returns</Text></View> : deliveryReturns.map(item => <View key={item.id} className="mb-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <View className="flex-row justify-between"><View className="flex-1"><Text className="text-[9px] font-black uppercase text-orange-600">Order #{item.order_id}</Text><Text className="mt-1 text-base font-black text-slate-950">{item.customer_name}</Text></View><View className={`self-start rounded-full px-2.5 py-1 ${item.status === 'received' ? 'bg-emerald-50' : item.status === 'disputed' ? 'bg-rose-50' : 'bg-orange-50'}`}><Text className={`text-[8px] font-black uppercase ${item.status === 'received' ? 'text-emerald-700' : item.status === 'disputed' ? 'text-rose-700' : 'text-orange-700'}`}>{item.status_label}</Text></View></View>
+                <View className="mt-3 rounded-xl bg-slate-50 p-3"><Text className="text-[10px] font-black text-slate-800">Reason: {item.reason_label}</Text><Text className="mt-1 text-[10px] font-semibold text-slate-600">Package declared: {item.package_condition_label}</Text>{item.note ? <Text className="mt-1 text-[10px] text-slate-500">Partner note: {item.note}</Text> : null}</View>
+                <View className="mt-3 flex-row items-center"><MaterialCommunityIcons name="bike-fast" size={16} color="#475569"/><Text className="ml-2 flex-1 text-[10px] font-bold text-slate-600">{item.partner_name} · {item.partner_mobile || 'No phone'}</Text>{item.partner_mobile ? <TouchableOpacity onPress={() => Linking.openURL(`tel:${item.partner_mobile}`)} className="rounded-lg bg-blue-50 px-3 py-2"><Text className="text-[9px] font-black text-blue-700">CALL</Text></TouchableOpacity> : null}</View>
+                {item.store_note ? <Text className="mt-2 text-[10px] font-bold text-rose-600">Store note: {item.store_note}</Text> : null}
+                {item.status !== 'received' && <TouchableOpacity onPress={() => { setReturnDecision(item); setReturnStoreNote(item.store_note || ''); }} className="mt-3 h-11 items-center justify-center rounded-xl bg-slate-950"><Text className="text-[10px] font-black text-white">VERIFY RETURN</Text></TouchableOpacity>}
+              </View>)}
+              <View className="h-8" />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!returnDecision} transparent animationType="fade" onRequestClose={() => !returnBusy && setReturnDecision(null)}>
+        <View className="flex-1 justify-center bg-black/60 px-5"><View className="rounded-[2rem] bg-white p-6">
+          <Text className="text-xl font-black text-slate-950">Verify returned medicines</Text><Text className="mt-2 text-xs font-semibold leading-5 text-slate-500">Order #{returnDecision?.order_id} · Declared {returnDecision?.package_condition_label}. Physical package और medicines check करें।</Text>
+          <TextInput value={returnStoreNote} onChangeText={setReturnStoreNote} placeholder="Verification/dispute note" multiline className="mt-4 h-24 rounded-2xl border border-slate-200 bg-slate-50 p-4" textAlignVertical="top" />
+          <TouchableOpacity disabled={returnBusy} onPress={() => decideReturn('receive')} className="mt-4 h-13 items-center justify-center rounded-2xl bg-emerald-600">{returnBusy ? <ActivityIndicator color="white"/> : <Text className="font-black text-white">CONFIRM MEDICINES RECEIVED</Text>}</TouchableOpacity>
+          <TouchableOpacity disabled={returnBusy} onPress={() => decideReturn('dispute')} className="mt-2 h-12 items-center justify-center rounded-2xl bg-rose-50"><Text className="font-black text-rose-600">PACKAGE ISSUE / DISPUTE</Text></TouchableOpacity>
+          <TouchableOpacity disabled={returnBusy} onPress={() => setReturnDecision(null)} className="mt-2 h-11 items-center justify-center"><Text className="font-black text-slate-500">CANCEL</Text></TouchableOpacity>
+        </View></View>
+      </Modal>
 
       <Modal visible={completionOtpModalVisible} transparent animationType="fade" onRequestClose={() => setCompletionOtpModalVisible(false)}>
         <View className="flex-1 justify-center bg-black/60 px-6">

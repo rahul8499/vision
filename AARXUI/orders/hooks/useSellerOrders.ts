@@ -166,7 +166,9 @@ export const useSellerOrders = ({ baseUrl, token, onOtpRequired }: UseSellerOrde
         : progressAction === 'mark_packed'
           ? 'Packed'
           : progressAction === 'mark_locked'
-            ? (order.delivery_option === 'online' ? 'Delivery' : 'Ready for Pickup')
+            ? (order.delivery_option === 'online' ? 'Partner Response' : 'Ready for Pickup')
+            : progressAction === 'convert_to_pickup'
+              ? 'Store Pickup'
             : 'next stage';
       Toast.show({ type: 'success', text1: 'काम सेव हो गया', text2: `अब यह order ऊपर ${destination} में मिलेगा।`, position: 'bottom' });
       await fetchOrders(false);

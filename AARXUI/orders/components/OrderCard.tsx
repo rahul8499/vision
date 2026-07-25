@@ -35,6 +35,8 @@ const formatDate = (value?: string | null) => {
 };
 
 const getStatusLabel = (stageInfo: StageResolution, order: SellerOrder) => {
+  if (order.delivery_assignment_status === 'pending') return 'Partner के जवाब का इंतजार';
+  if (order.delivery_assignment_status === 'rejected') return 'Partner ने delivery मना की';
   if (order.delivery_reached_at) return 'Delivery partner reached customer';
   if (order.delivery_picked_up_at) return 'Picked up • On the way';
   if (stageInfo.stage === 'NEW') return 'Billing Pending';
@@ -47,6 +49,8 @@ const getSellerGuidance = (order: SellerOrder, stageInfo: StageResolution) => {
     case 'NEW': return { title: 'दवाइयों का बिल बनाना शुरू करें', next: 'बटन दबाने के बाद यह order Billing में मिलेगा।', icon: 'receipt-text-outline' };
     case 'BILLING': return { title: 'बिल बनाकर दवाइयां pack करें', next: 'Packing पूरी होने पर यह order Packed में मिलेगा।', icon: 'package-variant' };
     case 'PACKED':
+      if (order.delivery_assignment_status === 'pending') return { title: 'Delivery request partner को भेजी गई है', next: 'Accept करते ही order अपने आप Delivery में चला जाएगा।', icon: 'timer-sand' };
+      if (order.delivery_assignment_status === 'rejected') return { title: 'Partner ने delivery स्वीकार नहीं की', next: 'दूसरा available partner चुनें।', icon: 'account-switch-outline' };
       return order.delivery_option === 'online'
         ? { title: 'Delivery के लिए partner चुनें', next: 'Partner चुनते ही order Delivery में चला जाएगा।', icon: 'moped' }
         : { title: 'Order customer को देने के लिए तैयार रखें', next: 'बटन दबाने के बाद यह Ready for Pickup में मिलेगा।', icon: 'store-check-outline' };
@@ -171,6 +175,13 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
               <Text className="mt-1 text-[12px] font-black leading-4 text-slate-900">{sellerGuidance.title}</Text>
               <Text className="mt-1 text-[9px] font-semibold leading-4 text-slate-500">{sellerGuidance.next}</Text>
             </View>
+          </View>
+        )}
+
+        {!!order.delivery_issue_code && (
+          <View className="mt-2.5 flex-row items-start rounded-[1rem] border border-rose-100 bg-rose-50 px-3.5 py-3">
+            <MaterialCommunityIcons name="alert-circle" size={20} color="#e11d48" />
+            <View className="ml-2.5 flex-1"><Text className="text-[8px] font-black uppercase tracking-[1.2px] text-rose-600">Delivery problem</Text><Text className="mt-1 text-[11px] font-black text-rose-900">{order.delivery_issue_note || order.delivery_issue_code.replaceAll('_', ' ')}</Text><Text className="mt-1 text-[9px] font-semibold text-rose-600">Partner से call करके स्थिति confirm करें।</Text></View>
           </View>
         )}
 

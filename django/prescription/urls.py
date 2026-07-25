@@ -25,7 +25,9 @@ from .views import (
     StoreReplacementInTransitView, StoreReplacementCompleteView, LanguagePreferenceView,
     UserEmergencyRequestListView, UserEmergencyRequestDetailView, UserEmergencyRequestCancelView,
     DeliveryPersonLoginView, DeliveryPersonMeView, DeliveryJobListView, DeliveryJobDetailView,
-    DeliveryJobStatusView, DeliveryJobRequestOTPView, DeliveryJobVerifyOTPView
+    DeliveryJobStatusView, DeliveryJobRequestOTPView, DeliveryJobVerifyOTPView,
+    DeliveryJobDecisionView, DeliveryJobProblemView, DeliveryIssueListView, DeliveryIssueResolveView,
+    DeliveryJobReturnView, StoreDeliveryReturnListView, StoreDeliveryReturnDecisionView
 )
 urlpatterns = [
     path('delivery/login/', DeliveryPersonLoginView.as_view(), name='delivery-login'),
@@ -33,6 +35,11 @@ urlpatterns = [
     path('delivery/jobs/', DeliveryJobListView.as_view(), name='delivery-jobs'),
     path('delivery/jobs/<int:job_id>/', DeliveryJobDetailView.as_view(), name='delivery-job-detail'),
     path('delivery/jobs/<int:job_id>/status/', DeliveryJobStatusView.as_view(), name='delivery-job-status'),
+    path('delivery/jobs/<int:job_id>/decision/', DeliveryJobDecisionView.as_view(), name='delivery-job-decision'),
+    path('delivery/jobs/<int:job_id>/problem/', DeliveryJobProblemView.as_view(), name='delivery-job-problem'),
+    path('delivery/jobs/<int:job_id>/return/', DeliveryJobReturnView.as_view(), name='delivery-job-return'),
+    path('delivery/issues/', DeliveryIssueListView.as_view(), name='delivery-issue-list'),
+    path('delivery/issues/<int:issue_id>/resolve/', DeliveryIssueResolveView.as_view(), name='delivery-issue-resolve'),
     path('delivery/jobs/<int:job_id>/request-otp/', DeliveryJobRequestOTPView.as_view(), name='delivery-job-request-otp'),
     path('delivery/jobs/<int:job_id>/verify-otp/', DeliveryJobVerifyOTPView.as_view(), name='delivery-job-verify-otp'),
     path('upload/', PrescriptionUploadView.as_view(), name='upload'),
@@ -53,6 +60,8 @@ urlpatterns = [
     path("store/delivery-settings/", StoreDeliverySettingsView.as_view(), name="store-delivery-settings"),
     path("store/delivery-persons/", StoreDeliveryPersonListCreateView.as_view(), name="store-delivery-person-list"),
     path("store/delivery-persons/<int:person_id>/", StoreDeliveryPersonDetailView.as_view(), name="store-delivery-person-detail"),
+    path("store/delivery-returns/", StoreDeliveryReturnListView.as_view(), name="store-delivery-return-list"),
+    path("store/delivery-returns/<int:return_id>/decision/", StoreDeliveryReturnDecisionView.as_view(), name="store-delivery-return-decision"),
     path("account/delete/", AccountDeleteView.as_view(), name="account-delete"),
 
     path('store/register/', StoreRegisterView.as_view(), name='store_register'),

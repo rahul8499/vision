@@ -74,6 +74,25 @@ type OrderResponse = {
   completion_otp?: string | null;
   completion_otp_requested?: boolean;
   completion_otp_expires_at?: string | null;
+  delivery_picked_up_at?: string | null;
+  delivery_reached_at?: string | null;
+  delivery_assignment_status?: string | null;
+  delivery_assignment_rejection_reason?: string | null;
+  delivery_issue_code?: string | null;
+  delivery_issue_note?: string | null;
+  delivery_return?: {
+    id: number;
+    reason: string;
+    reason_label: string;
+    note?: string | null;
+    package_condition: string;
+    package_condition_label: string;
+    status: 'returning' | 'received' | 'disputed';
+    status_label: string;
+    store_note?: string | null;
+    requested_at?: string | null;
+    received_at?: string | null;
+  } | null;
   can_order_again?: boolean;
   can_request_replacement?: boolean;
   replacement_status?: string | null;
@@ -922,13 +941,52 @@ export default function OrdersScreen() {
     const imageUrl = buildMediaUrl(BASE_URL, item.image);
     const isWalkIn = item.delivery_option === 'walk_in';
     const hasCompletionOtp = !!(item.completion_otp_requested && item.completion_otp && statusKey !== 'completed');
-    const liveSteps = [
+    const preparationSteps = [
       { label: 'Accepted', icon: 'check-bold' as const, done: ['accepted', 'processing', 'locked', 'out_for_delivery', 'completed'].includes(statusKey) || !!item.is_locked },
       { label: 'Billing', icon: 'script-text-outline' as const, done: ['processing', 'locked', 'out_for_delivery', 'completed'].includes(statusKey) || !!item.is_processing_started },
       { label: 'Packed', icon: 'package-variant-closed' as const, done: ['locked', 'out_for_delivery', 'completed'].includes(statusKey) || !!item.is_packed },
-      { label: isWalkIn ? 'Ready' : 'Delivery', icon: isWalkIn ? 'store-clock' as const : 'truck-delivery' as const, done: ['locked', 'out_for_delivery', 'completed'].includes(statusKey) || !!item.is_locked },
+    ];
+    const pickupSteps = [
+      ...preparationSteps,
+      { label: 'Ready', icon: 'store-clock' as const, done: ['locked', 'completed'].includes(statusKey) || !!item.is_locked },
       { label: 'Done', icon: 'flag-checkered' as const, done: statusKey === 'completed' },
     ];
+    const deliverySteps = [
+      { label: 'Partner', icon: 'account-check-outline' as const, done: item.delivery_assignment_status === 'accepted' || ['out_for_delivery', 'completed'].includes(statusKey) },
+      { label: 'Picked', icon: 'package-variant-closed' as const, done: !!item.delivery_picked_up_at || statusKey === 'completed' },
+      { label: 'On Way', icon: 'bike-fast' as const, done: !!item.delivery_picked_up_at || statusKey === 'completed' },
+      { label: 'Reached', icon: 'map-marker-check-outline' as const, done: !!item.delivery_reached_at || statusKey === 'completed' },
+      { label: 'OTP', icon: 'shield-key-outline' as const, done: !!item.completion_otp_requested || statusKey === 'completed' },
+      { label: 'Delivered', icon: 'flag-checkered' as const, done: statusKey === 'completed' },
+    ];
+    const deliveryStatusTitle = item.delivery_option === 'online'
+      ? item.delivery_return?.status === 'returning' ? 'Delivery failed · medicines pharmacy लौट रही हैं'
+        : item.delivery_return?.status === 'disputed' ? 'Pharmacy returned package verify कर रही है'
+        : item.delivery_return?.status === 'received' ? 'Medicines pharmacy को वापस मिल गईं'
+        : statusKey === 'completed' ? 'Delivered successfully'
+        : item.delivery_reached_at ? 'Partner आपके location पर पहुंच गया'
+          : item.delivery_picked_up_at ? 'Medicines रास्ते में हैं'
+            : item.delivery_assignment_status === 'accepted' || statusKey === 'out_for_delivery' ? 'Delivery Partner assigned'
+              : item.delivery_assignment_status === 'pending' ? 'Partner confirmation बाकी है'
+                : item.delivery_assignment_status === 'rejected' ? 'दूसरा partner assign किया जा रहा है'
+                  : item.is_packed ? 'Pharmacy delivery partner assign कर रही है' : 'Packing के बाद partner assign होगा'
+      : 'Walk-in pickup at store';
+    const renderTimelineSteps = (steps: { label: string; icon: any; done: boolean }[]) => (
+      <View className="flex-row items-start justify-between">
+        {steps.map((step, index) => (
+          <View key={step.label} className="flex-1 items-center">
+            <View className="w-full flex-row items-center">
+              {index > 0 && <View className={`h-0.5 flex-1 ${steps[index - 1].done && step.done ? 'bg-emerald-500' : 'bg-slate-200'}`} />}
+              <View className={`h-8 w-8 items-center justify-center rounded-full border ${step.done ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-200'}`}>
+                <MaterialCommunityIcons name={step.icon} size={14} color={step.done ? '#ffffff' : '#94a3b8'} />
+              </View>
+              {index < steps.length - 1 && <View className={`h-0.5 flex-1 ${step.done && steps[index + 1].done ? 'bg-emerald-500' : 'bg-slate-200'}`} />}
+            </View>
+            <Text className={`mt-2 text-center text-[7.5px] font-black uppercase tracking-tighter ${step.done ? 'text-emerald-700' : 'text-slate-400'}`} numberOfLines={1}>{step.label}</Text>
+          </View>
+        ))}
+      </View>
+    );
     const canOrderAgain = statusKey === 'completed';
     const canCancelOrder = ['accepted', 'processing'].includes(statusKey) && !item.is_locked;
     const canContactStore = statusKey !== 'completed' && statusKey !== 'cancelled';
@@ -1081,7 +1139,7 @@ export default function OrdersScreen() {
                 <View className="ml-3 flex-1">
                   <Text className="text-[9px] font-black uppercase tracking-[2px] text-slate-400">Live Status</Text>
                   <Text className="text-xs font-black text-slate-900" numberOfLines={1}>
-                    {isWalkIn ? 'Walk-in pickup at store' : 'Delivery order tracking'}
+                    {deliveryStatusTitle}
                   </Text>
                 </View>
               </View>
@@ -1091,27 +1149,44 @@ export default function OrdersScreen() {
               </View>
             </View>
 
-            <View className="flex-row items-start justify-between">
-              {liveSteps.map((step, index) => (
-                <View key={step.label} className="flex-1 items-center">
-                  <View className="w-full flex-row items-center">
-                    {index > 0 && (
-                      <View className={`h-0.5 flex-1 ${liveSteps[index - 1].done && step.done ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                    )}
-                    <View className={`h-8 w-8 items-center justify-center rounded-full border ${step.done ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-200'}`}>
-                      <MaterialCommunityIcons name={step.icon} size={14} color={step.done ? '#ffffff' : '#94a3b8'} />
-                    </View>
-                    {index < liveSteps.length - 1 && (
-                      <View className={`h-0.5 flex-1 ${step.done && liveSteps[index + 1].done ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                    )}
-                  </View>
-                  <Text className={`mt-2 text-center text-[7.5px] font-black uppercase tracking-tighter ${step.done ? 'text-emerald-700' : 'text-slate-400'}`} numberOfLines={1}>
-                    {step.label}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            {isWalkIn ? renderTimelineSteps(pickupSteps) : (
+              <View>
+                <View className="mb-2 flex-row items-center"><MaterialCommunityIcons name="storefront-outline" size={13} color="#64748b"/><Text className="ml-1.5 text-[8px] font-black uppercase tracking-[1.4px] text-slate-500">Store Preparation</Text></View>
+                {renderTimelineSteps(preparationSteps)}
+                <View className="my-4 h-px bg-slate-200" />
+                <View className="mb-2 flex-row items-center"><MaterialCommunityIcons name="bike-fast" size={13} color="#059669"/><Text className="ml-1.5 text-[8px] font-black uppercase tracking-[1.4px] text-emerald-700">Home Delivery Journey</Text></View>
+                {renderTimelineSteps(deliverySteps)}
+              </View>
+            )}
           </View>
+
+          {item.delivery_option === 'online' && !!item.delivery_issue_code && statusKey !== 'completed' && (
+            <View className="mb-4 flex-row items-start rounded-[1.2rem] border border-amber-200 bg-amber-50 p-4">
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#d97706" />
+              <View className="ml-3 flex-1"><Text className="text-[8px] font-black uppercase tracking-[1.5px] text-amber-700">Delivery update</Text><Text className="mt-1 text-[10px] font-bold leading-4 text-amber-900">Delivery में समस्या आई है। Pharmacy और partner इसे resolve कर रहे हैं।</Text></View>
+            </View>
+          )}
+
+          {item.delivery_option === 'online' && !!item.delivery_return && (
+            <View className={`mb-4 rounded-[1.35rem] border p-4 ${item.delivery_return.status === 'disputed' ? 'border-rose-200 bg-rose-50' : item.delivery_return.status === 'received' ? 'border-slate-200 bg-slate-50' : 'border-orange-200 bg-orange-50'}`}>
+              <View className="flex-row items-start">
+                <View className={`h-10 w-10 items-center justify-center rounded-xl ${item.delivery_return.status === 'disputed' ? 'bg-rose-100' : 'bg-orange-100'}`}>
+                  <MaterialCommunityIcons name="package-variant-closed" size={21} color={item.delivery_return.status === 'disputed' ? '#e11d48' : '#ea580c'} />
+                </View>
+                <View className="ml-3 flex-1">
+                  <Text className="text-[8px] font-black uppercase tracking-[1.5px] text-orange-700">Delivery could not be completed</Text>
+                  <Text className="mt-1 text-xs font-black leading-5 text-slate-900">{item.delivery_return.reason_label}</Text>
+                  <Text className="mt-1 text-[10px] font-semibold leading-4 text-slate-600">
+                    {item.delivery_return.status === 'returning' ? 'Delivery partner medicines pharmacy को वापस दे रहा है।'
+                      : item.delivery_return.status === 'disputed' ? 'Pharmacy package condition verify कर रही है।'
+                      : 'Pharmacy ने returned medicines receive कर ली हैं और order close कर दिया है।'}
+                  </Text>
+                  {item.delivery_return.note ? <Text className="mt-2 text-[10px] text-slate-500">Partner note: {item.delivery_return.note}</Text> : null}
+                  {item.delivery_return.store_note ? <Text className="mt-1 text-[10px] font-bold text-slate-600">Pharmacy note: {item.delivery_return.store_note}</Text> : null}
+                </View>
+              </View>
+            </View>
+          )}
 
           <View className="rounded-[1.5rem] border border-slate-100 bg-white p-4">
             <View className="mb-3 flex-row items-center justify-between">

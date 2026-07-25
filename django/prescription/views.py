@@ -61,7 +61,7 @@ from rest_framework import status
 from rest_framework.generics import RetrieveAPIView
 from .serializers import (
     StoreMeSerializer, StoreMeUpdateSerializer, StoreDeliverySettingsSerializer,
-    StoreDeliveryPersonSerializer,
+    StoreDeliveryPersonSerializer, QuoteDeliveryOfferSerializer,
 )
 from rest_framework.parsers import JSONParser
 from channels.layers import get_channel_layer
@@ -75,7 +75,7 @@ from .serializers import PrescriptionSerializer, PrescriptionResponseSerializer,
 from .models import (
     Prescription, PrescriptionResponse, PasswordResetOTP, DeliveryOTP,
     PharmacistConsultation, PharmacistConsultationMessage, StoreDeliveryPerson,
-    QuoteDeliveryOffer,
+    QuoteDeliveryOffer, DeliveryIssueReport, DeliveryReturnRequest,
 )
 from .services.delivery import (
     get_or_create_delivery_settings, evaluate_delivery_eligibility,
@@ -991,6 +991,7 @@ class RequestStockRefreshView(APIView):
                 response.last_refresh_requested_at = timezone.now()
                 response.save()
 
+
                 # ⚡ Real-Time WebSocket Broadcast
                 _eid = str(uuid.uuid4())
                 channel_layer = get_channel_layer()
@@ -1122,6 +1123,8 @@ class UserCancelOrderView(APIView):
                 response.cancel_reason = reason or ('Cancelled during grace period' if not grace_expired else reason)
                 response.save(user_context=request.user)
                 release_assigned_delivery_person(response)
+                DeliveryIssueReport.objects.filter(response=response, status='open').update(status='resolved', resolution_note='Order was cancelled.', resolution_source='order_cancelled', resolved_at=timezone.now())
+                _broadcast_assigned_delivery_partner(response, 'order_cancelled')
 
                 # ⚡ Real-Time WebSocket Broadcast
                 _eid = str(uuid.uuid4())
@@ -1228,6 +1231,8 @@ class StoreCancelOrderView(APIView):
                 response.cancel_reason = reason
                 response.save(user_context=request.user)
                 release_assigned_delivery_person(response)
+                DeliveryIssueReport.objects.filter(response=response, status='open').update(status='resolved', resolution_note='Order was cancelled by the pharmacy.', resolution_source='order_cancelled', resolved_at=timezone.now())
+                _broadcast_assigned_delivery_partner(response, 'order_cancelled')
 
                 # ⚡ Real-Time WebSocket Broadcast
                 _eid = str(uuid.uuid4())
@@ -1402,7 +1407,7 @@ class StoreUpdateProgressView(APIView):
     def post(self, request, response_id):
         action = request.data.get('action')
         delivery_person_id = request.data.get('delivery_person_id')
-        VALID_ACTIONS = ['start_processing', 'mark_packed', 'mark_locked', 'mark_completed']
+        VALID_ACTIONS = ['start_processing', 'mark_packed', 'mark_locked', 'mark_completed', 'convert_to_pickup']
 
         if action not in VALID_ACTIONS:
             return Response({"error": f"Invalid action. Choose from: {VALID_ACTIONS}"}, status=400)
@@ -1459,29 +1464,48 @@ class StoreUpdateProgressView(APIView):
                             except QuoteDeliveryOffer.DoesNotExist:
                                 offer = None
                             if offer:
-                                if offer.assigned_delivery_person_id:
+                                if offer.assigned_delivery_person_id and offer.assignment_status in ('pending', 'accepted'):
                                     if offer.assigned_delivery_person_id == person.id:
-                                        response.user_status = 'out_for_delivery'
-                                        response.is_locked = True
-                                        response.locked_at = response.locked_at or timezone.now()
-                                        response.save()
                                         return Response({
-                                            "message": "Order is already assigned to this delivery person.",
+                                            "message": "This delivery request is already with the selected partner.",
                                             "user_status": response.user_status,
                                             "is_locked": response.is_locked,
                                         }, status=200)
                                     return Response({"error": "A delivery person is already assigned to this order."}, status=409)
                                 offer.assigned_delivery_person = person
-                                offer.save(update_fields=['assigned_delivery_person', 'updated_at'])
-                                person.current_order_count += 1
-                                person.last_assigned_at = timezone.now()
-                                person.save(update_fields=['current_order_count', 'last_assigned_at', 'updated_at'])
-                        response.user_status = 'out_for_delivery'
+                                offer.assignment_status = 'pending'
+                                offer.assigned_at = timezone.now()
+                                offer.assignment_responded_at = None
+                                offer.assignment_rejection_reason = ''
+                                offer.delivery_issue_code = ''
+                                offer.delivery_issue_note = ''
+                                offer.delivery_issue_reported_at = None
+                                offer.save(update_fields=['assigned_delivery_person', 'assignment_status', 'assigned_at', 'assignment_responded_at', 'assignment_rejection_reason', 'delivery_issue_code', 'delivery_issue_note', 'delivery_issue_reported_at', 'updated_at'])
+                        # A request is not an active delivery. The partner must accept it first.
+                        response.user_status = 'processing'
+                        response.is_locked = False
                     else:
                         response.user_status = 'locked'
-                    
-                    response.is_locked = True
-                    response.locked_at = timezone.now()
+                        response.is_locked = True
+                        response.locked_at = timezone.now()
+
+                elif action == 'convert_to_pickup':
+                    if response.delivery_option != 'online' or not response.is_packed or response.is_locked:
+                        return Response({"error": "Only a packed, un-dispatched home-delivery order can be changed to pickup."}, status=409)
+                    try:
+                        offer = response.delivery_offer
+                    except QuoteDeliveryOffer.DoesNotExist:
+                        offer = None
+                    if offer and offer.assignment_status == 'accepted':
+                        return Response({"error": "An accepted delivery cannot be changed to pickup."}, status=409)
+                    if offer:
+                        offer.assigned_delivery_person = None
+                        offer.assignment_status = 'unassigned'
+                        offer.assignment_rejection_reason = ''
+                        offer.save(update_fields=['assigned_delivery_person', 'assignment_status', 'assignment_rejection_reason', 'updated_at'])
+                    response.delivery_option = 'walk_in'
+                    response.user_status = 'processing'
+                    response.is_locked = False
 
                 elif action == 'mark_completed':
                     if response.user_status not in ('locked', 'out_for_delivery') and not response.is_locked:
@@ -1561,7 +1585,22 @@ class StoreUpdateProgressView(APIView):
                     }, status=202)
 
                 response.save()
-                
+                try:
+                    current_offer = response.delivery_offer
+                    assignment_status = current_offer.assignment_status
+                    rejection_reason = current_offer.assignment_rejection_reason
+                    issue_code = current_offer.delivery_issue_code
+                    issue_note = current_offer.delivery_issue_note
+                except QuoteDeliveryOffer.DoesNotExist:
+                    current_offer = None
+                    assignment_status, rejection_reason, issue_code, issue_note = 'unassigned', '', '', ''
+                if action == 'mark_locked' and current_offer and current_offer.assigned_delivery_person_id:
+                    _broadcast_delivery_partner_jobs_changed(
+                        current_offer.assigned_delivery_person_id,
+                        response,
+                        'delivery_assignment_requested',
+                    )
+
                 # 💥 INVALIDATE CACHE for this store
                 from django.core.cache import cache
                 try:
@@ -1592,6 +1631,11 @@ class StoreUpdateProgressView(APIView):
                             "processing_at": response.processing_at.isoformat() if response.processing_at else None,
                             "locked_at": response.locked_at.isoformat() if response.locked_at else None,
                             "completed_at": response.completed_at.isoformat() if response.completed_at else None,
+                            "delivery_assignment_status": assignment_status,
+                            "delivery_assignment_rejection_reason": rejection_reason,
+                            "delivery_issue_code": issue_code,
+                            "delivery_issue_note": issue_note,
+                            "delivery_offer": QuoteDeliveryOfferSerializer(current_offer).data if current_offer else None,
                         }
                     }
                 )
@@ -1624,6 +1668,8 @@ class StoreUpdateProgressView(APIView):
                     "is_processing_started": response.is_processing_started,
                     "is_packed": response.is_packed,
                     "is_locked": response.is_locked,
+                    "delivery_option": response.delivery_option,
+                    "delivery_assignment_status": assignment_status,
                 }, status=200)
 
         except PrescriptionResponse.DoesNotExist:
@@ -1721,6 +1767,7 @@ class VerifyCompletionOTPView(APIView):
                 response.completed_by_store = request.user
                 response.save(user_context=request.user)
                 release_assigned_delivery_person(response)
+                _broadcast_assigned_delivery_partner(response, 'order_completed')
 
                 try:
                     cache.incr(f"store_{request.user.id}_cache_version")
@@ -3898,34 +3945,94 @@ class StoreDeliveryPersonDetailView(APIView):
         return Response(status=204)
 
 
-def _serialize_delivery_job(response):
+def _serialize_delivery_return(response):
+    try:
+        item = response.delivery_return
+    except DeliveryReturnRequest.DoesNotExist:
+        return None
+    return {
+        'id': item.id,
+        'reason': item.reason,
+        'reason_label': item.get_reason_display(),
+        'note': item.note,
+        'package_condition': item.package_condition,
+        'package_condition_label': item.get_package_condition_display(),
+        'status': item.status,
+        'status_label': item.get_status_display(),
+        'store_note': item.store_note,
+        # Channel-layer messages are encoded with msgpack, which cannot encode
+        # Python datetime objects. Keep every realtime field JSON-safe.
+        'requested_at': item.requested_at.isoformat() if item.requested_at else None,
+        'received_at': item.received_at.isoformat() if item.received_at else None,
+        'disputed_at': item.disputed_at.isoformat() if item.disputed_at else None,
+    }
+
+
+def _serialize_delivery_job(response, include_customer_contact=True):
     prescription = response.prescription
     person = response.delivery_offer.assigned_delivery_person
-    stage = 'reached' if response.delivery_reached_at else 'picked_up' if response.delivery_picked_up_at else 'assigned'
+    delivery_return = _serialize_delivery_return(response)
+    stage = delivery_return['status'] if delivery_return else 'completed' if response.user_status == 'completed' else 'reached' if response.delivery_reached_at else 'picked_up' if response.delivery_picked_up_at else 'accepted' if response.delivery_offer.assignment_status == 'accepted' else 'offered'
     return {
         'id': response.id,
         'order_id': response.id,
         'stage': stage,
         'user_status': response.user_status,
         'customer_name': getattr(response.user, 'name', None) or 'Customer',
-        'customer_mobile': getattr(response.user, 'mobile', None),
-        'customer_address': prescription.user_address,
+        'customer_mobile': getattr(response.user, 'mobile', None) if include_customer_contact else None,
+        'customer_address': prescription.user_address if include_customer_contact else 'Delivery address hidden after completion',
         'latitude': prescription.latitude,
         'longitude': prescription.longitude,
         'store_name': response.store_name or response.store.name,
         'store_address': response.store_address or response.store.address,
+        'store_mobile': response.store_contact or response.store.mobile,
         'store_latitude': response.store_latitude or response.store.latitude,
         'store_longitude': response.store_longitude or response.store.longitude,
         'assigned_to': {'id': person.id, 'name': person.name},
         'delivery_picked_up_at': response.delivery_picked_up_at,
         'delivery_reached_at': response.delivery_reached_at,
         'completion_otp_requested': bool(getattr(response, 'delivery_otp', None) and response.delivery_otp.is_active),
+        'assignment_status': response.delivery_offer.assignment_status,
+        'delivery_issue_code': response.delivery_offer.delivery_issue_code,
+        'delivery_issue_note': response.delivery_offer.delivery_issue_note,
+        'delivery_return': delivery_return,
         'created_at': response.created_at,
         'updated_at': response.updated_at,
+        'completed_at': response.completed_at,
     }
 
 
+def _broadcast_delivery_partner_jobs_changed(person_id, response, action):
+    if not person_id:
+        return
+    payload = {
+        'response_id': response.id,
+        'updated_at': response.updated_at.isoformat(),
+    }
+    def send_after_commit():
+        async_to_sync(get_channel_layer().group_send)(f'delivery_partner_{person_id}', {
+            'type': 'fulfillment_update',
+            'event_id': str(uuid.uuid4()),
+            'seq': response.response_version,
+            'action': action,
+            'data': payload,
+        })
+    transaction.on_commit(send_after_commit)
+
+
+def _broadcast_assigned_delivery_partner(response, action):
+    try:
+        person_id = response.delivery_offer.assigned_delivery_person_id
+    except QuoteDeliveryOffer.DoesNotExist:
+        person_id = None
+    _broadcast_delivery_partner_jobs_changed(person_id, response, action)
+
+
 def _broadcast_delivery_partner_update(response, action):
+    try:
+        offer = response.delivery_offer
+    except QuoteDeliveryOffer.DoesNotExist:
+        offer = None
     payload = {
         'id': response.id,
         'response_id': response.id,
@@ -3936,6 +4043,12 @@ def _broadcast_delivery_partner_update(response, action):
         'completion_otp_requested': action == 'completion_otp_requested',
         'updated_at': response.updated_at.isoformat(),
         'response_version': response.response_version,
+        'delivery_assignment_status': offer.assignment_status if offer else 'unassigned',
+        'delivery_assignment_rejection_reason': offer.assignment_rejection_reason if offer else '',
+        'delivery_issue_code': offer.delivery_issue_code if offer else '',
+        'delivery_issue_note': offer.delivery_issue_note if offer else '',
+        'delivery_offer': QuoteDeliveryOfferSerializer(offer).data if offer else None,
+        'delivery_return': _serialize_delivery_return(response),
     }
     def send_after_commit():
         channel_layer = get_channel_layer()
@@ -3945,6 +4058,8 @@ def _broadcast_delivery_partner_update(response, action):
                 'seq': response.response_version, 'action': action, 'data': payload,
             })
     transaction.on_commit(send_after_commit)
+    if offer and offer.assigned_delivery_person_id:
+        _broadcast_delivery_partner_jobs_changed(offer.assigned_delivery_person_id, response, action)
 
 
 class DeliveryPersonLoginView(APIView):
@@ -3975,7 +4090,15 @@ class DeliveryPersonMeView(APIView):
 
     def get(self, request):
         person = request.user
-        return Response({'id': person.id, 'login_id': str(person.login_id), 'name': person.name, 'mobile': person.mobile, 'vehicle_type': person.vehicle_type, 'vehicle_number': person.vehicle_number, 'store_id': person.store_id, 'store_name': person.store.name})
+        return Response({'id': person.id, 'login_id': str(person.login_id), 'name': person.name, 'mobile': person.mobile, 'vehicle_type': person.vehicle_type, 'vehicle_number': person.vehicle_number, 'store_id': person.store_id, 'store_name': person.store.name, 'store_mobile': person.store.mobile, 'is_available': person.is_available, 'current_order_count': person.current_order_count})
+
+    def patch(self, request):
+        person = request.user
+        if 'is_available' not in request.data or not isinstance(request.data.get('is_available'), bool):
+            return Response({'error': 'is_available must be true or false.'}, status=400)
+        person.is_available = request.data['is_available']
+        person.save(update_fields=['is_available', 'updated_at'])
+        return self.get(request)
 
 
 class DeliveryJobListView(APIView):
@@ -3983,11 +4106,19 @@ class DeliveryJobListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        responses = PrescriptionResponse.objects.filter(
+        base_qs = PrescriptionResponse.objects.filter(
             delivery_offer__assigned_delivery_person=request.user,
             delivery_option='online',
-            user_status='out_for_delivery',
-        ).select_related('user', 'store', 'prescription', 'delivery_offer__assigned_delivery_person', 'delivery_otp').order_by('-updated_at')
+        ).select_related('user', 'store', 'prescription', 'delivery_offer__assigned_delivery_person', 'delivery_otp')
+        if request.query_params.get('scope') == 'completed':
+            responses = base_qs.filter(
+                Q(user_status='completed') | Q(delivery_return__isnull=False),
+            ).order_by('-updated_at')[:50]
+            return Response({'results': [_serialize_delivery_job(item, include_customer_contact=False) for item in responses]})
+        responses = base_qs.exclude(user_status__in=['cancelled', 'completed']).filter(
+            Q(delivery_offer__assignment_status='pending') |
+            Q(delivery_offer__assignment_status='accepted', user_status='out_for_delivery')
+        ).order_by('-updated_at')
         return Response({'results': [_serialize_delivery_job(item) for item in responses]})
 
 
@@ -4019,6 +4150,8 @@ class DeliveryJobStatusView(DeliveryJobDetailView):
             job = self._job(request, job_id, lock=True)
             if not job or job.user_status != 'out_for_delivery':
                 raise NotFound('Active delivery job not found.')
+            if _serialize_delivery_return(job) and job.delivery_return.status in ('returning', 'disputed'):
+                return Response({'error': 'This order is in the return-to-pharmacy flow.'}, status=409)
             now = timezone.now()
             if action == 'picked_up':
                 job.delivery_picked_up_at = job.delivery_picked_up_at or now
@@ -4032,12 +4165,266 @@ class DeliveryJobStatusView(DeliveryJobDetailView):
         return Response(_serialize_delivery_job(job))
 
 
+class DeliveryJobDecisionView(DeliveryJobDetailView):
+    def post(self, request, job_id):
+        decision = request.data.get('decision')
+        if decision not in ('accept', 'reject'):
+            return Response({'error': 'Decision must be accept or reject.'}, status=400)
+        with transaction.atomic():
+            job = self._job(request, job_id, lock=True)
+            if not job or job.delivery_offer.assignment_status != 'pending' or job.is_locked or job.user_status in ('cancelled', 'completed') or not job.is_packed:
+                return Response({'error': 'This delivery request is no longer available.'}, status=409)
+            person = StoreDeliveryPerson.objects.select_for_update().get(id=request.user.id)
+            offer = job.delivery_offer
+            offer.assignment_responded_at = timezone.now()
+            if decision == 'reject':
+                reason = str(request.data.get('reason', '')).strip()[:240] or 'Partner is unavailable.'
+                offer.assignment_status = 'rejected'
+                offer.assignment_rejection_reason = reason
+                offer.assigned_delivery_person = None
+                offer.save(update_fields=['assignment_status', 'assignment_rejection_reason', 'assignment_responded_at', 'assigned_delivery_person', 'updated_at'])
+                job.save(update_fields=['response_version', 'updated_at'])
+                _broadcast_delivery_partner_update(job, 'delivery_assignment_rejected')
+                return Response({'message': 'Delivery rejected. The pharmacy can assign another partner.'})
+            if not person.is_available:
+                return Response({'error': 'Go Online before accepting a delivery.'}, status=409)
+            if person.current_order_count >= person.max_concurrent_orders:
+                return Response({'error': 'Your active delivery limit has been reached.'}, status=409)
+            offer.assignment_status = 'accepted'
+            offer.assignment_rejection_reason = ''
+            offer.save(update_fields=['assignment_status', 'assignment_rejection_reason', 'assignment_responded_at', 'updated_at'])
+            person.current_order_count += 1
+            person.last_assigned_at = timezone.now()
+            person.save(update_fields=['current_order_count', 'last_assigned_at', 'updated_at'])
+            job.user_status = 'out_for_delivery'
+            job.is_locked = True
+            job.locked_at = timezone.now()
+            job.save()
+        _broadcast_delivery_partner_update(job, 'delivery_assignment_accepted')
+        _queue_user_order_progress_push(job, 'mark_locked')
+        return Response({'message': 'Delivery accepted.', 'job': _serialize_delivery_job(job)})
+
+
+class DeliveryJobProblemView(DeliveryJobDetailView):
+    def post(self, request, job_id):
+        valid_codes = {key for key, _ in QuoteDeliveryOffer.DELIVERY_ISSUE_CHOICES}
+        code = request.data.get('code')
+        if code not in valid_codes:
+            return Response({'error': 'Select a valid delivery problem.'}, status=400)
+        with transaction.atomic():
+            job = self._job(request, job_id, lock=True)
+            if not job or job.delivery_offer.assignment_status != 'accepted' or job.user_status != 'out_for_delivery':
+                return Response({'error': 'Only an active delivery can report a problem.'}, status=409)
+            offer = job.delivery_offer
+            offer.delivery_issue_code = code
+            offer.delivery_issue_note = str(request.data.get('note', '')).strip()[:240]
+            offer.delivery_issue_reported_at = timezone.now()
+            offer.save(update_fields=['delivery_issue_code', 'delivery_issue_note', 'delivery_issue_reported_at', 'updated_at'])
+            issue_report = DeliveryIssueReport.objects.create(
+                response=job,
+                delivery_person=request.user,
+                issue_code=code,
+                note=offer.delivery_issue_note,
+            )
+            job.save(update_fields=['response_version', 'updated_at'])
+            issue_label = dict(QuoteDeliveryOffer.DELIVERY_ISSUE_CHOICES).get(code, 'Delivery issue')
+            notification_data = {
+                'type': 'DELIVERY_PROBLEM',
+                'response_id': job.id,
+                'prescription_id': job.prescription_id,
+                'issue_code': code,
+            }
+            _safe_on_commit(
+                'delivery problem store notification',
+                lambda job=job, issue_label=issue_label, notification_data=notification_data: send_store_app_notification(
+                    job.store,
+                    'Delivery problem reported',
+                    f'{request.user.name}: {issue_label} for Order #{job.id}.',
+                    notification_data,
+                    notification_type='DELIVERY_PROBLEM',
+                    dedupe_key=f'delivery-problem-store-{job.id}-{job.response_version}',
+                ),
+            )
+            _safe_on_commit(
+                'delivery problem user notification',
+                lambda job=job, notification_data=notification_data: send_user_app_notification(
+                    job.user,
+                    'Delivery update',
+                    f'Your pharmacy is resolving a delivery issue for Order #{job.id}.',
+                    notification_data,
+                    notification_type='DELIVERY_PROBLEM',
+                    dedupe_key=f'delivery-problem-user-{job.id}-{job.response_version}',
+                ),
+            )
+        _broadcast_delivery_partner_update(job, 'delivery_problem_reported')
+        return Response({'message': 'Problem shared with the pharmacy.', 'issue_id': issue_report.id, 'job': _serialize_delivery_job(job)})
+
+
+class DeliveryJobReturnView(DeliveryJobDetailView):
+    def post(self, request, job_id):
+        valid_reasons = {key for key, _ in DeliveryReturnRequest.REASON_CHOICES}
+        valid_conditions = {key for key, _ in DeliveryReturnRequest.CONDITION_CHOICES}
+        reason = request.data.get('reason')
+        condition = request.data.get('package_condition', 'sealed')
+        note = str(request.data.get('note', '')).strip()[:240]
+        if reason not in valid_reasons or condition not in valid_conditions:
+            return Response({'error': 'Select a valid return reason and package condition.'}, status=400)
+        with transaction.atomic():
+            job = self._job(request, job_id, lock=True)
+            if not job or job.user_status != 'out_for_delivery' or job.delivery_offer.assignment_status != 'accepted':
+                return Response({'error': 'Only an active accepted delivery can be returned.'}, status=409)
+            item, created = DeliveryReturnRequest.objects.get_or_create(
+                response=job,
+                defaults={'delivery_person': request.user, 'reason': reason, 'note': note, 'package_condition': condition},
+            )
+            if not created and item.status == 'received':
+                return Response({'error': 'This return was already received by the pharmacy.'}, status=409)
+            if not created:
+                item.reason, item.note, item.package_condition, item.status = reason, note, condition, 'returning'
+                item.store_note, item.disputed_at = '', None
+                item.save(update_fields=['reason', 'note', 'package_condition', 'status', 'store_note', 'disputed_at'])
+            job.save(update_fields=['response_version', 'updated_at'])
+            reason_label = item.get_reason_display()
+            data = {'type': 'DELIVERY_RETURN_STARTED', 'response_id': job.id, 'return_id': item.id, 'reason': reason}
+            _safe_on_commit('return store notification', lambda: send_store_app_notification(job.store, 'Medicines returning to pharmacy', f'Order #{job.id}: {reason_label}. Verify medicines on arrival.', data, notification_type='DELIVERY_RETURN_STARTED', dedupe_key=f'delivery-return-store-{item.id}-{job.response_version}'))
+            _safe_on_commit('return user notification', lambda: send_user_app_notification(job.user, 'Delivery could not be completed', f'Order #{job.id} is returning to the pharmacy. Reason: {reason_label}.', data, notification_type='DELIVERY_RETURN_STARTED', dedupe_key=f'delivery-return-user-{item.id}-{job.response_version}'))
+        _broadcast_delivery_partner_update(job, 'delivery_return_started')
+        return Response({'message': 'Return started. Take the medicines back to the pharmacy.', 'job': _serialize_delivery_job(job)}, status=202)
+
+
+class StoreDeliveryReturnListView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        items = DeliveryReturnRequest.objects.filter(response__store=request.user).select_related('response', 'response__user', 'delivery_person').order_by('-requested_at')[:100]
+        return Response({'results': [{'id': item.id, 'order_id': item.response_id, 'customer_name': getattr(item.response.user, 'name', None) or 'Customer', 'partner_name': item.delivery_person.name, 'partner_mobile': item.delivery_person.mobile, 'reason': item.reason, 'reason_label': item.get_reason_display(), 'note': item.note, 'package_condition': item.package_condition, 'package_condition_label': item.get_package_condition_display(), 'status': item.status, 'status_label': item.get_status_display(), 'store_note': item.store_note, 'requested_at': item.requested_at, 'received_at': item.received_at, 'disputed_at': item.disputed_at} for item in items]})
+
+
+class StoreDeliveryReturnDecisionView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, return_id):
+        action = request.data.get('action')
+        note = str(request.data.get('note', '')).strip()[:240]
+        if action not in ('receive', 'dispute'):
+            return Response({'error': 'Action must be receive or dispute.'}, status=400)
+        if action == 'dispute' and len(note) < 3:
+            return Response({'error': 'Add a reason for disputing the return.'}, status=400)
+        with transaction.atomic():
+            item = DeliveryReturnRequest.objects.select_for_update().select_related('response', 'response__user', 'delivery_person').filter(id=return_id, response__store=request.user).first()
+            if not item:
+                raise NotFound('Delivery return not found.')
+            job = PrescriptionResponse.objects.select_for_update().get(id=item.response_id)
+            if item.status == 'received':
+                # A previous request may have committed successfully but failed
+                # while publishing its realtime event. Re-publish on a safe retry.
+                job.save(update_fields=['response_version', 'updated_at'])
+                _broadcast_delivery_partner_update(job, 'delivery_return_received')
+                return Response({'message': 'Return was already received.', 'already_received': True})
+            now = timezone.now()
+            item.store_note = note
+            if action == 'dispute':
+                item.status, item.disputed_at = 'disputed', now
+                item.save(update_fields=['status', 'store_note', 'disputed_at'])
+                job.save(update_fields=['response_version', 'updated_at'])
+                message, event = 'Return marked disputed. Contact the delivery partner.', 'delivery_return_disputed'
+            else:
+                item.status, item.received_at = 'received', now
+                item.save(update_fields=['status', 'store_note', 'received_at'])
+                job.user_status = 'cancelled'
+                job.cancelled_by = 'store'
+                job.cancel_reason = f'Delivery failed; medicines returned to pharmacy: {item.get_reason_display()}'
+                job.save(user_context=request.user)
+                DeliveryIssueReport.objects.filter(response=job, status='open').update(status='resolved', resolution_note='Medicines returned to pharmacy.', resolution_source='return_received', resolved_at=now)
+                release_assigned_delivery_person(job)
+                message, event = 'Returned medicines received and order closed.', 'delivery_return_received'
+            data = {'type': event.upper(), 'response_id': job.id, 'return_id': item.id}
+            _safe_on_commit('return decision user notification', lambda: send_user_app_notification(job.user, 'Delivery return updated', message, data, notification_type=event.upper(), dedupe_key=f'{event}-user-{item.id}'))
+        _broadcast_delivery_partner_update(job, event)
+        return Response({'message': message})
+
+
+class DeliveryIssueListView(APIView):
+    authentication_classes = [DeliveryPersonTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        reports = DeliveryIssueReport.objects.filter(
+            delivery_person=request.user,
+        ).select_related('response', 'response__store', 'response__user', 'response__prescription').order_by('-reported_at')[:100]
+        labels = dict(QuoteDeliveryOffer.DELIVERY_ISSUE_CHOICES)
+        return Response({'results': [{
+            'id': report.id,
+            'order_id': report.response_id,
+            'issue_code': report.issue_code,
+            'issue_label': labels.get(report.issue_code, 'Delivery issue'),
+            'note': report.note,
+            'status': report.status,
+            'resolution_note': report.resolution_note,
+            'store_name': report.response.store_name or report.response.store.name,
+            'store_address': report.response.store_address or report.response.store.address,
+            'store_mobile': report.response.store_contact or report.response.store.mobile,
+            'customer_name': getattr(report.response.user, 'name', None) or 'Customer',
+            'customer_mobile': getattr(report.response.user, 'mobile', None) if report.status == 'open' else None,
+            'customer_address': report.response.prescription.user_address if report.status == 'open' else 'Hidden after issue closure',
+            'order_status': report.response.user_status,
+            'delivery_stage': 'completed' if report.response.user_status == 'completed' else 'reached' if report.response.delivery_reached_at else 'picked_up' if report.response.delivery_picked_up_at else 'assigned',
+            'resolution_source': report.resolution_source,
+            'reported_at': report.reported_at,
+            'resolved_at': report.resolved_at,
+        } for report in reports]})
+
+
+class DeliveryIssueResolveView(APIView):
+    authentication_classes = [DeliveryPersonTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, issue_id):
+        note = str(request.data.get('resolution_note', '')).strip()[:240]
+        if len(note) < 3:
+            return Response({'error': 'Briefly explain how the problem was resolved.'}, status=400)
+        with transaction.atomic():
+            report = DeliveryIssueReport.objects.select_for_update().select_related('response', 'response__store', 'response__user').filter(
+                id=issue_id,
+                delivery_person=request.user,
+            ).first()
+            if not report:
+                raise NotFound('Delivery issue not found.')
+            if report.status == 'resolved':
+                return Response({'message': 'Issue is already resolved.'})
+            report.status = 'resolved'
+            report.resolution_note = note
+            report.resolution_source = 'partner_confirmed'
+            report.resolved_at = timezone.now()
+            report.save(update_fields=['status', 'resolution_note', 'resolution_source', 'resolved_at'])
+            job = report.response
+            if not DeliveryIssueReport.objects.filter(response=job, status='open').exists():
+                try:
+                    offer = job.delivery_offer
+                    offer.delivery_issue_code = ''
+                    offer.delivery_issue_note = ''
+                    offer.delivery_issue_reported_at = None
+                    offer.save(update_fields=['delivery_issue_code', 'delivery_issue_note', 'delivery_issue_reported_at', 'updated_at'])
+                except QuoteDeliveryOffer.DoesNotExist:
+                    pass
+            job.save(update_fields=['response_version', 'updated_at'])
+            data = {'type': 'DELIVERY_PROBLEM_RESOLVED', 'response_id': job.id, 'issue_id': report.id}
+            _safe_on_commit('resolved issue store notification', lambda: send_store_app_notification(job.store, 'Delivery problem resolved', f'Order #{job.id}: {note}', data, notification_type='DELIVERY_PROBLEM_RESOLVED', dedupe_key=f'delivery-resolved-store-{report.id}'))
+            _safe_on_commit('resolved issue user notification', lambda: send_user_app_notification(job.user, 'Delivery is moving again', f'The delivery issue for Order #{job.id} has been resolved.', data, notification_type='DELIVERY_PROBLEM_RESOLVED', dedupe_key=f'delivery-resolved-user-{report.id}'))
+        _broadcast_delivery_partner_update(job, 'delivery_problem_resolved')
+        return Response({'message': 'Issue marked resolved.'})
+
+
 class DeliveryJobRequestOTPView(DeliveryJobDetailView):
     def post(self, request, job_id):
         with transaction.atomic():
             job = self._job(request, job_id, lock=True)
             if not job or job.user_status != 'out_for_delivery':
                 raise NotFound('Active delivery job not found.')
+            if _serialize_delivery_return(job) and job.delivery_return.status in ('returning', 'disputed'):
+                return Response({'error': 'Return is active; OTP cannot be requested.'}, status=409)
             if not job.delivery_reached_at:
                 return Response({'error': 'Mark Reached Customer before requesting OTP.'}, status=409)
             otp, _ = DeliveryOTP.objects.update_or_create(response=job, defaults={'otp_code': f'{random.randint(100000, 999999)}', 'is_used': False, 'attempts': 0})
@@ -4059,6 +4446,8 @@ class DeliveryJobVerifyOTPView(DeliveryJobDetailView):
             job = self._job(request, job_id, lock=True)
             if not job or job.user_status != 'out_for_delivery':
                 raise NotFound('Active delivery job not found.')
+            if _serialize_delivery_return(job) and job.delivery_return.status in ('returning', 'disputed'):
+                return Response({'error': 'Return is active; OTP cannot be verified.'}, status=409)
             try:
                 otp = job.delivery_otp
             except DeliveryOTP.DoesNotExist:
@@ -4074,6 +4463,11 @@ class DeliveryJobVerifyOTPView(DeliveryJobDetailView):
             job.user_status = 'completed'
             job.completed_by_store = job.store
             job.save(user_context=job.store)
+            DeliveryIssueReport.objects.filter(
+                response=job,
+                delivery_person=request.user,
+                status='open',
+            ).update(status='resolved', resolution_note='Delivery completed successfully.', resolution_source='delivery_completed', resolved_at=timezone.now())
             release_assigned_delivery_person(job)
         _queue_user_order_progress_push(job, 'mark_completed')
         _broadcast_delivery_partner_update(job, 'status_change')

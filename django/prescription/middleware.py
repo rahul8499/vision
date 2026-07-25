@@ -5,7 +5,7 @@ from django.core.cache import cache
 import hashlib
 import time
 from urllib.parse import parse_qs
-from .models import Store, User
+from .models import Store, User, StoreDeliveryPerson
 
 @database_sync_to_async
 def websocket_attempt_allowed(client_ip):
@@ -35,6 +35,15 @@ def get_user_or_store(token_key):
         store = Store.objects.get(token=token_key)
         return store
     except Store.DoesNotExist:
+        pass
+
+    try:
+        return StoreDeliveryPerson.objects.select_related('store').get(
+            auth_token=token_key,
+            is_active=True,
+            store__is_active=True,
+        )
+    except StoreDeliveryPerson.DoesNotExist:
         return AnonymousUser()
 
 class TokenAuthMiddleware:

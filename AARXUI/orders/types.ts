@@ -35,6 +35,17 @@ export type SellerOrder = {
   completed_at?: string | null;
   delivery_picked_up_at?: string | null;
   delivery_reached_at?: string | null;
+  delivery_assignment_status?: 'unassigned' | 'pending' | 'accepted' | 'rejected' | string;
+  delivery_assignment_rejection_reason?: string | null;
+  delivery_issue_code?: string | null;
+  delivery_issue_note?: string | null;
+  delivery_return?: {
+    id: number; reason: string; reason_label: string; note?: string | null;
+    package_condition: string; package_condition_label: string;
+    status: 'returning' | 'received' | 'disputed'; status_label: string;
+    store_note?: string | null; requested_at?: string | null;
+    received_at?: string | null; disputed_at?: string | null;
+  } | null;
   cancelled_by?: string | null;
   cancel_reason?: string | null;
   repeat_customer?: boolean;

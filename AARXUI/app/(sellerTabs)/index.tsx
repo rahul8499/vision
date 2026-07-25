@@ -469,10 +469,13 @@ const DeliveryDestinationModal = ({ item, onClose }: { item: ResponseItem | null
 
   useEffect(() => {
     const optionalUnprovisionedMethods = ['setLogoGravity', 'enableTraffic', 'enableTrafficClosure', 'enableTrafficFreeFlow', 'enableTrafficNonFreeFlow', 'enableTrafficStopIcon'];
-    Logger.setLogCallback((log) =>
-      log.message.includes('Method not Provisioned') &&
-      optionalUnprovisionedMethods.some((method) => log.message.includes(method))
-    );
+    Logger.setLogCallback((log) => {
+      const isOptionalMethodWarning = log.message.includes('Method not Provisioned') &&
+        optionalUnprovisionedMethods.some((method) => log.message.includes(method));
+      const isUnprovisionedIndoorTile = log.message.includes('source Indoor') &&
+        log.message.includes('HTTP status code 412');
+      return isOptionalMethodWarning || isUnprovisionedIndoorTile;
+    });
     return () => Logger.setLogCallback(() => false);
   }, []);
 
