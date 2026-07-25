@@ -251,11 +251,44 @@ class SavedReplyTemplateSerializer(serializers.ModelSerializer):
 class UserOrderSerializer(serializers.ModelSerializer):
     store_name = serializers.CharField(source="store.name", read_only=True)
     prescription_id = serializers.IntegerField(source="prescription.id", read_only=True)
+    delivery_partner_name = serializers.SerializerMethodField()
+    delivery_partner_mobile = serializers.SerializerMethodField()
+    delivery_assignment_status = serializers.SerializerMethodField()
+    estimated_delivery_minutes = serializers.SerializerMethodField()
+    delivery_message = serializers.SerializerMethodField()
 
     class Meta:
         model = PrescriptionResponse
-        fields = ["id", "prescription_id", "store_name", "total_amount", "user_status", "delivery_option", "created_at"]
+        fields = [
+            "id", "prescription_id", "store_name", "total_amount", "user_status",
+            "delivery_option", "created_at", "delivery_partner_name",
+            "delivery_partner_mobile", "delivery_assignment_status",
+            "estimated_delivery_minutes", "delivery_message",
+        ]
         read_only_fields = ["id", "created_at"]
+
+    def _delivery_offer(self, obj):
+        return getattr(obj, "delivery_offer", None)
+
+    def get_delivery_partner_name(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer.assigned_delivery_person, "name", None) if offer and offer.assigned_delivery_person_id else None
+
+    def get_delivery_partner_mobile(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer.assigned_delivery_person, "mobile", None) if offer and offer.assigned_delivery_person_id else None
+
+    def get_delivery_assignment_status(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer, "assignment_status", None) if offer else None
+
+    def get_estimated_delivery_minutes(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer, "estimated_delivery_minutes", None) if offer else None
+
+    def get_delivery_message(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer, "delivery_message", None) if offer else None
 
 
 class UserPrescriptionSerializer(serializers.ModelSerializer):
@@ -347,10 +380,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def get_orders(self, obj):
-        qs = PrescriptionResponse.objects.filter(user=obj).select_related("store", "prescription").order_by("-created_at")[:50]
+        qs = PrescriptionResponse.objects.filter(user=obj).select_related("store", "prescription", "delivery_offer__assigned_delivery_person").order_by("-created_at")[:50]
         allowed = self.context.get("allowed_city_ids")
         if allowed is not None:
-            qs = PrescriptionResponse.objects.filter(user=obj, prescription__city_id__in=allowed).select_related("store", "prescription").order_by("-created_at")[:50]
+            qs = PrescriptionResponse.objects.filter(user=obj, prescription__city_id__in=allowed).select_related("store", "prescription", "delivery_offer__assigned_delivery_person").order_by("-created_at")[:50]
         return UserOrderSerializer(qs, many=True).data
 
     def get_prescriptions(self, obj):
@@ -399,11 +432,44 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class StoreOrderSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.name", read_only=True)
     prescription_id = serializers.IntegerField(source="prescription.id", read_only=True)
+    delivery_partner_name = serializers.SerializerMethodField()
+    delivery_partner_mobile = serializers.SerializerMethodField()
+    delivery_assignment_status = serializers.SerializerMethodField()
+    estimated_delivery_minutes = serializers.SerializerMethodField()
+    delivery_message = serializers.SerializerMethodField()
 
     class Meta:
         model = PrescriptionResponse
-        fields = ["id", "prescription_id", "user_name", "total_amount", "user_status", "delivery_option", "created_at"]
+        fields = [
+            "id", "prescription_id", "user_name", "total_amount", "user_status",
+            "delivery_option", "created_at", "delivery_partner_name",
+            "delivery_partner_mobile", "delivery_assignment_status",
+            "estimated_delivery_minutes", "delivery_message",
+        ]
         read_only_fields = ["id", "created_at"]
+
+    def _delivery_offer(self, obj):
+        return getattr(obj, "delivery_offer", None)
+
+    def get_delivery_partner_name(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer.assigned_delivery_person, "name", None) if offer and offer.assigned_delivery_person_id else None
+
+    def get_delivery_partner_mobile(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer.assigned_delivery_person, "mobile", None) if offer and offer.assigned_delivery_person_id else None
+
+    def get_delivery_assignment_status(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer, "assignment_status", None) if offer else None
+
+    def get_estimated_delivery_minutes(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer, "estimated_delivery_minutes", None) if offer else None
+
+    def get_delivery_message(self, obj):
+        offer = self._delivery_offer(obj)
+        return getattr(offer, "delivery_message", None) if offer else None
 
 
 class StorePrescriptionSerializer(serializers.ModelSerializer):
@@ -502,7 +568,7 @@ class StoreProfileSerializer(serializers.ModelSerializer):
         }
 
     def get_orders(self, obj):
-        qs = PrescriptionResponse.objects.filter(store=obj).select_related("user", "prescription").order_by("-created_at")[:50]
+        qs = PrescriptionResponse.objects.filter(store=obj).select_related("user", "prescription", "delivery_offer__assigned_delivery_person").order_by("-created_at")[:50]
         return StoreOrderSerializer(qs, many=True).data
 
     def get_prescriptions_received(self, obj):
@@ -518,7 +584,7 @@ class StoreProfileSerializer(serializers.ModelSerializer):
         ]
 
     def get_quotes_submitted(self, obj):
-        qs = PrescriptionResponse.objects.filter(store=obj).select_related("user", "prescription").order_by("-created_at")[:50]
+        qs = PrescriptionResponse.objects.filter(store=obj).select_related("user", "prescription", "delivery_offer__assigned_delivery_person").order_by("-created_at")[:50]
         return StoreOrderSerializer(qs, many=True).data
 
     def get_complaints(self, obj):

@@ -21,6 +21,9 @@ const normalizeOrder = (raw: Raw): UserOrder => ({
   id: String(raw.id), prescriptionId: Number(raw.prescription_id || 0), storeName: raw.store_name || '',
   totalAmount: Number(raw.total_amount || 0), userStatus: raw.user_status || 'unknown',
   deliveryOption: raw.delivery_option || '', createdAt: raw.created_at || '',
+  deliveryPartnerName: raw.delivery_partner_name || '', deliveryPartnerMobile: raw.delivery_partner_mobile || '',
+  deliveryAssignmentStatus: raw.delivery_assignment_status || '', estimatedDeliveryMinutes: raw.estimated_delivery_minutes != null ? Number(raw.estimated_delivery_minutes) : null,
+  deliveryMessage: raw.delivery_message || '',
 })
 const normalizeRefund = (raw: Raw): UserRefund => ({
   id: String(raw.id), amount: Number(raw.amount || 0), status: raw.status || 'unknown', reason: raw.reason || '',
@@ -64,6 +67,9 @@ const normalizeStoreOrder = (raw: Raw): StoreOrder => ({
   id: String(raw.id), prescriptionId: Number(raw.prescription_id || 0), userName: raw.user_name || 'Unknown user',
   totalAmount: Number(raw.total_amount || 0), userStatus: raw.user_status || 'unknown',
   deliveryOption: raw.delivery_option || '', createdAt: raw.created_at || '',
+  deliveryPartnerName: raw.delivery_partner_name || '', deliveryPartnerMobile: raw.delivery_partner_mobile || '',
+  deliveryAssignmentStatus: raw.delivery_assignment_status || '', estimatedDeliveryMinutes: raw.estimated_delivery_minutes != null ? Number(raw.estimated_delivery_minutes) : null,
+  deliveryMessage: raw.delivery_message || '',
 })
 const normalizeStoreProfile = (raw: Raw): StoreProfile => {
   const metrics = raw.performance_metrics || {}
@@ -103,6 +109,11 @@ export interface UserOrder {
   userStatus: string
   deliveryOption: string
   createdAt: string
+  deliveryPartnerName: string
+  deliveryPartnerMobile: string
+  deliveryAssignmentStatus: string
+  estimatedDeliveryMinutes: number | null
+  deliveryMessage: string
 }
 
 export interface UserPrescription {
@@ -199,6 +210,11 @@ export interface StoreOrder {
   userStatus: string
   deliveryOption: string
   createdAt: string
+  deliveryPartnerName: string
+  deliveryPartnerMobile: string
+  deliveryAssignmentStatus: string
+  estimatedDeliveryMinutes: number | null
+  deliveryMessage: string
 }
 
 export interface StoreComplaint {

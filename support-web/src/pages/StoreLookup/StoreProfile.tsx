@@ -162,6 +162,7 @@ export const StoreProfile = () => {
                   <th className="text-left py-2 px-3">Order ID</th>
                   <th className="text-left py-2 px-3">User</th>
                   <th className="text-left py-2 px-3">Amount</th>
+                  <th className="text-left py-2 px-3">Delivery</th>
                   <th className="text-left py-2 px-3">Status</th>
                   <th className="text-left py-2 px-3">Date</th>
                 </tr>
@@ -231,6 +232,7 @@ export const StoreProfile = () => {
                   <th className="text-left py-2 px-3">Response ID</th>
                   <th className="text-left py-2 px-3">User</th>
                   <th className="text-left py-2 px-3">Amount</th>
+                  <th className="text-left py-2 px-3">Delivery</th>
                   <th className="text-left py-2 px-3">Status</th>
                   <th className="text-left py-2 px-3">Date</th>
                 </tr>
@@ -241,6 +243,20 @@ export const StoreProfile = () => {
                     <td className="py-2 px-3">#{order.id}</td>
                     <td className="py-2 px-3">{order.userName}</td>
                     <td className="py-2 px-3">₹{order.totalAmount?.toFixed(2)}</td>
+                    <td className="py-2 px-3">
+                      {order.deliveryPartnerName ? (
+                        <div className="space-y-1">
+                          <div className="font-medium">{order.deliveryPartnerName}</div>
+                          {order.deliveryPartnerMobile ? <div className="text-xs text-gray-500">{order.deliveryPartnerMobile}</div> : null}
+                          <div className="text-xs text-gray-500">
+                            {order.deliveryAssignmentStatus || 'assigned'}
+                            {order.estimatedDeliveryMinutes ? ` • ETA ${order.estimatedDeliveryMinutes} min` : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-500">Unassigned</span>
+                      )}
+                    </td>
                     <td className="py-2 px-3">
                       <span className={`px-2 py-1 rounded-full text-xs ${statusColors[order.userStatus] || 'bg-gray-100 text-gray-800'}`}>
                         {order.userStatus}
