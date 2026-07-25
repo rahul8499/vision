@@ -18,6 +18,7 @@ const routeNameMap: Record<string, string> = {
   '/staff': 'Support Team',
   '/staff/': 'Staff Detail',
   '/audit-logs': 'Activity History',
+  '/activity-logs': 'Business Activity Log',
   '/settings': 'Settings',
 }
 

@@ -1,10 +1,13 @@
-from channels.db import database_sync_to_async
-from django.contrib.auth.models import AnonymousUser
-from django.conf import settings
-from django.core.cache import cache
 import hashlib
 import time
+import uuid
 from urllib.parse import parse_qs
+
+from channels.db import database_sync_to_async
+from django.conf import settings
+from django.contrib.auth.models import AnonymousUser
+from django.core.cache import cache
+
 from .models import Store, User, StoreDeliveryPerson
 
 @database_sync_to_async
@@ -25,12 +28,20 @@ def websocket_attempt_allowed(client_ip):
 
 @database_sync_to_async
 def get_user_or_store(token_key):
+    if not token_key:
+        return AnonymousUser()
+
+    try:
+        uuid.UUID(str(token_key))
+    except (AttributeError, TypeError, ValueError):
+        return AnonymousUser()
+
     try:
         user = User.objects.get(token=token_key)
         return user
     except User.DoesNotExist:
         pass
-        
+
     try:
         store = Store.objects.get(token=token_key)
         return store

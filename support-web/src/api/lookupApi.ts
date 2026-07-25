@@ -41,6 +41,11 @@ const normalizeUserProfile = (raw: Raw): UserProfile => ({
   prescriptions: list(raw.prescriptions).map((item) => ({
     id: Number(item.id), medicineName: item.medicine_name || '', description: item.description || '',
     createdAt: item.created_at || '', targetStores: list(item.target_stores).map((store) => ({ id: String(store.id), name: store.name || '' })),
+    status: item.status || 'pending', aiStatus: item.ai_status || 'pending', aiClassification: item.ai_classification || 'unknown', aiScore: Number(item.ai_score || 0), extractedMedicines: list(item.extracted_medicines).map((entry) => ({
+      suggestedName: String(entry.suggested_name || entry.medicine_name || entry.name || ''),
+      confidence: Number(entry.confidence || 0),
+      rawText: String(entry.raw_text || ''),
+    })),
   })),
   complaints: list(raw.complaints).map((item) => ({
     id: String(item.id), category: item.category || '', subject: item.subject || '', status: item.status || '',
@@ -106,6 +111,11 @@ export interface UserPrescription {
   description: string
   createdAt: string
   targetStores: { id: string; name: string }[]
+  status: string
+  aiStatus: string
+  aiClassification: string
+  aiScore: number
+  extractedMedicines: { suggestedName: string; confidence: number; rawText: string }[]
 }
 
 export interface UserComplaint {

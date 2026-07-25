@@ -452,6 +452,7 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     prescription_ai_status = serializers.SerializerMethodField()
     prescription_ai_reason = serializers.SerializerMethodField()
     prescription_is_emergency = serializers.SerializerMethodField()
+    extracted_medicines = serializers.SerializerMethodField()
 
     distance_km = serializers.SerializerMethodField()
     medicines = PrescriptionResponseMedicineSerializer(many=True, read_only=True)
@@ -555,7 +556,7 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrescriptionResponse
         fields = [
-            'id', 'total_amount', 'prescription', 'prescription_medicine_name', 'prescription_description', 'prescription_upload_type', 'prescription_ai_classification', 'prescription_ai_score', 'prescription_ai_status', 'prescription_ai_reason', 'prescription_is_emergency', 'user', 'response_text', 'image',
+            'id', 'total_amount', 'prescription', 'prescription_medicine_name', 'prescription_description', 'prescription_upload_type', 'prescription_ai_classification', 'prescription_ai_score', 'prescription_ai_status', 'prescription_ai_reason', 'prescription_is_emergency', 'extracted_medicines', 'user', 'response_text', 'image',
             'store', 'store_name', 'store_contact', 'created_at', 'updated_at',
             'store_latitude', 'store_longitude', 'store_address', 'distance_km','user_name', 'user_address', 'user_contact', 'user_latitude', 'user_longitude',
             'medicines', 'is_store_verified', 'is_store_active',  'user_status', 'store_contact_note', 'store_report_count', 'user_report_note', 'user_report_count',
@@ -668,6 +669,9 @@ class PrescriptionResponseSerializer(serializers.ModelSerializer):
         
     def get_prescription_ai_reason(self, obj):
         return getattr(obj.prescription, 'ai_reason', None)
+
+    def get_extracted_medicines(self, obj):
+        return getattr(obj.prescription, 'extracted_medicines', []) or []
 
     def get_user_address(self, obj):
         if not self._request_store_is_verified():

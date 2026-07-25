@@ -40,6 +40,7 @@ const StaffList = lazy(() => import('@/pages/StaffManagement/StaffList').then(m 
 const StaffDetail = lazy(() => import('@/pages/StaffManagement/StaffDetail').then(m => ({ default: m.StaffDetail })))
 const StaffForm = lazy(() => import('@/pages/StaffManagement/StaffForm').then(m => ({ default: m.StaffForm })))
 const AuditLogList = lazy(() => import('@/pages/AuditLogs/AuditLogList').then(m => ({ default: m.AuditLogList })))
+const ActivityLogList = lazy(() => import('@/pages/ActivityLogs/ActivityLogList').then(m => ({ default: m.ActivityLogList })))
 const SettingsPage = lazy(() => import('@/pages/Settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const OperationsPage = lazy(() => import('@/pages/Operations/OperationsPage').then(m => ({ default: m.OperationsPage })))
 
@@ -77,6 +78,7 @@ export const router = createBrowserRouter([
       { path: 'staff/new', element: RoleProtected(StaffForm, ['admin']) },
       { path: 'staff/:id', element: RoleProtected(StaffDetail, ['admin']) },
       { path: 'audit-logs', element: RoleProtected(AuditLogList, ['supervisor', 'admin']) },
+      { path: 'activity-logs', element: RoleProtected(ActivityLogList, ['supervisor', 'admin']) },
       { path: 'settings', element: LazyWrapper(SettingsPage) },
     ],
   },

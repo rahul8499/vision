@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from prescription.services.activity_log import log_activity
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, BasePermission
@@ -148,6 +149,14 @@ class ComplaintCreateView(APIView):
             complaint.order = PrescriptionResponse.objects.filter(id=order_id).first()
 
         complaint.save()
+        log_activity(
+            'support_log',
+            'create',
+            'Complaint created',
+            actor=actor if actor_type == 'user' else None,
+            subject=complaint,
+            details={'complaint_id': complaint.id, 'category': complaint.category},
+        )
 
         # Presigned S3 attachments (new clients)
         attachment_keys = request.data.getlist('attachment_keys') if hasattr(request.data, 'getlist') else []
@@ -577,6 +586,14 @@ class PlatformSupportTicketListCreateView(APIView):
             'requester_user' if actor_type == 'user' else 'requester_store': actor,
         }
         ticket = PlatformSupportTicket.objects.create(**kwargs)
+        log_activity(
+            'support_log',
+            'create',
+            'Support ticket created',
+            actor=actor if actor_type == 'user' else None,
+            subject=ticket,
+            details={'ticket_id': ticket.id, 'category': category, 'priority': priority},
+        )
         attachment = request.FILES.get('attachment')
         attachment_key = request.data.get('attachment_key')
         verified_attachment_key = None

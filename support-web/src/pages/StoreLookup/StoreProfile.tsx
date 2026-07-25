@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { lookupApi } from '@/api/lookupApi'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -6,6 +7,8 @@ import { Badge } from '@/components/common/Badge'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
+import { SearchInput } from '@/components/filters/SearchInput'
+import { SelectFilter } from '@/components/filters/SelectFilter'
 import { ArrowLeft, Mail, Phone, MapPin, Star, ShoppingBag, FileText, AlertTriangle, DollarSign, Shield, Clock } from 'lucide-react'
 
 const statusColors: Record<string, string> = {
@@ -25,6 +28,10 @@ const statusColors: Record<string, string> = {
 export const StoreProfile = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [prescriptionSearch, setPrescriptionSearch] = useState('')
+  const [prescriptionFilter, setPrescriptionFilter] = useState('all')
+  const [quoteSearch, setQuoteSearch] = useState('')
+  const [quoteFilter, setQuoteFilter] = useState('all')
 
   const { data: store, isLoading, error } = useQuery({
     queryKey: ['store-profile', id],
@@ -32,6 +39,27 @@ export const StoreProfile = () => {
     enabled: !!id,
     staleTime: 60000,
   })
+
+  const prescriptions = store?.prescriptionsReceived ?? []
+  const quotes = store?.quotesSubmitted ?? []
+
+  const prescriptionRows = useMemo(() => {
+    const query = prescriptionSearch.toLowerCase()
+    return prescriptions.filter((item) => {
+      const matchesSearch = !query || [item.userName || '', item.prescriptionId].join(' ').toLowerCase().includes(query)
+      const matchesFilter = prescriptionFilter === 'all' || (prescriptionFilter === 'with_user' && !!item.userName)
+      return matchesSearch && matchesFilter
+    })
+  }, [prescriptionFilter, prescriptionSearch, prescriptions])
+
+  const quoteRows = useMemo(() => {
+    const query = quoteSearch.toLowerCase()
+    return quotes.filter((item) => {
+      const matchesSearch = !query || [item.userName, item.userStatus, item.deliveryOption].join(' ').toLowerCase().includes(query)
+      const matchesFilter = quoteFilter === 'all' || item.userStatus === quoteFilter
+      return matchesSearch && matchesFilter
+    })
+  }, [quoteFilter, quoteSearch, quotes])
 
   if (isLoading) return <Loading />
   if (error) return <ErrorState />
@@ -160,6 +188,10 @@ export const StoreProfile = () => {
 
       {store.prescriptionsReceived.length > 0 && (
         <Card title="Medicine requests received">
+          <div className="mb-3 flex flex-col gap-2 md:flex-row">
+            <SearchInput value={prescriptionSearch} onChange={setPrescriptionSearch} placeholder="Search user or prescription" className="md:max-w-xs" />
+            <SelectFilter value={prescriptionFilter} onChange={setPrescriptionFilter} options={[{ value: 'all', label: 'All' }, { value: 'with_user', label: 'With user' }]} placeholder="Filter" />
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -171,7 +203,7 @@ export const StoreProfile = () => {
                 </tr>
               </thead>
               <tbody>
-                {store.prescriptionsReceived.slice(0, 20).map((rx) => (
+                {prescriptionRows.slice(0, 20).map((rx) => (
                   <tr key={rx.id} className="border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{rx.id}</td>
                     <td className="py-2 px-3">#{rx.prescriptionId}</td>
@@ -182,11 +214,16 @@ export const StoreProfile = () => {
               </tbody>
             </table>
           </div>
+          {prescriptionRows.length === 0 && <div className="mt-3 text-sm text-gray-500">No prescription assignments match the current filters.</div>}
         </Card>
       )}
 
       {store.quotesSubmitted.length > 0 && (
         <Card title="Price offers sent">
+          <div className="mb-3 flex flex-col gap-2 md:flex-row">
+            <SearchInput value={quoteSearch} onChange={setQuoteSearch} placeholder="Search user or status" className="md:max-w-xs" />
+            <SelectFilter value={quoteFilter} onChange={setQuoteFilter} options={[{ value: 'all', label: 'All statuses' }, { value: 'quoted', label: 'Quoted' }, { value: 'accepted', label: 'Accepted' }, { value: 'processing', label: 'Processing' }, { value: 'completed', label: 'Completed' }]} placeholder="Filter" />
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -199,7 +236,7 @@ export const StoreProfile = () => {
                 </tr>
               </thead>
               <tbody>
-                {store.quotesSubmitted.slice(0, 20).map((order) => (
+                {quoteRows.slice(0, 20).map((order) => (
                   <tr key={order.id} className="border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{order.id}</td>
                     <td className="py-2 px-3">{order.userName}</td>
@@ -215,6 +252,7 @@ export const StoreProfile = () => {
               </tbody>
             </table>
           </div>
+          {quoteRows.length === 0 && <div className="mt-3 text-sm text-gray-500">No quotes match the current filters.</div>}
         </Card>
       )}
 

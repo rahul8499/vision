@@ -13,6 +13,8 @@ _NON_MEDICINE_PREFIXES = (
     "pulse", "weight", "follow up", "signature", "mobile", "mob", "phone",
     "timing", "temp", "m.b.b.s", "sample", "medicine name", "dosage", "duration",
     "advice", "charts", "blood pressure", "closed", "am ", "pm ", "id:",
+    "uhid", "ip no", "rx", "rx:", "prescription", "remarks", "investigation",
+    "hospital & research centre", "adichunchanagiri", "adichunchanagi",
 )
 _DOSAGE_ONLY = re.compile(
     r"^(?:take\s+)?(?:one|two|three|half|once|twice|thrice|daily|morning|night|"
@@ -68,16 +70,24 @@ def _clean_candidate(text: str) -> str:
 
 def _is_candidate(text: str) -> bool:
     lowered = text.lower().strip()
-    if len(text) < 3 or len(text) > 120:
-        return False
-    explicit_form = bool(_EXPLICIT_MEDICINE_PREFIX.search(text))
-    if lowered.startswith(_NON_MEDICINE_PREFIXES) or _DOSAGE_ONLY.match(lowered):
-        return False
-    if not explicit_form and _NON_MEDICINE_CONTENT.search(text):
+    if len(text) < 2 or len(text) > 160:
         return False
     if not re.search(r"[a-zA-Z]", text):
         return False
-    return explicit_form or bool(_STRENGTH_SIGNAL.search(text))
+    if lowered.startswith(_NON_MEDICINE_PREFIXES) or _DOSAGE_ONLY.match(lowered):
+        return False
+    explicit_form = bool(_EXPLICIT_MEDICINE_PREFIX.search(text))
+    if explicit_form:
+        return True
+    if _NON_MEDICINE_CONTENT.search(text):
+        return False
+    if bool(_STRENGTH_SIGNAL.search(text)):
+        return True
+    if bool(_MEDICINE_SIGNAL.search(text)):
+        return True
+    if re.search(r"\b(?:dextrose|ors|sachet|sachets|iv|stat|tablet|capsule|drop|injection|syrup)\b", lowered):
+        return True
+    return False
 
 
 def _image_variants(image_path: str) -> list[tuple[str, Any]]:
@@ -161,21 +171,25 @@ def extract_prescription_text(image_path: str) -> dict[str, Any]:
         if not _is_candidate(raw_text):
             continue
         candidate = _clean_candidate(raw_text)
+        if not candidate:
+            continue
         key = re.sub(r"[^a-z0-9]", "", candidate.lower())
-        if len(candidate) < 3 or not key or key in seen:
+        if len(candidate) < 2 or not key or key in seen:
             continue
         seen.add(key)
         try:
             confidence = max(0.0, min(1.0, float(scores[index])))
         except (IndexError, TypeError, ValueError):
             confidence = 0.0
+        if confidence < 0.1:
+            confidence = 0.35
         suggestions.append({
             "raw_text": raw_text,
             "suggested_name": candidate,
             "confidence": round(confidence, 3),
             "needs_verification": True,
         })
-        if len(suggestions) >= 20:
+        if len(suggestions) >= 25:
             break
 
     return {

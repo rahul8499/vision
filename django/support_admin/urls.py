@@ -16,7 +16,7 @@ from .views import (
     NotificationMarkAllReadView, SupportOperationsView, ContactLogListCreateView, ContactLogDetailView, SavedReplyListCreateView, SavedReplyDetailView,
     CaseSelfAssignView, CaseManagementView, CaseManagementSearchView, SLAConfigurationListCreateView, SLAConfigurationDetailView,
     SupportHolidayListCreateView, SupportHolidayDetailView,
-    AuditLogListView,
+    AuditLogListView, ActivityLogListView,
 )
 
 urlpatterns = [
@@ -81,4 +81,5 @@ urlpatterns = [
     path("sla-holidays/", SupportHolidayListCreateView.as_view(), name="sla-holidays"),
     path("sla-holidays/<int:pk>/", SupportHolidayDetailView.as_view(), name="sla-holiday-detail"),
     path("audit-logs/", AuditLogListView.as_view(), name="audit-log-list"),
+    path("activity-logs/", ActivityLogListView.as_view(), name="activity-log-list"),
 ]

@@ -16,10 +16,11 @@ import {
   Shield,
   Radio,
   Headphones,
+  Activity,
 } from 'lucide-react'
 import type { UserRole } from '@/types/auth'
 
-type MenuKey = 'dashboard' | 'operations' | 'emergency' | 'complaints' | 'tickets' | 'payments' | 'refunds' | 'safety' | 'users' | 'stores' | 'staff' | 'audit'
+type MenuKey = 'dashboard' | 'operations' | 'emergency' | 'complaints' | 'tickets' | 'payments' | 'refunds' | 'safety' | 'users' | 'stores' | 'staff' | 'audit' | 'activity'
 type MenuItem = { to: string; label: string; description: string; icon: React.ReactNode }
 
 const MENU_ITEMS: Record<MenuKey, MenuItem> = {
@@ -35,12 +36,13 @@ const MENU_ITEMS: Record<MenuKey, MenuItem> = {
   stores: { to: '/store-lookup', label: 'Find a pharmacy', description: 'Check pharmacy details, orders, complaints, and performance.', icon: <Store className="h-5 w-5" /> },
   staff: { to: '/staff', label: 'Manage support staff', description: 'Create staff accounts and control their access.', icon: <Users className="h-5 w-5" /> },
   audit: { to: '/audit-logs', label: 'Who changed what', description: 'See which staff member performed each important action.', icon: <ClipboardList className="h-5 w-5" /> },
+  activity: { to: '/activity-logs', label: 'Business activity', description: 'Track prescriptions, quotes, orders, deliveries, AI scans, and support events.', icon: <Activity className="h-5 w-5" /> },
 }
 
 const menu = (...keys: MenuKey[]) => keys.map(key => MENU_ITEMS[key])
 const ROLE_MENU_ITEMS: Record<UserRole, MenuItem[]> = {
-  admin: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores', 'staff', 'audit'),
-  supervisor: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores'),
+  admin: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores', 'staff', 'audit', 'activity'),
+  supervisor: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores', 'activity'),
   agent: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety'),
 }
 

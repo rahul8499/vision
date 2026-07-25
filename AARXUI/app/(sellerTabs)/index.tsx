@@ -1322,8 +1322,8 @@ export default function Prescription() {
   const [currentItem, setCurrentItem] = useState<ResponseItem | null>(null);
   const [deliveryMapItem, setDeliveryMapItem] = useState<ResponseItem | null>(null);
   const [prescriptionDetail, setPrescriptionDetail] = useState<any>(null);
-  const [medicines, setMedicines] = useState<{ medicine_name: string; price: string; is_available: boolean; medicine_brand: string; medicine_type: string }[]>([
-    { medicine_name: '', price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' },
+  const [medicines, setMedicines] = useState<{ medicine_name: string; price: string; is_available: boolean; selected: boolean; medicine_brand: string; medicine_type: string }[]>([
+    { medicine_name: '', price: '', is_available: true, selected: true, medicine_brand: '', medicine_type: 'brand' },
   ]);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<string>('all');
@@ -1433,6 +1433,8 @@ export default function Prescription() {
   const [totalPrice, setTotalPrice] = useState('');
   const [note, setNote] = useState('');
   const [quotationScenario, setQuotationScenario] = useState('exact_brand');
+  const [useAvailabilityScenario, setUseAvailabilityScenario] = useState(true);
+  const [useItemizedInventory, setUseItemizedInventory] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [expandedMedIdx, setExpandedMedIdx] = useState<number | null>(null);
 
@@ -1863,11 +1865,11 @@ export default function Prescription() {
             const isUntouchedManualPrefill = current.length === 1 &&
               current[0].medicine_name === manualPrefillName &&
               current[0].price === '' && current[0].medicine_brand === '' &&
-              current[0].medicine_type === 'brand' && current[0].is_available;
+              current[0].medicine_type === 'brand' && current[0].is_available && current[0].selected;
             if (!isUntouchedManualPrefill) return current;
             return detail.extracted_medicines!
               .filter(suggestion => suggestion?.suggested_name?.trim())
-              .map(suggestion => ({ medicine_name: suggestion.suggested_name.trim(), price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }));
+              .map(suggestion => ({ medicine_name: suggestion.suggested_name.trim(), price: '', is_available: true, selected: true, medicine_brand: '', medicine_type: 'brand' }));
           });
         }
       }
@@ -1897,10 +1899,10 @@ export default function Prescription() {
     const prefillName = getRequestMedicineName(item);
     const extractedRows = (item.extracted_medicines || [])
       .filter(suggestion => suggestion?.suggested_name?.trim())
-      .map(suggestion => ({ medicine_name: suggestion.suggested_name.trim(), price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }));
+      .map(suggestion => ({ medicine_name: suggestion.suggested_name.trim(), price: '', is_available: true, selected: true, medicine_brand: '', medicine_type: 'brand' }));
     setMedicines(extractedRows.length
       ? extractedRows
-      : [{ medicine_name: prefillName, price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }]);
+      : [{ medicine_name: prefillName, price: '', is_available: true, selected: true, medicine_brand: '', medicine_type: 'brand' }]);
     setShowPriceModal(true);
     fetchPrescriptionDetails(item.id, true); // Fetch latest OCR suggestions and details
     fetchDeliveryPreview(item.id);
@@ -1966,13 +1968,16 @@ export default function Prescription() {
 
 
     const formData = new FormData();
-    const resolvedQuotationScenario = medicines.some(medicine => !medicine.is_available)
-      ? 'partial'
-      : quotationScenario;
+    const selectedMedicines = medicines.filter(m => m.selected);
+    const resolvedQuotationScenario = useAvailabilityScenario
+      ? (selectedMedicines.some(medicine => !medicine.is_available) ? 'partial' : quotationScenario)
+      : null;
     formData.append('response_text', note || '');
     formData.append('total_amount', totalPrice.toString());
     formData.append('prescription_id', prescription.id.toString());
-    formData.append('quotation_scenario', resolvedQuotationScenario);
+    if (resolvedQuotationScenario) {
+      formData.append('quotation_scenario', resolvedQuotationScenario);
+    }
     formData.append('delivery_offer', JSON.stringify({
       home_delivery_available: quoteHomeDelivery,
       delivery_charge: quoteHomeDelivery ? quoteDeliveryCharge : '0',
@@ -1981,19 +1986,11 @@ export default function Prescription() {
       unavailable_reason: quoteHomeDelivery ? '' : quoteDeliveryReason,
     }));
 
-    // Safety Hub: Double check that at least one item is available before submission
-    const availableCount = medicines.filter(m => m.is_available).length;
-    if (availableCount === 0) {
-      Toast.show({
-        type: 'error',
-        text1: 'Zero Availability',
-        text2: 'At least one medicine must be available to send a quote.',
-        position: 'bottom'
-      });
-      return;
+    if (useItemizedInventory) {
+      formData.append('medicines', JSON.stringify(selectedMedicines));
+    } else {
+      formData.append('medicines', JSON.stringify([]));
     }
-
-    formData.append('medicines', JSON.stringify(medicines));
 
 
     for (const [key, value] of formData.entries()) {
@@ -2022,7 +2019,7 @@ export default function Prescription() {
           has_responded: true,
           response_id: submittedResponseId || item.response_id,
           total_amount: Number(submittedQuote?.total_amount ?? totalPrice),
-          quotation_scenario: submittedQuote?.quotation_scenario ?? resolvedQuotationScenario,
+          quotation_scenario: submittedQuote?.quotation_scenario ?? resolvedQuotationScenario ?? item.quotation_scenario,
         };
       }));
 
@@ -2038,7 +2035,9 @@ export default function Prescription() {
       setTotalPrice('');
       setNote('');
       setQuotationScenario('exact_brand');
-      setMedicines([{ medicine_name: '', price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }]);
+      setUseAvailabilityScenario(true);
+      setUseItemizedInventory(true);
+      setMedicines([{ medicine_name: '', price: '', is_available: true, selected: true, medicine_brand: '', medicine_type: 'brand' }]);
       setDeliveryPreview(null);
       setQuoteHomeDelivery(false);
       setQuoteDeliveryCharge('');
@@ -2726,7 +2725,144 @@ export default function Prescription() {
                   </View>
                 </LinearGradient>
 
-                {/* 3. Advanced Toggle */}
+                {/* 3. Itemized Inventory Summary */}
+                <View className="mb-3 rounded-[1rem] border border-amber-200 bg-amber-50 px-3 py-3">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center flex-1 pr-3">
+                      <MaterialCommunityIcons name="format-list-bulleted" size={16} color="#b45309" />
+                      <View className="ml-2 flex-1">
+                        <Text className="text-[8px] font-black uppercase tracking-[1.5px] text-amber-800">Itemized Inventory Details</Text>
+                        <Text className="mt-0.5 text-[9px] font-semibold leading-4 text-amber-700">
+                          {medicines.length > 0 ? `${medicines.length} line item${medicines.length > 1 ? 's' : ''} ready for pricing` : 'No medicines added yet'}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setUseItemizedInventory(value => !value)}
+                      className={`flex-row items-center rounded-full border px-2.5 py-1.5 ${useItemizedInventory ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}
+                      activeOpacity={0.8}
+                    >
+                      <View className={`h-4 w-4 rounded-full items-center justify-center border mr-1.5 ${useItemizedInventory ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}>
+                        {useItemizedInventory ? <MaterialCommunityIcons name="check" size={10} color="white" /> : null}
+                      </View>
+                      <Text className={`text-[8px] font-black uppercase tracking-[1.2px] ${useItemizedInventory ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        {useItemizedInventory ? 'On' : 'Off'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setShowItemsModal(true)}
+                      className="ml-2 rounded-full bg-amber-600 px-3 py-2"
+                    >
+                      <Text className="text-white text-[8px] font-black uppercase tracking-[1.5px]">Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text className="mb-2 text-[8px] font-semibold uppercase tracking-[1.1px] text-slate-500">
+                    {useItemizedInventory ? 'Tap a medicine to include or exclude it' : 'Inventory disabled, no medicine payload will be sent'}
+                  </Text>
+
+                  {useItemizedInventory && !!currentItem?.extracted_medicines?.length && (
+                    <View className="gap-2">
+                      {currentItem.extracted_medicines.map((suggestion, index) => {
+                        const matchedIndex = medicines.findIndex(
+                          medicine => medicine.medicine_name.trim() === suggestion.suggested_name.trim()
+                        );
+                        const isSelected = matchedIndex >= 0 ? medicines[matchedIndex].selected : false;
+                        return (
+                          <TouchableOpacity
+                            key={`${suggestion.suggested_name}-${index}`}
+                            onPress={() => {
+                              if (matchedIndex < 0) return;
+                              const nextMedicines = [...medicines];
+                              nextMedicines[matchedIndex].selected = !nextMedicines[matchedIndex].selected;
+                              setMedicines(nextMedicines);
+                            }}
+                            activeOpacity={matchedIndex >= 0 ? 0.75 : 1}
+                            className={`rounded-xl border px-3 py-2 ${isSelected ? 'bg-white border-emerald-200' : 'bg-white/80 border-amber-100'}`}
+                          >
+                            <View className="flex-row items-start justify-between">
+                              <View className="flex-1 pr-3">
+                                <Text className="text-[10px] font-black text-slate-900" numberOfLines={1}>
+                                  {suggestion.suggested_name}
+                                </Text>
+                                <Text className="mt-0.5 text-[8px] font-semibold uppercase tracking-[1.2px] text-amber-700">
+                                  AI {Math.round(Math.max(0, Math.min(1, suggestion.confidence || 0)) * 100)}% · tap to include in quote
+                                </Text>
+                              </View>
+                              <View className={`h-5 w-5 rounded-full items-center justify-center border ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}>
+                                {isSelected ? <MaterialCommunityIcons name="check" size={12} color="white" /> : null}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+
+                {/* 4. Availability Scenario */}
+                <View className="mb-3 rounded-[1rem] border border-slate-200 bg-white px-3 py-3">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center flex-1 pr-3">
+                      <View className="w-1 h-3.5 bg-emerald-500 rounded-full mr-2" />
+                      <Text className="text-[8px] font-black text-slate-700 uppercase tracking-[1.5px]">Availability Scenario</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setUseAvailabilityScenario(value => !value)}
+                      className={`flex-row items-center rounded-full border px-2.5 py-1.5 ${useAvailabilityScenario ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}
+                      activeOpacity={0.8}
+                    >
+                      <View className={`h-4 w-4 rounded-full items-center justify-center border mr-1.5 ${useAvailabilityScenario ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}>
+                        {useAvailabilityScenario ? <MaterialCommunityIcons name="check" size={10} color="white" /> : null}
+                      </View>
+                      <Text className={`text-[8px] font-black uppercase tracking-[1.2px] ${useAvailabilityScenario ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        {useAvailabilityScenario ? 'On' : 'Off'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text className="mb-2 text-[8px] font-semibold uppercase tracking-[1.1px] text-slate-500">
+                    {useAvailabilityScenario ? 'Pick one scenario for the payload' : 'Scenario disabled, nothing will be sent'}
+                  </Text>
+                  <View className={`gap-2 ${useAvailabilityScenario ? '' : 'opacity-45'}`}>
+                    {[
+                      { id: 'exact_brand', label: 'Brands', sub: 'Exact', icon: 'check-decagram' },
+                      { id: 'all_generic', label: 'Generic', sub: 'Low cost', icon: 'flask-outline' },
+                      { id: 'mixed', label: 'Mixed', sub: 'B + G', icon: 'layers-outline' },
+                      { id: 'substitutes', label: 'Subs', sub: 'Alt', icon: 'swap-horizontal' },
+                      { id: 'partial', label: 'Partial', sub: 'Some', icon: 'alert-circle-outline' },
+                    ].map((scenario) => {
+                      const isSelected = quotationScenario === scenario.id;
+                      return (
+                        <TouchableOpacity
+                          key={scenario.id}
+                          disabled={!useAvailabilityScenario}
+                          onPress={() => setQuotationScenario(scenario.id)}
+                          className={`flex-row items-center justify-between rounded-xl border px-3 py-2.5 ${isSelected ? 'bg-slate-900 border-slate-900' : 'bg-slate-50 border-slate-200'}`}
+                          activeOpacity={0.8}
+                        >
+                          <View className="flex-row items-center flex-1 pr-3">
+                            <View className={`w-8 h-8 rounded-full items-center justify-center mr-3 ${isSelected ? 'bg-emerald-500/20' : 'bg-slate-200'}`}>
+                              <MaterialCommunityIcons name={scenario.icon as any} size={14} color={isSelected ? '#34d399' : '#94a3b8'} />
+                            </View>
+                            <View className="flex-1">
+                              <Text className={`font-black text-[10px] uppercase tracking-[1.1px] ${isSelected ? 'text-white' : 'text-slate-800'}`} numberOfLines={1}>
+                                {scenario.label}
+                              </Text>
+                              <Text className={`text-[8px] font-semibold uppercase tracking-[1.1px] ${isSelected ? 'text-emerald-300' : 'text-slate-500'}`}>
+                                {scenario.sub}
+                              </Text>
+                            </View>
+                          </View>
+                          <View className={`h-5 w-5 rounded-full items-center justify-center border ${isSelected ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'}`}>
+                            {isSelected ? <MaterialCommunityIcons name="check" size={12} color="white" /> : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* 5. Advanced Toggle */}
                 <TouchableOpacity
                   onPress={() => setShowAdvanced(!showAdvanced)}
                   className="mb-3 flex-row justify-center items-center py-3 bg-slate-50 rounded-[1rem] border border-slate-200"
@@ -2737,7 +2873,7 @@ export default function Prescription() {
                   </Text>
                 </TouchableOpacity>
 
-                {/* 4. Advanced Details Section */}
+                {/* 6. Advanced Details Section */}
                 {showAdvanced && (
                   <View className="bg-white rounded-[1.35rem] p-3.5 border border-slate-100 shadow-sm mb-4">
                     <View className="mb-3">
@@ -2891,12 +3027,12 @@ export default function Prescription() {
                 <TouchableOpacity
                   disabled={quoteSubmitting}
                   onPress={() => {
-                    const availableCount = medicines.filter(m => m.is_available).length;
+                    const availableCount = medicines.filter(m => m.selected && m.is_available).length;
                     if (availableCount === 0) {
                       Toast.show({
                         type: 'error',
                         text1: 'Selection Required',
-                        text2: 'Mark at least one medicine as available in Advanced Details.',
+                        text2: 'Select at least one medicine and mark it available in Advanced Details.',
                         position: 'bottom'
                       });
                       return;
@@ -3310,11 +3446,21 @@ export default function Prescription() {
                     return (
                       <View key={idx} className={`rounded-[1rem] border overflow-hidden ${med.is_available ? 'border-emerald-100 bg-white' : 'border-red-100 bg-red-50/30'}`}>
                         {/* Row 1: Name + Stock Toggle + Delete */}
-                        <View className="flex-row items-center px-3 pt-3 pb-2 gap-2">
-                          <View className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-100 items-center justify-center">
-                            <MaterialCommunityIcons name="pill" size={14} color="#059669" />
-                          </View>
-                          <TextInput
+                      <View className="flex-row items-center px-3 pt-3 pb-2 gap-2">
+                        <TouchableOpacity
+                          onPress={() => {
+                            const newMed = [...medicines];
+                            newMed[idx].selected = !newMed[idx].selected;
+                            setMedicines(newMed);
+                          }}
+                          className={`h-[18px] w-[18px] rounded-full items-center justify-center border ${med.selected ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}
+                        >
+                          {med.selected ? <MaterialCommunityIcons name="check" size={10} color="white" /> : null}
+                        </TouchableOpacity>
+                        <View className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-100 items-center justify-center">
+                          <MaterialCommunityIcons name="pill" size={14} color="#059669" />
+                        </View>
+                        <TextInput
                             value={med.medicine_name}
                             onChangeText={(text) => {
                               const newMed = [...medicines];
@@ -3422,7 +3568,7 @@ export default function Prescription() {
                 </View>
 
                 <TouchableOpacity
-                  onPress={() => setMedicines([...medicines, { medicine_name: '', price: '', is_available: true, medicine_brand: '', medicine_type: 'brand' }])}
+                  onPress={() => setMedicines([...medicines, { medicine_name: '', price: '', is_available: true, selected: true, medicine_brand: '', medicine_type: 'brand' }])}
                   className="mt-3 py-3 border-2 border-dashed border-emerald-500/30 rounded-[1rem] items-center justify-center bg-emerald-50/30 active:bg-emerald-50"
                 >
                   <View className="flex-row items-center">

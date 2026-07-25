@@ -1108,6 +1108,29 @@ class WSEventLog(models.Model):
     def __str__(self):
         return f"[{self.event_type}] event={self.event_id[:8]}… user={self.user_id}"
 
+
+class ActivityLog(models.Model):
+    category = models.CharField(max_length=40, db_index=True)
+    action = models.CharField(max_length=60, db_index=True)
+    actor_type = models.CharField(max_length=30, blank=True, default='')
+    actor_id = models.CharField(max_length=64, blank=True, default='')
+    subject_type = models.CharField(max_length=60, blank=True, default='')
+    subject_id = models.CharField(max_length=64, blank=True, default='')
+    title = models.CharField(max_length=180)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['category', 'action', 'created_at']),
+            models.Index(fields=['subject_type', 'subject_id', 'created_at']),
+            models.Index(fields=['actor_type', 'actor_id', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"[{self.category}] {self.action} - {self.title}"
+
 class AppNotification(models.Model):
     recipient_user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='app_notifications')
     recipient_store = models.ForeignKey(Store, on_delete=models.CASCADE, null=True, blank=True, related_name='app_notifications')

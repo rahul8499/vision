@@ -1,11 +1,16 @@
+from asgiref.sync import async_to_sync
 from django.core import mail
-from django.test import SimpleTestCase, override_settings
-from rest_framework.test import APITestCase
+from django.test import SimpleTestCase, TestCase, override_settings
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.test import APITestCase, APIRequestFactory
 
-from .models import Prescription, User
+from .models import Prescription, PrescriptionResponse, User
+from .authentication import DeliveryPersonTokenAuthentication
+from .middleware import get_user_or_store
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from .tasks import _normalize_ai_service_payload
 from .utils.app_notifications import (
     create_chat_message_app_notification,
     serialize_app_notification,
@@ -20,6 +25,7 @@ from .views import (
     _send_completion_otp_email,
     _send_whatsapp_otp,
 )
+from .serializers import PrescriptionResponseSerializer
 
 
 @override_settings(
@@ -102,6 +108,74 @@ class WhatsAppOTPTests(SimpleTestCase):
 
         self.assertFalse(sent)
         post.assert_not_called()
+
+
+class DeliveryPersonAuthenticationTests(SimpleTestCase):
+    def test_malformed_bearer_token_is_rejected_without_raising_validation_error(self):
+        factory = APIRequestFactory()
+        request = factory.get('/delivery-person/profile', HTTP_AUTHORIZATION='Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIn0.fake')
+
+        auth = DeliveryPersonTokenAuthentication()
+
+        with self.assertRaises(AuthenticationFailed):
+            auth.authenticate(request)
+
+    def test_malformed_websocket_token_is_treated_as_anonymous(self):
+        result = async_to_sync(get_user_or_store)('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIn0.fake')
+
+        self.assertEqual(result.__class__.__name__, 'AnonymousUser')
+
+
+class AiPayloadNormalizationTests(SimpleTestCase):
+    def test_uses_item_confidence_when_top_level_score_is_missing(self):
+        payload = {
+            "classification": "prescription",
+            "score": 0.0,
+            "reason": "OCR fallback",
+            "extracted_medicines": [
+                {"suggested_name": "Paracetamol", "confidence": 0.82},
+                {"suggested_name": "Amoxicillin", "confidence": 0.74},
+            ],
+        }
+
+        normalized = _normalize_ai_service_payload(payload)
+
+        self.assertEqual(normalized['classification'], 'prescription')
+        self.assertEqual(normalized['score'], 0.82)
+        self.assertEqual(len(normalized['extracted_medicines']), 2)
+        self.assertEqual(normalized['extracted_medicines'][0]['suggested_name'], 'Paracetamol')
+
+    def test_accepts_alternative_keys_for_medicine_payloads(self):
+        payload = {
+            "class": "medicine",
+            "confidence": 0.91,
+            "medicines": [
+                {"name": "Dolo 650", "confidence": 0.88},
+            ],
+        }
+
+        normalized = _normalize_ai_service_payload(payload)
+
+        self.assertEqual(normalized['classification'], 'medicine')
+        self.assertEqual(normalized['score'], 0.91)
+        self.assertEqual(normalized['extracted_medicines'][0]['suggested_name'], 'Dolo 650')
+
+
+class PrescriptionResponseSerializerTests(TestCase):
+    def test_exposes_extracted_medicines_from_prescription(self):
+        prescription = Prescription(id=99, extracted_medicines=[
+            {
+                "suggested_name": "ORS",
+                "medicine_name": "ORS",
+                "confidence": 0.95,
+                "needs_verification": True,
+            }
+        ])
+        response = PrescriptionResponse(id=7, prescription=prescription)
+
+        data = PrescriptionResponseSerializer(response).data
+
+        self.assertEqual(data['extracted_medicines'][0]['suggested_name'], 'ORS')
 
 
 class ExpoNotificationTests(SimpleTestCase):

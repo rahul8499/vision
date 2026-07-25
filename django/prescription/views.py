@@ -30,6 +30,7 @@ from django.contrib.gis.measure import D
 from django.contrib.gis.geos import Point
 import math
 from .tasks import notify_chat_message_task, notify_store_order_accepted_task, notify_user_response_task
+from .services.activity_log import log_activity
 
 from .utils.ranking import calculate_quality_score, get_smart_tags
 from django.db.models import Max, Min
@@ -499,6 +500,19 @@ class PrescriptionUploadView(APIView):
                 prescription.image.name = verified_image_key
                 prescription.save(update_fields=['image'])
 
+            log_activity(
+                'prescription_log',
+                'upload',
+                'Prescription uploaded',
+                actor=user,
+                subject=prescription,
+                details={
+                    'status': status_val,
+                    'upload_type': user_upload_type,
+                    'emergency': emergency,
+                },
+            )
+
             response_data = {
                 "prescription": serializer.data,
                 "prescription_id": prescription.id,
@@ -721,6 +735,15 @@ class SubmitResponseToUserPrescription(APIView):
         user_lat = getattr(prescription, 'latitude', None)
         user_lng = getattr(prescription, 'longitude', None)
 
+        medicines_data = request.data.get('medicines', [])
+        if isinstance(medicines_data, str):
+            try:
+                medicines_data = json.loads(medicines_data)
+            except json.JSONDecodeError:
+                medicines_data = []
+        if not isinstance(medicines_data, list):
+            medicines_data = []
+
         store_lat = store.latitude
         store_lng = store.longitude
 
@@ -763,6 +786,19 @@ class SubmitResponseToUserPrescription(APIView):
             quotation_scenario=quotation_scenario
             # distance_km=distance_display
         )
+        log_activity(
+            'quote_log',
+            'submit',
+            'Quote submitted',
+            actor=store,
+            subject=response,
+            details={
+                'prescription_id': prescription.id,
+                'quotation_scenario': quotation_scenario,
+                'total_amount': str(total_amount) if total_amount is not None else '',
+                'medicines_count': len(medicines_data),
+            },
+        )
         # 🗄️ Copy prescription image to response (S3-compatible)
         if prescription.image and prescription.image.name:
             try:
@@ -786,23 +822,7 @@ class SubmitResponseToUserPrescription(APIView):
                 logger.warning(f"Image copy failed for response {response.id}: {e}")
 
 
-        medicines_data = request.data.get('medicines', [])
-
-        if isinstance(medicines_data, str):
-            try:
-                medicines_data = json.loads(medicines_data)
-            except json.JSONDecodeError:
-                medicines_data = []
-
-        # 🛡️ Safety Hub: Validate that at least ONE item is available
-        has_at_least_one_available = any(med.get('is_available', True) for med in medicines_data if isinstance(med, dict))
-
-        if not has_at_least_one_available:
-            # We don't delete the response yet as they might want to re-try, or we can just fail hard
-            response.delete()
-            return Response({"error": "Stockout: At least one medicine must be available to send a quote."}, status=400)
-
-        if any(not med.get('is_available', True) for med in medicines_data if isinstance(med, dict)):
+        if medicines_data and any(not med.get('is_available', True) for med in medicines_data if isinstance(med, dict)):
             response.quotation_scenario = 'partial'
             response.save(update_fields=['quotation_scenario', 'updated_at'])
 
@@ -1126,6 +1146,14 @@ class UserCancelOrderView(APIView):
                 response.cancelled_by = 'user'
                 response.cancel_reason = reason or ('Cancelled during grace period' if not grace_expired else reason)
                 response.save(user_context=request.user)
+                log_activity(
+                    'order_log',
+                    'cancel',
+                    'Order cancelled by user',
+                    actor=request.user,
+                    subject=response,
+                    details={'reason': reason, 'cancelled_by': 'user'},
+                )
                 release_assigned_delivery_person(response)
                 DeliveryIssueReport.objects.filter(response=response, status='open').update(status='resolved', resolution_note='Order was cancelled.', resolution_source='order_cancelled', resolved_at=timezone.now())
                 _broadcast_assigned_delivery_partner(response, 'order_cancelled')
@@ -1234,6 +1262,14 @@ class StoreCancelOrderView(APIView):
                 response.cancelled_by = 'store'
                 response.cancel_reason = reason
                 response.save(user_context=request.user)
+                log_activity(
+                    'order_log',
+                    'cancel',
+                    'Order cancelled',
+                    actor=request.user,
+                    subject=response,
+                    details={'reason': reason, 'cancelled_by': 'store'},
+                )
                 release_assigned_delivery_person(response)
                 DeliveryIssueReport.objects.filter(response=response, status='open').update(status='resolved', resolution_note='Order was cancelled by the pharmacy.', resolution_source='order_cancelled', resolved_at=timezone.now())
                 _broadcast_assigned_delivery_partner(response, 'order_cancelled')
@@ -1442,11 +1478,35 @@ class StoreUpdateProgressView(APIView):
                 if action == 'start_processing':
                     response.is_processing_started = True
                     response.user_status = 'processing'
+                    log_activity(
+                        'order_log',
+                        'process',
+                        'Order processing started',
+                        actor=request.user,
+                        subject=response,
+                        details={'response_id': response.id},
+                    )
 
                 elif action == 'mark_packed':
                     response.is_packed = True
+                    log_activity(
+                        'order_log',
+                        'pack',
+                        'Order packed',
+                        actor=request.user,
+                        subject=response,
+                        details={'response_id': response.id},
+                    )
 
                 elif action == 'mark_locked':
+                    log_activity(
+                        'order_log',
+                        'dispatch',
+                        'Order dispatched',
+                        actor=request.user,
+                        subject=response,
+                        details={'response_id': response.id, 'delivery_option': response.delivery_option},
+                    )
                     if response.delivery_option == 'online':
                         if not delivery_person_id:
                             return Response({"error": "Select a delivery partner before dispatch."}, status=400)
@@ -1512,6 +1572,14 @@ class StoreUpdateProgressView(APIView):
                     response.is_locked = False
 
                 elif action == 'mark_completed':
+                    log_activity(
+                        'order_log',
+                        'complete',
+                        'Order completed',
+                        actor=request.user,
+                        subject=response,
+                        details={'response_id': response.id},
+                    )
                     if response.user_status not in ('locked', 'out_for_delivery') and not response.is_locked:
                         return Response({"error": "Order must be ready before requesting completion OTP."}, status=400)
 
@@ -1759,6 +1827,14 @@ class VerifyCompletionOTPView(APIView):
                 if otp.otp_code != otp_input:
                     otp.attempts += 1
                     otp.save(update_fields=["attempts"])
+                    log_activity(
+                        'security_log',
+                        'otp_fail',
+                        'OTP verification failed',
+                        actor=request.user,
+                        subject=response,
+                        details={'response_id': response.id, 'attempts': otp.attempts},
+                    )
                     return Response({
                         "error": "Invalid OTP.",
                         "attempts_remaining": max(0, 5 - otp.attempts)
@@ -1766,6 +1842,14 @@ class VerifyCompletionOTPView(APIView):
 
                 otp.is_used = True
                 otp.save(update_fields=["is_used"])
+                log_activity(
+                    'security_log',
+                    'otp_success',
+                    'OTP verified',
+                    actor=request.user,
+                    subject=response,
+                    details={'response_id': response.id},
+                )
 
                 response.user_status = 'completed'
                 response.completed_by_store = request.user
@@ -2406,7 +2490,24 @@ class UpdateResponseStatusAPIView(APIView):
                         response_obj.cancelled_by = 'user'
                     
                     if status == 'accepted' and previous_status != 'accepted':
+                        log_activity(
+                            'quote_log',
+                            'accept',
+                            'Quote accepted by user',
+                            actor=request.user,
+                            subject=response_obj,
+                            details={'prescription_id': response_obj.prescription_id},
+                        )
                         notification_events.append('ACCEPTED')
+                elif status in ('rejected', 'dismissed') and previous_status not in ('rejected', 'dismissed'):
+                    log_activity(
+                        'quote_log',
+                        'reject',
+                        'Quote rejected by user',
+                        actor=request.user,
+                        subject=response_obj,
+                        details={'prescription_id': response_obj.prescription_id, 'status': status},
+                    )
 
                 if delivery_option:
                     response_obj.delivery_option = delivery_option
@@ -2414,6 +2515,15 @@ class UpdateResponseStatusAPIView(APIView):
                         notification_events.append('DELIVERY_SELECTED')
 
                 response_obj.save(user_context=request.user) # 🛡️ FSM validation
+                if status == 'accepted' and previous_status != 'accepted':
+                    log_activity(
+                        'order_log',
+                        'create',
+                        'Order created',
+                        actor=request.user,
+                        subject=response_obj,
+                        details={'prescription_id': response_obj.prescription_id},
+                    )
                 for event_type in notification_events:
                     _safe_on_commit(
                         "store order notification",
@@ -3023,6 +3133,14 @@ class UserLoginView(APIView):
                     if not user.token:
                         user.token = str(uuid.uuid4())
                         user.save()
+                    log_activity(
+                        'security_log',
+                        'login',
+                        'User logged in',
+                        actor=user,
+                        subject=user,
+                        details={'user_id': user.id},
+                    )
                     return Response({
                         "msg": "Login successful",
                         "user_id": user.id,
@@ -3046,6 +3164,14 @@ class UserLogoutView(APIView):
         user = request.user
         user.token = None
         user.save()
+        log_activity(
+            'security_log',
+            'logout',
+            'User logged out',
+            actor=user,
+            subject=user,
+            details={'user_id': user.id},
+        )
         return Response({"msg": "Logout successful"}, status=200)
 
 class LoggedInUserView(APIView):
@@ -3756,6 +3882,14 @@ class StoreLogoutView(APIView):
         store = request.user
         store.token = None
         store.save()
+        log_activity(
+            'security_log',
+            'logout',
+            'Store logged out',
+            actor=store,
+            subject=store,
+            details={'store_id': store.id},
+        )
         return Response({"msg": "Store Logout successful."})
 
 
@@ -3843,6 +3977,14 @@ class StoreLoginView(APIView):
                     if not store.token:
                         store.token = str(uuid.uuid4())
                         store.save()
+                    log_activity(
+                        'security_log',
+                        'login',
+                        'Store logged in',
+                        actor=store,
+                        subject=store,
+                        details={'store_id': store.id},
+                    )
                     return Response({
                         "msg": "Login successful",
                         "store_id": store.id,
@@ -4081,6 +4223,14 @@ class DeliveryPersonLoginView(APIView):
         person.auth_token = uuid.uuid4()
         person.last_login_at = timezone.now()
         person.save(update_fields=['auth_token', 'last_login_at', 'updated_at'])
+        log_activity(
+            'security_log',
+            'login',
+            'Delivery partner logged in',
+            actor=person,
+            subject=person,
+            details={'delivery_person_id': person.id, 'store_id': person.store_id},
+        )
         return Response({
             'token': str(person.auth_token),
             'user_type': 'delivery',
@@ -4160,11 +4310,27 @@ class DeliveryJobStatusView(DeliveryJobDetailView):
             if action == 'picked_up':
                 job.delivery_picked_up_at = job.delivery_picked_up_at or now
                 job.save(update_fields=['delivery_picked_up_at', 'response_version', 'updated_at'])
+                log_activity(
+                    'delivery_log',
+                    'pickup',
+                    'Order picked up',
+                    actor=request.user,
+                    subject=job,
+                    details={'response_id': job.id},
+                )
             else:
                 if not job.delivery_picked_up_at:
                     return Response({'error': 'Mark the order picked up first.'}, status=409)
                 job.delivery_reached_at = job.delivery_reached_at or now
                 job.save(update_fields=['delivery_reached_at', 'response_version', 'updated_at'])
+                log_activity(
+                    'delivery_log',
+                    'reached',
+                    'Delivery reached customer',
+                    actor=request.user,
+                    subject=job,
+                    details={'response_id': job.id},
+                )
         _broadcast_delivery_partner_update(job, f'delivery_{action}')
         return Response(_serialize_delivery_job(job))
 
@@ -4204,6 +4370,14 @@ class DeliveryJobDecisionView(DeliveryJobDetailView):
             job.is_locked = True
             job.locked_at = timezone.now()
             job.save()
+            log_activity(
+                'delivery_log',
+                'start',
+                'Delivery started',
+                actor=request.user,
+                subject=job,
+                details={'response_id': job.id},
+            )
         _broadcast_delivery_partner_update(job, 'delivery_assignment_accepted')
         _queue_user_order_progress_push(job, 'mark_locked')
         return Response({'message': 'Delivery accepted.', 'job': _serialize_delivery_job(job)})
@@ -4238,6 +4412,14 @@ class DeliveryJobProblemView(DeliveryJobDetailView):
                 'prescription_id': job.prescription_id,
                 'issue_code': code,
             }
+            log_activity(
+                'delivery_log',
+                'fail',
+                'Delivery problem reported',
+                actor=request.user,
+                subject=job,
+                details={'response_id': job.id, 'issue_code': code},
+            )
             _safe_on_commit(
                 'delivery problem store notification',
                 lambda job=job, issue_label=issue_label, notification_data=notification_data: send_store_app_notification(
@@ -4290,6 +4472,14 @@ class DeliveryJobReturnView(DeliveryJobDetailView):
             job.save(update_fields=['response_version', 'updated_at'])
             reason_label = item.get_reason_display()
             data = {'type': 'DELIVERY_RETURN_STARTED', 'response_id': job.id, 'return_id': item.id, 'reason': reason}
+            log_activity(
+                'delivery_log',
+                'return',
+                'Delivery return started',
+                actor=request.user,
+                subject=job,
+                details={'response_id': job.id, 'reason': reason},
+            )
             _safe_on_commit('return store notification', lambda: send_store_app_notification(job.store, 'Medicines returning to pharmacy', f'Order #{job.id}: {reason_label}. Verify medicines on arrival.', data, notification_type='DELIVERY_RETURN_STARTED', dedupe_key=f'delivery-return-store-{item.id}-{job.response_version}'))
             _safe_on_commit('return user notification', lambda: send_user_app_notification(job.user, 'Delivery could not be completed', f'Order #{job.id} is returning to the pharmacy. Reason: {reason_label}.', data, notification_type='DELIVERY_RETURN_STARTED', dedupe_key=f'delivery-return-user-{item.id}-{job.response_version}'))
         _broadcast_delivery_partner_update(job, 'delivery_return_started')
@@ -4341,6 +4531,14 @@ class StoreDeliveryReturnDecisionView(APIView):
                 job.cancelled_by = 'store'
                 job.cancel_reason = f'Delivery failed; medicines returned to pharmacy: {item.get_reason_display()}'
                 job.save(user_context=request.user)
+                log_activity(
+                    'delivery_log',
+                    'return_received',
+                    'Returned medicines received',
+                    actor=request.user,
+                    subject=job,
+                    details={'response_id': job.id, 'return_id': item.id},
+                )
                 DeliveryIssueReport.objects.filter(response=job, status='open').update(status='resolved', resolution_note='Medicines returned to pharmacy.', resolution_source='return_received', resolved_at=now)
                 release_assigned_delivery_person(job)
                 message, event = 'Returned medicines received and order closed.', 'delivery_return_received'
@@ -4437,6 +4635,14 @@ class DeliveryJobRequestOTPView(DeliveryJobDetailView):
             job.save(update_fields=['response_version', 'updated_at'])
             _safe_on_commit('delivery completion OTP email', lambda: _send_completion_otp_email(job.user.email, otp.otp_code, job.store_name))
             _safe_on_commit('delivery completion OTP WhatsApp', lambda: _send_whatsapp_otp(job.user.mobile, otp.otp_code, settings.WHATSAPP_COMPLETION_OTP_TEMPLATE))
+            log_activity(
+                'delivery_log',
+                'otp_requested',
+                'Completion OTP requested',
+                actor=request.user,
+                subject=job,
+                details={'response_id': job.id},
+            )
         _broadcast_delivery_partner_update(job, 'completion_otp_requested')
         return Response({'message': 'OTP sent to customer.', 'expires_at': otp.expires_at}, status=202)
 
@@ -4461,12 +4667,36 @@ class DeliveryJobVerifyOTPView(DeliveryJobDetailView):
             if otp.otp_code != entered:
                 otp.attempts += 1
                 otp.save(update_fields=['attempts'])
+                log_activity(
+                    'security_log',
+                    'otp_fail',
+                    'Delivery OTP verification failed',
+                    actor=request.user,
+                    subject=job,
+                    details={'response_id': job.id, 'attempts': otp.attempts},
+                )
                 return Response({'error': 'Invalid OTP.', 'attempts_remaining': max(0, 5 - otp.attempts)}, status=400)
             otp.is_used = True
             otp.save(update_fields=['is_used'])
+            log_activity(
+                'security_log',
+                'otp_success',
+                'Delivery OTP verified',
+                actor=request.user,
+                subject=job,
+                details={'response_id': job.id},
+            )
             job.user_status = 'completed'
             job.completed_by_store = job.store
             job.save(user_context=job.store)
+            log_activity(
+                'delivery_log',
+                'otp_verified',
+                'Delivery OTP verified',
+                actor=request.user,
+                subject=job,
+                details={'response_id': job.id},
+            )
             DeliveryIssueReport.objects.filter(
                 response=job,
                 delivery_person=request.user,
@@ -4491,6 +4721,22 @@ class PrescriptionDeliveryPreviewView(APIView):
         except Prescription.DoesNotExist:
             raise NotFound('Prescription is not assigned to this store.')
         result = evaluate_delivery_eligibility(request.user, prescription)
+        log_activity(
+            'prescription_log',
+            'view',
+            'Prescription viewed',
+            actor=request.user,
+            subject=prescription,
+            details={'prescription_id': prescription.id},
+        )
+        log_activity(
+            'delivery_log',
+            'preview',
+            'Delivery preview checked',
+            actor=request.user,
+            subject=prescription,
+            details={'prescription_id': prescription.id, 'home_delivery': result.get('home_delivery_available'), 'pickup': result.get('pickup_available')},
+        )
         return Response(result)
 
 
@@ -5315,6 +5561,14 @@ class VerifyPasswordResetOTPView(APIView):
         ).order_by('-created_at').first()
 
         if not otp_record:
+            log_activity(
+                'security_log',
+                'otp_fail',
+                'Password reset OTP failed',
+                actor=None,
+                subject=None,
+                details={'email': email, 'user_type': user_type},
+            )
             return Response({"error": "Invalid OTP."}, status=400)
 
         # Check expiration (10 minutes)
@@ -5324,7 +5578,14 @@ class VerifyPasswordResetOTPView(APIView):
 
         otp_record.is_verified = True
         otp_record.save()
-
+        log_activity(
+            'security_log',
+            'otp_success',
+            'Password reset OTP verified',
+            actor=None,
+            subject=None,
+            details={'email': email, 'user_type': user_type},
+        )
         return Response({"message": "OTP verified successfully."}, status=200)
 
 class ConfirmPasswordResetView(APIView):
@@ -5372,6 +5633,14 @@ class ConfirmPasswordResetView(APIView):
         from django.contrib.auth.hashers import make_password
         account.password = make_password(new_password)
         account.save(update_fields=['password'])
+        log_activity(
+            'security_log',
+            'password_reset',
+            'Password reset',
+            actor=account,
+            subject=account,
+            details={'email': email, 'user_type': user_type},
+        )
 
         # Delete the OTP record so it can't be reused
         otp_record.delete()

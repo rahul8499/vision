@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { lookupApi } from '@/api/lookupApi'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -6,7 +7,9 @@ import { Badge } from '@/components/common/Badge'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
-import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, FileText, Ticket, AlertTriangle, DollarSign, Shield } from 'lucide-react'
+import { SearchInput } from '@/components/filters/SearchInput'
+import { SelectFilter } from '@/components/filters/SelectFilter'
+import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, FileText, Ticket, AlertTriangle, DollarSign, Shield, Search } from 'lucide-react'
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -25,6 +28,10 @@ const statusColors: Record<string, string> = {
 export const UserProfile = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [prescriptionSearch, setPrescriptionSearch] = useState('')
+  const [prescriptionFilter, setPrescriptionFilter] = useState('all')
+  const [quoteSearch, setQuoteSearch] = useState('')
+  const [quoteFilter, setQuoteFilter] = useState('all')
 
   const { data: profile, isLoading, error } = useQuery({
     queryKey: ['user-profile', id],
@@ -32,6 +39,27 @@ export const UserProfile = () => {
     enabled: !!id,
     staleTime: 60000,
   })
+
+  const prescriptions = profile?.prescriptions ?? []
+  const orders = profile?.orders ?? []
+
+  const prescriptionRows = useMemo(() => {
+    const query = prescriptionSearch.toLowerCase()
+    return prescriptions.filter((item) => {
+      const matchesSearch = !query || [item.medicineName, item.description, item.targetStores.map((store) => store.name).join(' ')].join(' ').toLowerCase().includes(query)
+      const matchesFilter = prescriptionFilter === 'all' || item.status === prescriptionFilter || (prescriptionFilter === 'ai_ready' && item.extractedMedicines.length > 0)
+      return matchesSearch && matchesFilter
+    })
+  }, [prescriptions, prescriptionFilter, prescriptionSearch])
+
+  const quoteRows = useMemo(() => {
+    const query = quoteSearch.toLowerCase()
+    return orders.filter((item) => {
+      const matchesSearch = !query || [item.storeName, item.userStatus, item.deliveryOption].join(' ').toLowerCase().includes(query)
+      const matchesFilter = quoteFilter === 'all' || item.userStatus === quoteFilter
+      return matchesSearch && matchesFilter
+    })
+  }, [orders, quoteFilter, quoteSearch])
 
   if (isLoading) return <Loading />
   if (error) return <ErrorState />
@@ -98,7 +126,11 @@ export const UserProfile = () => {
       </div>
 
       {profile.orders.length > 0 && (
-        <Card title="Orders">
+        <Card title="Orders and quotes">
+          <div className="mb-3 flex flex-col gap-2 md:flex-row">
+            <SearchInput value={quoteSearch} onChange={setQuoteSearch} placeholder="Search store or status" className="md:max-w-xs" />
+            <SelectFilter value={quoteFilter} onChange={setQuoteFilter} options={[{ value: 'all', label: 'All statuses' }, { value: 'quoted', label: 'Quoted' }, { value: 'accepted', label: 'Accepted' }, { value: 'processing', label: 'Processing' }, { value: 'completed', label: 'Completed' }]} placeholder="Filter" />
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -111,7 +143,7 @@ export const UserProfile = () => {
                 </tr>
               </thead>
               <tbody>
-                {profile.orders.slice(0, 20).map((order) => (
+                {quoteRows.slice(0, 20).map((order) => (
                   <tr key={order.id} className="border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{order.id}</td>
                     <td className="py-2 px-3">{order.storeName}</td>
@@ -127,11 +159,16 @@ export const UserProfile = () => {
               </tbody>
             </table>
           </div>
+          {quoteRows.length === 0 && <div className="mt-3 text-sm text-gray-500">No quote or order activity matches the current filters.</div>}
         </Card>
       )}
 
       {profile.prescriptions.length > 0 && (
         <Card title="Medicine requests">
+          <div className="mb-3 flex flex-col gap-2 md:flex-row">
+            <SearchInput value={prescriptionSearch} onChange={setPrescriptionSearch} placeholder="Search prescription, store, or note" className="md:max-w-xs" />
+            <SelectFilter value={prescriptionFilter} onChange={setPrescriptionFilter} options={[{ value: 'all', label: 'All statuses' }, { value: 'pending', label: 'Pending' }, { value: 'quoted', label: 'Quoted' }, { value: 'accepted', label: 'Accepted' }, { value: 'ai_ready', label: 'AI suggestions ready' }]} placeholder="Filter" />
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -139,21 +176,29 @@ export const UserProfile = () => {
                   <th className="text-left py-2 px-3">ID</th>
                   <th className="text-left py-2 px-3">Medicine</th>
                   <th className="text-left py-2 px-3">Stores asked</th>
+                  <th className="text-left py-2 px-3">Status</th>
+                  <th className="text-left py-2 px-3">AI</th>
                   <th className="text-left py-2 px-3">Date</th>
                 </tr>
               </thead>
               <tbody>
-                {profile.prescriptions.slice(0, 20).map((rx) => (
+                {prescriptionRows.slice(0, 20).map((rx) => (
                   <tr key={rx.id} className="border-b hover:bg-gray-50">
                     <td className="py-2 px-3">#{rx.id}</td>
-                    <td className="py-2 px-3">{rx.medicineName || 'N/A'}</td>
+                    <td className="py-2 px-3">
+                      <div className="font-medium">{rx.medicineName || 'N/A'}</div>
+                      {rx.description ? <div className="text-xs text-gray-500">{rx.description}</div> : null}
+                    </td>
                     <td className="py-2 px-3">{rx.targetStores.map(s => s.name).join(', ') || '-'}</td>
+                    <td className="py-2 px-3"><span className={`px-2 py-1 rounded-full text-xs ${statusColors[rx.status] || 'bg-gray-100 text-gray-800'}`}>{rx.status}</span></td>
+                    <td className="py-2 px-3">{rx.extractedMedicines.length > 0 ? `${rx.extractedMedicines.length} suggestions` : 'None'}</td>
                     <td className="py-2 px-3">{new Date(rx.createdAt).toLocaleDateString()}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {prescriptionRows.length === 0 && <div className="mt-3 text-sm text-gray-500">No prescriptions match the current filters.</div>}
         </Card>
       )}
 

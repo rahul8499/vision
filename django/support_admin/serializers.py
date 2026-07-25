@@ -1,6 +1,6 @@
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
-from prescription.models import SafetyReport, User, Store, Prescription, PrescriptionResponse, PrescriptionTargetStore
+from prescription.models import SafetyReport, User, Store, Prescription, PrescriptionResponse, PrescriptionTargetStore, ActivityLog
 from complaints.models import Complaint, PlatformSupportTicket
 from .models import SupportStaff, SupportAssignment, InternalNote, RefundRequest, SafetyReportAction, SupportAuditLog, SLAConfiguration, SupportHoliday, SupportNotification, ContactLog, SavedReplyTemplate
 
@@ -189,6 +189,13 @@ class SupportAuditLogSerializer(serializers.ModelSerializer):
 
     def get_actor_name(self, obj):
         return (obj.actor.user.get_full_name() or obj.actor.user.username or obj.actor.user.email) if obj.actor else "System"
+
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActivityLog
+        fields = ["id", "category", "action", "actor_type", "actor_id", "subject_type", "subject_id", "title", "details", "created_at"]
+        read_only_fields = ["id", "created_at"]
 
 
 class SLAConfigurationSerializer(serializers.ModelSerializer):

@@ -1,5 +1,7 @@
 # store_app/authentication.py
 
+import uuid
+
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from .models import Store, User, StoreDeliveryPerson  # ✅ तीनों actor models
@@ -75,7 +77,14 @@ class DeliveryPersonTokenAuthentication(BaseAuthentication):
         parts = auth_header.split()
         if len(parts) != 2 or parts[0].lower() != 'bearer':
             raise AuthenticationFailed('Authorization token must be provided as Bearer <token>.')
-        person = StoreDeliveryPerson.objects.select_related('store').filter(auth_token=parts[1]).first()
+
+        token = parts[1]
+        try:
+            auth_token = uuid.UUID(str(token))
+        except (AttributeError, TypeError, ValueError):
+            raise AuthenticationFailed('Invalid delivery partner token.')
+
+        person = StoreDeliveryPerson.objects.select_related('store').filter(auth_token=auth_token).first()
         if not person or not person.is_active or not person.store.is_active:
             raise AuthenticationFailed('Delivery partner account is inactive or invalid.')
         return (person, None)

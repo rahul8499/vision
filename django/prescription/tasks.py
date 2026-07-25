@@ -3,6 +3,7 @@ import logging
 from .models import PrescriptionResponse, Prescription
 from django.utils import timezone
 from datetime import timedelta
+from .services.activity_log import log_activity
 from decimal import Decimal
 import math
 import uuid
@@ -12,6 +13,105 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_ai_service_payload(data):
+    if not isinstance(data, dict):
+        return {
+            'classification': 'unknown',
+            'score': 0.0,
+            'reason': '',
+            'ocr_text': '',
+            'extracted_medicines': [],
+            'ocr_engine': '',
+        }
+
+    classification = data.get('classification') or data.get('class') or 'unknown'
+    score = 0.0
+    for candidate_key in ('score', 'confidence', 'ai_score'):
+        value = data.get(candidate_key)
+        if value in (None, ''):
+            continue
+        try:
+            score = float(value)
+            break
+        except (TypeError, ValueError):
+            continue
+
+    if score == 0.0 and isinstance(data.get('extracted_medicines'), list):
+        for item in data['extracted_medicines']:
+            if isinstance(item, dict):
+                item_confidence = item.get('confidence')
+                try:
+                    item_confidence = float(item_confidence)
+                except (TypeError, ValueError):
+                    item_confidence = None
+                if item_confidence is not None:
+                    score = max(score, item_confidence)
+                    break
+
+    if score > 1.0 and score <= 100.0:
+        score /= 100.0
+    score = max(0.0, min(1.0, score))
+
+    extracted_medicines = data.get('extracted_medicines')
+    if not isinstance(extracted_medicines, list):
+        medicines_payload = data.get('medicines') or []
+        if isinstance(medicines_payload, list):
+            extracted_medicines = [
+                {
+                    'suggested_name': (
+                        item.get('suggested_name') or item.get('medicine_name') or item.get('name') or ""
+                    ),
+                    'medicine_name': (
+                        item.get('medicine_name') or item.get('suggested_name') or item.get('name') or ""
+                    ),
+                    'strength': item.get('strength') or '',
+                    'dosage': item.get('dosage') or '',
+                    'frequency': item.get('frequency') or '',
+                    'duration': item.get('duration') or '',
+                    'raw_text': item.get('raw_text') or '',
+                    'confidence': item.get('confidence', 0.0),
+                    'needs_verification': item.get('needs_verification', True),
+                }
+                for item in medicines_payload
+                if isinstance(item, dict)
+            ]
+        else:
+            extracted_medicines = []
+
+    normalized_items = []
+    for item in extracted_medicines or []:
+        if not isinstance(item, dict):
+            continue
+        suggested_name = item.get('suggested_name') or item.get('medicine_name') or item.get('name') or ''
+        medicine_name = item.get('medicine_name') or item.get('suggested_name') or item.get('name') or ''
+        if not suggested_name and not medicine_name:
+            continue
+        try:
+            confidence_value = float(item.get('confidence', 0.0) or 0.0)
+        except (TypeError, ValueError):
+            confidence_value = 0.0
+        normalized_items.append({
+            'suggested_name': str(suggested_name).strip(),
+            'medicine_name': str(medicine_name).strip(),
+            'strength': str(item.get('strength') or '').strip(),
+            'dosage': str(item.get('dosage') or '').strip(),
+            'frequency': str(item.get('frequency') or '').strip(),
+            'duration': str(item.get('duration') or '').strip(),
+            'raw_text': str(item.get('raw_text') or '').strip(),
+            'confidence': max(0.0, min(1.0, confidence_value)),
+            'needs_verification': bool(item.get('needs_verification', True)),
+        })
+
+    return {
+        'classification': classification or 'unknown',
+        'score': score,
+        'reason': data.get('reason') or data.get('message') or '',
+        'ocr_text': data.get('ocr_text', '') or '',
+        'extracted_medicines': normalized_items,
+        'ocr_engine': str(data.get('ocr_engine') or data.get('engine') or '')[:40],
+    }
 
 
 def _send_user_notification(user, title, body, data=None, dedupe_key=None):
@@ -1266,11 +1366,27 @@ def analyze_prescription_image_task(self, prescription_id):
             prescription.ai_status = 'completed'
             prescription.ai_classification = 'unknown'
             prescription.save(update_fields=['ai_status', 'ai_classification'])
+            log_activity(
+                'ai_log',
+                'scan_end',
+                'AI scan completed (no image)',
+                actor=None,
+                subject=prescription,
+                details={'prescription_id': prescription.id, 'classification': 'unknown'},
+            )
             _broadcast_ai_analysis_update(prescription)
             return "No image, skipped AI analysis."
 
         prescription.ai_status = 'processing'
         prescription.save(update_fields=['ai_status'])
+        log_activity(
+            'ai_log',
+            'scan_start',
+            'AI scan started',
+            actor=None,
+            subject=prescription,
+            details={'prescription_id': prescription.id},
+        )
 
         ai_url = os.environ.get('AI_CLASSIFIER_URL', 'http://127.0.0.1:8010/classify-prescription-image')
 
@@ -1327,6 +1443,14 @@ def analyze_prescription_image_task(self, prescription_id):
             session.mount('http://', adapter)
             session.mount('https://', adapter)
 
+            log_activity(
+                'ai_log',
+                'request_sent',
+                'AI request sent',
+                actor=None,
+                subject=prescription,
+                details={'prescription_id': prescription.id, 'url': ai_url},
+            )
             response = session.post(
                 ai_url,
                 files={'file': (upload_name, upload_file, upload_type)},
@@ -1345,6 +1469,14 @@ def analyze_prescription_image_task(self, prescription_id):
                 'ai_classification', 'ai_score', 'ai_reason', 'ocr_text',
                 'extracted_medicines', 'ocr_engine', 'ai_status'
             ])
+            log_activity(
+                'ai_log',
+                'timeout',
+                'AI service unavailable',
+                actor=None,
+                subject=prescription,
+                details={'prescription_id': prescription.id, 'error': str(exc)},
+            )
             _broadcast_ai_analysis_update(prescription)
             logger.warning(f"[AI] Prescription {prescription_id} completed as unknown: {prescription.ai_reason}")
             return "AI analysis done: completed_unknown"
@@ -1354,22 +1486,22 @@ def analyze_prescription_image_task(self, prescription_id):
         except ValueError:
             data = {}
 
+        log_activity(
+            'ai_log',
+            'response_received',
+            'AI response received',
+            actor=None,
+            subject=prescription,
+            details={'prescription_id': prescription.id, 'status_code': response.status_code},
+        )
         if response.status_code == 200:
-            prescription.ai_classification = data.get("classification") or "unknown"
-            try:
-                score = float(data.get('score', 0.0) or 0.0)
-            except (TypeError, ValueError):
-                score = 0.0
-            # Persist a stable 0..1 score. This also tolerates a service that
-            # returns percentage-style values such as 85 instead of 0.85.
-            if score > 1.0 and score <= 100.0:
-                score /= 100.0
-            prescription.ai_score = max(0.0, min(1.0, score))
-            prescription.ai_reason = data.get("reason", "")
-            prescription.ocr_text = data.get("ocr_text", "")
-            extracted_medicines = data.get("extracted_medicines", [])
-            prescription.extracted_medicines = extracted_medicines if isinstance(extracted_medicines, list) else []
-            prescription.ocr_engine = str(data.get("ocr_engine", ""))[:40]
+            normalized = _normalize_ai_service_payload(data)
+            prescription.ai_classification = normalized['classification'] or 'unknown'
+            prescription.ai_score = normalized['score']
+            prescription.ai_reason = normalized['reason']
+            prescription.ocr_text = normalized['ocr_text']
+            prescription.extracted_medicines = normalized['extracted_medicines']
+            prescription.ocr_engine = normalized['ocr_engine']
             prescription.ai_status = 'completed'
         else:
             detail = data.get("reason") or data.get("detail") or response.text[:200]
@@ -1385,6 +1517,19 @@ def analyze_prescription_image_task(self, prescription_id):
             'ai_classification', 'ai_score', 'ai_reason', 'ocr_text',
             'extracted_medicines', 'ocr_engine', 'ai_status'
         ])
+        log_activity(
+            'ai_log',
+            'scan_end',
+            'AI scan completed',
+            actor=None,
+            subject=prescription,
+            details={
+                'prescription_id': prescription.id,
+                'classification': prescription.ai_classification,
+                'score': prescription.ai_score,
+                'ocr_engine': prescription.ocr_engine,
+            },
+        )
         _broadcast_ai_analysis_update(prescription)
         logger.info(
             f"[AI] Prescription {prescription_id} status={prescription.ai_status} "
@@ -1402,6 +1547,14 @@ def analyze_prescription_image_task(self, prescription_id):
             prescription.ai_status = 'completed'
             prescription.ai_reason = f"AI analysis error: {e}"
             prescription.save(update_fields=['ai_classification', 'ai_score', 'ai_status', 'ai_reason'])
+            log_activity(
+                'ai_log',
+                'fallback',
+                'AI analysis failed',
+                actor=None,
+                subject=prescription,
+                details={'prescription_id': prescription.id, 'error': str(e)},
+            )
             _broadcast_ai_analysis_update(prescription)
         except Exception:
             pass

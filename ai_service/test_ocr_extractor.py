@@ -78,6 +78,22 @@ class OcrExtractorTests(unittest.TestCase):
             ["DEMO MEDICINE 3"],
         )
 
+    def test_accepts_ors_and_dextrose_lines(self):
+        result = FakeResult(
+            [
+                "10 5% Dextrose (iv) stat.",
+                "ORS 2 sachets.",
+                "Patient Name: Rahul",
+            ],
+            [0.9, 0.96, 0.99],
+        )
+        with patch.object(ocr_extractor, "_get_engine", return_value=lambda *args, **kwargs: result):
+            output = ocr_extractor.extract_prescription_text("unused.jpg")
+        self.assertEqual(
+            [item["suggested_name"] for item in output["extracted_medicines"]],
+            ["10 5% Dextrose (iv)", "ORS 2 sachets"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

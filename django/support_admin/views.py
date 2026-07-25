@@ -8,6 +8,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
+from prescription.services.activity_log import log_activity
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -18,6 +19,7 @@ from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshV
 
 from .authentication import SupportJWTAuthentication
 from .models import SupportStaff, SupportSession, InternalNote, SafetyReportAction, SupportAssignment, SLAConfiguration, SupportHoliday, SupportNotification, ContactLog, SavedReplyTemplate, RefundRequest, CaseEscalation, CaseRelation, EngineeringIssue, SensitiveActionRequest
+from prescription.models import ActivityLog
 from .permissions import (
     IsSupportStaff, IsSupportAgent, IsSupportSupervisor, IsSupportAdmin,
     CanApproveRefund, CanProcessRefund, CanManageStaff, CanBulkAssign, CanViewAuditLogs
@@ -31,7 +33,7 @@ from .serializers import (
     SupportStaffSerializer, SupportStaffCreateSerializer,
     SupportAssignmentSerializer, InternalNoteSerializer, InternalNoteCreateSerializer,
     SafetyReportSerializer, SafetyReportActionSerializer, SafetyReportActionCreateSerializer,
-    SupportAuditLogSerializer, SLAConfigurationSerializer, SupportHolidaySerializer, SupportNotificationSerializer, ContactLogSerializer, SavedReplyTemplateSerializer,
+    SupportAuditLogSerializer, SLAConfigurationSerializer, SupportHolidaySerializer, SupportNotificationSerializer, ContactLogSerializer, SavedReplyTemplateSerializer, ActivityLogSerializer,
     UserProfileSerializer, StoreProfileSerializer,
 )
 from complaints.serializers import ComplaintListSerializer, ComplaintDetailSerializer
@@ -596,6 +598,14 @@ class ComplaintAssignView(APIView):
                 ip_address=ip,
                 user_agent=ua,
             )
+            log_activity(
+                'support_log',
+                'assign',
+                'Complaint assigned',
+                actor=request.support_staff,
+                subject=complaint,
+                details={'complaint_id': complaint.id, 'assigned_to': str(assigned_to_id)},
+            )
             return ok({"complaint_id": complaint.id, "assigned_to_id": assigned_to_id}, message="Complaint assigned.", status_code=status.HTTP_200_OK)
         except ValueError as exc:
             return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
@@ -677,6 +687,14 @@ class ComplaintInternalNoteView(APIView):
                 ip_address=ip,
                 user_agent=ua,
             )
+            log_activity(
+                'support_log',
+                'note_add',
+                'Complaint note added',
+                actor=request.support_staff,
+                subject=complaint,
+                details={'complaint_id': complaint_id},
+            )
             from .serializers import InternalNoteSerializer
             return ok(InternalNoteSerializer(note).data, message="Internal note added.", status_code=status.HTTP_201_CREATED)
         except ValueError as exc:
@@ -707,6 +725,14 @@ class ComplaintStatusUpdateView(APIView):
                 entity_id=complaint.id,
                 ip_address=ip,
                 user_agent=ua,
+            )
+            log_activity(
+                'support_log',
+                'status_change',
+                'Complaint status updated',
+                actor=request.support_staff,
+                subject=complaint,
+                details={'complaint_id': complaint.id, 'new_status': new_status},
             )
             serializer = ComplaintDetailSerializer(complaint, context={"request": request, "viewer": None})
             return ok(serializer.data, message="Complaint status updated.", status_code=status.HTTP_200_OK)
@@ -933,6 +959,14 @@ class TicketAssignView(APIView):
             ticket, _ = ticket_service.assign_ticket(ticket_id, assigned_to_id, request.support_staff)
             ip, ua = _get_client_info(request)
             audit_service.log_audit(actor=request.support_staff, action="assign_ticket", entity_type="ticket", entity_id=ticket.id, old_data={"assigned_to": previous_assignee}, new_data={"assigned_to": str(assigned_to_id), "reason": request.data.get("reason", "Assigned by supervisor")}, ip_address=ip, user_agent=ua)
+            log_activity(
+                'support_log',
+                'assign',
+                'Ticket assigned',
+                actor=request.support_staff,
+                subject=ticket,
+                details={'ticket_id': ticket.id, 'assigned_to': str(assigned_to_id)},
+            )
             return ok({"ticket_id": ticket.id, "assigned_to_id": assigned_to_id}, message="Ticket assigned.")
         except ValueError as exc:
             return fail(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
@@ -963,6 +997,14 @@ class TicketReplyView(APIView):
                 entity_id=ticket.id,
                 ip_address=ip,
                 user_agent=ua,
+            )
+            log_activity(
+                'support_log',
+                'note_add',
+                'Support note added',
+                actor=request.support_staff,
+                subject=ticket,
+                details={'ticket_id': ticket.id},
             )
             data = {
                 "id": message.id,
@@ -1005,6 +1047,14 @@ class TicketStatusUpdateView(APIView):
                 entity_id=ticket.id,
                 ip_address=ip,
                 user_agent=ua,
+            )
+            log_activity(
+                'support_log',
+                'status_change',
+                'Ticket status updated',
+                actor=request.support_staff,
+                subject=ticket,
+                details={'ticket_id': ticket.id, 'new_status': new_status},
             )
             data = {
                 "id": ticket.id,
@@ -1684,6 +1734,14 @@ class RefundAssignView(APIView):
             refund = refund_service.assign_refund(pk, assigned_to_id)
             ip, ua = _get_client_info(request)
             audit_service.log_audit(actor=request.support_staff, action="assign_refund", entity_type="refund_request", entity_id=refund.id, old_data={"assigned_to": previous_assignee}, new_data={"assigned_to": str(assigned_to_id), "reason": request.data.get("reason", "Assigned by supervisor")}, ip_address=ip, user_agent=ua)
+            log_activity(
+                'support_log',
+                'assign',
+                'Refund assigned',
+                actor=request.support_staff,
+                subject=refund,
+                details={'refund_id': refund.id, 'assigned_to': str(assigned_to_id)},
+            )
             from .realtime import broadcast_support_case_event
             broadcast_support_case_event("refund_updated", object_id=refund.id, message="Refund assignment updated")
             from .serializers import RefundRequestSerializer
@@ -1719,6 +1777,14 @@ class RefundReviewView(APIView):
                 entity_id=refund.id,
                 ip_address=ip,
                 user_agent=ua,
+            )
+            log_activity(
+                'support_log',
+                'refund_action',
+                f'Refund {refund.status}',
+                actor=request.support_staff,
+                subject=refund,
+                details={'refund_id': refund.id, 'status': refund.status},
             )
             from .realtime import broadcast_support_case_event
             broadcast_support_case_event("refund_updated", object_id=refund.id, message="Refund status updated")
@@ -2674,6 +2740,25 @@ class SupportHolidayDetailView(APIView):
 # ---------------------------------------------------------------------------
 # Audit log views
 # ---------------------------------------------------------------------------
+
+class ActivityLogListView(APIView):
+    authentication_classes = [SupportJWTAuthentication]
+    permission_classes = [CanViewAuditLogs]
+
+    def get(self, request):
+        filters = {
+            "category": request.query_params.get("category"),
+            "action": request.query_params.get("action"),
+            "actor_type": request.query_params.get("actor_type"),
+            "actor_id": request.query_params.get("actor_id"),
+        }
+        qs = ActivityLog.objects.all()
+        for key, value in filters.items():
+            if value:
+                qs = qs.filter(**{key: value})
+        qs = qs.order_by("-created_at")
+        return paginated(qs, request, ActivityLogSerializer)
+
 
 class AuditLogListView(APIView):
     authentication_classes = [SupportJWTAuthentication]

@@ -3,6 +3,7 @@ import logging
 from enum import Enum
 from django.conf import settings
 from django.core.cache import cache
+from prescription.services.activity_log import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,28 @@ def log_capability_change(actor, resource, action, old_state, new_state, reason=
         new_state,
         reason,
     )
+    category = 'store_log' if getattr(resource, 'is_store', False) or resource.__class__.__name__.lower() == 'store' else 'security_log'
+    simple_action = 'approve' if action == 'store_lifecycle' and getattr(resource, 'is_verified', None) else action
+    if action == 'store_lifecycle':
+        simple_action = 'approve' if new_state == Status.ACTIVE else 'block'
+    elif action == 'user_lifecycle':
+        simple_action = 'block' if new_state in {Status.USER_INACTIVE, Status.USER_DELETED} else 'unblock'
+    try:
+        log_activity(
+            category,
+            simple_action,
+            f'{resource.__class__.__name__} lifecycle change',
+            actor=actor,
+            subject=resource,
+            details={
+                'old_state': str(old_state),
+                'new_state': str(new_state),
+                'reason': reason,
+                'action': action,
+            },
+        )
+    except Exception:
+        logger.debug('Activity log write failed for capability change.', exc_info=True)
 
 
 def _resolve_subjects(actor=None, resource=None, user=None, store=None):
