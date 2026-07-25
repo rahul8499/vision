@@ -742,7 +742,27 @@ export default function ActiveOrdersScreen() {
                 </View>
                 {pipeline.activeStage === 'NEW' && <MaterialCommunityIcons name="check-circle" size={18} color="#047857" />}
               </TouchableOpacity>
-              {TERMINAL_ORDER_OPTIONS.map((option) => {
+              <TouchableOpacity
+                 activeOpacity={0.86}
+                 onPress={() => {
+                   setOrderArchiveMenuVisible(false);
+                   pipeline.setFilterMode('delivery');
+                   pipeline.setActiveStage('ACTIVE');
+                   pipeline.setSearchQuery('');
+                   jumpToDate(todayDateKey);
+                 }}
+                 className="flex-row items-center border-b border-slate-100 bg-blue-50 px-4 py-3.5"
+               >
+                 <View className="h-9 w-9 items-center justify-center rounded-xl bg-white">
+                   <MaterialCommunityIcons name="truck-delivery-outline" size={19} color="#0284c7" />
+                 </View>
+                 <View className="ml-3 flex-1">
+                   <Text className="text-[12px] font-black text-slate-950">Home Delivery</Text>
+                   <Text className="mt-0.5 text-[8px] font-black uppercase tracking-[0.8px] text-blue-700">{sellerOrders.orders.filter(order => order.delivery_option === 'online' && isActiveOrder(order)).length} active delivery orders</Text>
+                 </View>
+                 {pipeline.filterMode === 'delivery' && <MaterialCommunityIcons name="check-circle" size={18} color="#0284c7" />}
+               </TouchableOpacity>
+               {TERMINAL_ORDER_OPTIONS.map((option) => {
                 const selected = pipeline.activeStage === option.key;
                 return (
                   <TouchableOpacity
