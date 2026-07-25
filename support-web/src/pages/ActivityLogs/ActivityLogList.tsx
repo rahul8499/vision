@@ -16,7 +16,7 @@ const CATEGORIES = [
   ['ai_log', 'AI scans'],
   ['delivery_log', 'Delivery'],
   ['store_log', 'Stores'],
-  ['production_log', 'Production'],
+  ['production', 'Production'],
 ] as const
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -43,7 +43,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   production_log: 'Production event',
 }
 
-const PRODUCTION_CATEGORIES = new Set(['support_log', 'security_log', 'production_log'])
+type SummaryTab = {
+  key: string
+  label: string
+  description: string
+  categories: string[]
+  icon?: typeof Activity
+}
 
 const PRODUCTION_SECTIONS = [
   { title: 'Authentication', description: 'Login, token, and suspicious access events.', icon: ShieldAlert },
@@ -55,30 +61,74 @@ const PRODUCTION_SECTIONS = [
   { title: 'System', description: 'Database errors, slow APIs, unhandled exceptions, and background jobs.', icon: Server },
 ] as const
 
+const SUMMARY_TABS: SummaryTab[] = [
+  {
+    key: 'all',
+    label: 'All activity',
+    description: 'Everything recorded in the activity log.',
+    categories: ['prescription_log', 'quote_log', 'order_log', 'support_log', 'security_log', 'ai_log', 'delivery_log', 'store_log', 'production_log'],
+    icon: Activity,
+  },
+  {
+    key: 'prescriptions',
+    label: 'Prescriptions',
+    description: 'Prescription creation, responses, dispatch, and delivery events.',
+    categories: ['prescription_log'],
+  },
+  {
+    key: 'orders',
+    label: 'Orders',
+    description: 'Order status changes and fulfillment flow.',
+    categories: ['order_log', 'delivery_log'],
+    icon: Package,
+  },
+  {
+    key: 'support',
+    label: 'Support',
+    description: 'Support actions, complaints, refunds, and tickets.',
+    categories: ['support_log'],
+    icon: MessageSquare,
+  },
+  {
+    key: 'production',
+    label: 'Production',
+    description: 'Security, slow APIs, upload failures, and system incidents.',
+    categories: ['support_log', 'security_log', 'production_log'],
+    icon: Server,
+  },
+]
+
+const getCategoryGroup = (selected: string) => {
+  const tab = SUMMARY_TABS.find((item) => item.key === selected)
+  return tab?.categories ?? (selected === 'all' ? SUMMARY_TABS[0].categories : [selected])
+}
+
 export const ActivityLogList = () => {
   const [category, setCategory] = useState<string>('all')
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['activity-logs', category],
+    queryKey: ['activity-logs'],
     queryFn: async () => {
-      const params: Record<string, string> = { page_size: '50' }
-      if (category !== 'all') params.category = category
+      const params: Record<string, string> = { page_size: '100' }
       const response = await apiClient.get('/activity-logs/', { params })
       return response.data
     },
     staleTime: 30000,
   })
 
-  useEffect(() => { refetch() }, [category, refetch])
+  useEffect(() => { refetch() }, [refetch])
 
   if (isLoading) return <Loading />
   if (!data) return <ErrorState />
 
   const logs = data.data?.results ?? []
-  const visibleLogs = category === 'all'
-    ? logs
-    : category === 'production_log'
-      ? logs.filter((log: { category?: string }) => PRODUCTION_CATEGORIES.has(log.category || ''))
-      : logs
+  const activeTab = SUMMARY_TABS.find((tab) => tab.key === category) || SUMMARY_TABS[0]
+  const visibleLogs = logs.filter((log: { category?: string }) => getCategoryGroup(category).includes(log.category || ''))
+  const tabCounts = Object.fromEntries(
+    SUMMARY_TABS.map((tab) => [
+      tab.key,
+      logs.filter((log: { category?: string }) => tab.categories.includes(log.category || '')).length,
+    ]),
+  ) as Record<string, number>
 
   const formatActor = (log: { actor_type?: string; actor_id?: string }) => {
     if (!log.actor_type && !log.actor_id) return 'System'
@@ -99,6 +149,44 @@ export const ActivityLogList = () => {
           <h1 className="text-2xl font-bold text-gray-900">Production activity log</h1>
           <p className="text-gray-500 mt-1">Track production, support, and security events in one place for admin and supervisor review.</p>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{activeTab.label}</p>
+          <p className="text-xs text-slate-500">{activeTab.description}</p>
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-rose-600">
+          {visibleLogs.length} visible events
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {SUMMARY_TABS.map((tab) => {
+          const isActive = category === tab.key
+          const Icon = tab.icon || Activity
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setCategory(tab.key)}
+              className={`rounded-xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                isActive ? 'border-rose-300 bg-rose-50' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${isActive ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-600'}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">{tab.label}</p>
+                  <p className="text-xs text-slate-500">{tab.description}</p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-rose-600">{tabCounts[tab.key] || 0} events</p>
+                </div>
+              </div>
+            </button>
+          )
+        })}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -130,6 +218,13 @@ export const ActivityLogList = () => {
             }`}
           >
             {label}
+            <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold">
+              {logs.filter((log: { category?: string }) => {
+                if (key === 'all') return true
+                if (key === 'production') return ['support_log', 'security_log', 'production_log'].includes(log.category || '')
+                return log.category === key
+              }).length}
+            </span>
           </button>
         ))}
       </div>
