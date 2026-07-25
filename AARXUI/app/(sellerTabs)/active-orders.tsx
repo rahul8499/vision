@@ -642,17 +642,17 @@ export default function ActiveOrdersScreen() {
               <MaterialCommunityIcons name="shield-key-outline" size={22} color="#f59e0b" />
             </View>
             <View className="ml-1.5">
-              <Text className="text-[20px] font-black text-slate-950">{nextOtpPending}</Text>
+              <Text className="text-[20px] font-black text-slate-950">{pipeline.stats.counts.OTP || 0}</Text>
               <Text className="text-[9px] font-bold text-slate-500">OTP</Text>
             </View>
           </TouchableOpacity>
         </View>
       </View>
 
-      {(nextBillingPending > 0 || nextOtpPending > 0) && (
+      {((pipeline.stats.billing || 0) > 0 || (pipeline.stats.counts.OTP || 0) > 0) && (
         <TouchableOpacity
           activeOpacity={0.86}
-          onPress={() => pipeline.setActiveStage(nextBillingPending > 0 ? 'BILLING' : 'OTP')}
+          onPress={() => pipeline.setActiveStage((pipeline.stats.billing || 0) > 0 ? 'BILLING' : 'OTP')}
           className="mx-4 mt-3 flex-row items-center rounded-[1rem] border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/50"
         >
           <View className="h-7 w-7 items-center justify-center rounded-full bg-[#007a5c]">
@@ -660,14 +660,14 @@ export default function ActiveOrdersScreen() {
           </View>
           <Text className="ml-3 text-[11px] font-black uppercase tracking-[1.4px] text-[#007a5c]">Next Best Action</Text>
           <View className="ml-3 flex-1 flex-row flex-wrap gap-2">
-            {nextBillingPending > 0 && (
+            {(pipeline.stats.billing || 0) > 0 && (
               <TouchableOpacity onPress={() => pipeline.setActiveStage('BILLING')} className="rounded-full bg-emerald-50 px-3 py-1.5">
-                <Text className="text-[9px] font-black text-[#007a5c]">{nextBillingPending} Billing pending</Text>
+                <Text className="text-[9px] font-black text-[#007a5c]">{pipeline.stats.billing} Billing pending</Text>
               </TouchableOpacity>
             )}
-            {nextOtpPending > 0 && (
+            {(pipeline.stats.counts.OTP || 0) > 0 && (
               <TouchableOpacity onPress={() => pipeline.setActiveStage('OTP')} className="rounded-full bg-red-50 px-3 py-1.5">
-                <Text className="text-[10px] font-black text-red-700">{nextOtpPending} OTP pending</Text>
+                <Text className="text-[10px] font-black text-red-700">{pipeline.stats.counts.OTP} OTP pending</Text>
               </TouchableOpacity>
             )}
           </View>
