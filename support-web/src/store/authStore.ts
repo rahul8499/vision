@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { User, UserRole } from '@/types/auth'
 import { authApi } from '@/api/authApi'
 import toast from 'react-hot-toast'
+import { logger } from '@/lib/logger'
 
 interface AuthState {
   user: User | null
@@ -47,8 +48,15 @@ export const useAuthStore = create<AuthState>()(
           const response = await authApi.login({ email, password })
           const { access, refresh, staff } = response
           set({ accessToken: access, refreshToken: refresh, user: staff, isAuthenticated: true, isLoading: false })
+          logger.event('auth.login_success', {
+            userId: staff?.id,
+            role: staff?.role,
+          })
           toast.success('Welcome back!')
         } catch (error) {
+          logger.warn('auth.login_failed', {
+            error: logger.errorPayload(error),
+          })
           set({ isLoading: false })
           throw error
         }
@@ -63,7 +71,13 @@ export const useAuthStore = create<AuthState>()(
           const user = get().user
           if (!user) throw new Error('No authenticated support user')
           set({ accessToken: access, refreshToken: refresh, user, isAuthenticated: true })
+          logger.debug('auth.token_refreshed', {
+            userId: user.id,
+          })
         } catch (error) {
+          logger.warn('auth.refresh_failed', {
+            error: logger.errorPayload(error),
+          })
           get().logout()
           throw error
         }
@@ -73,8 +87,14 @@ export const useAuthStore = create<AuthState>()(
         try {
           const updatedUser = await authApi.updateProfile(data)
           set({ user: updatedUser })
+          logger.event('auth.profile_updated', {
+            userId: updatedUser?.id,
+          })
           toast.success('Profile updated successfully')
         } catch (error) {
+          logger.error('auth.profile_update_failed', {
+            error: logger.errorPayload(error),
+          })
           toast.error('Failed to update profile')
           throw error
         }

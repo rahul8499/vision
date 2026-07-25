@@ -43,6 +43,7 @@ from .services import (
     refund_service, safety_service, lookup_service, notification_service,
     staff_service, audit_service, sla_service,
 )
+from .services.logging_service import log_production_event
 from .selectors import (
     complaint_selectors, ticket_selectors, refund_selectors,
     staff_selectors, audit_selectors, notification_selectors, lookup_selectors,
@@ -226,6 +227,12 @@ class LoginView(APIView):
             )
             return ok(result, message="Login successful.", status_code=status.HTTP_200_OK)
         except ValueError as exc:
+            log_production_event(
+                "security_log",
+                "login_failed",
+                "Support login failed",
+                details={"email": email, "reason": str(exc)},
+            )
             return fail(str(exc), status_code=status.HTTP_401_UNAUTHORIZED)
 
 
@@ -244,6 +251,12 @@ class RefreshTokenView(BaseTokenRefreshView):
             result = auth_service.refresh_staff_token(request.data.get("refresh"))
             return ok(result, message="Token refreshed.", status_code=status.HTTP_200_OK)
         except ValueError as exc:
+            log_production_event(
+                "security_log",
+                "invalid_refresh_token",
+                "Support refresh token failed",
+                details={"reason": str(exc)},
+            )
             return fail(str(exc), status_code=status.HTTP_401_UNAUTHORIZED)
 
 

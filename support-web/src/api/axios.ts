@@ -2,6 +2,7 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosR
 import toast from 'react-hot-toast'
 import type { AuthResponse, RefreshTokenRequest, User } from '@/types/auth'
 import { useAuthStore } from '@/store/authStore'
+import { logger } from '@/lib/logger'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/support-api/v1'
 
@@ -49,6 +50,11 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      logger.warn('support-api:unauthorized', {
+        url: originalRequest.url,
+        method: originalRequest.method,
+      })
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({
@@ -92,6 +98,11 @@ apiClient.interceptors.response.use(
         processQueue(null, accessToken)
         return apiClient(originalRequest)
       } catch (refreshError) {
+      logger.error('support-api:refresh-failed', {
+        url: originalRequest.url,
+        method: originalRequest.method,
+        error: logger.errorPayload(refreshError),
+      })
         processQueue(refreshError as Error, null)
         useAuthStore.getState().logout()
         window.location.href = '/login'
@@ -102,8 +113,19 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response?.status >= 500) {
+      logger.error('support-api:server-error', {
+        url: originalRequest.url,
+        method: originalRequest.method,
+        status: error.response.status,
+      })
       toast.error('Something went wrong. Please try again later.')
     } else if (error.response?.data?.message) {
+      logger.warn('support-api:request-failed', {
+        url: originalRequest.url,
+        method: originalRequest.method,
+        status: error.response?.status,
+        message: error.response.data.message,
+      })
       toast.error(error.response.data.message)
     }
 

@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Card } from '@/components/common/Card'
-import { Badge } from '@/components/common/Badge'
 import { Loading } from '@/components/common/Loading'
 import { ErrorState } from '@/components/common/ErrorState'
-import { Activity, User, Calendar, Tag } from 'lucide-react'
+import { Activity, User, Calendar, Tag, ShieldAlert, CreditCard, Package, Upload, Bell, MessageSquare, Server } from 'lucide-react'
 import apiClient from '@/api/axios'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 
@@ -18,6 +16,7 @@ const CATEGORIES = [
   ['ai_log', 'AI scans'],
   ['delivery_log', 'Delivery'],
   ['store_log', 'Stores'],
+  ['production_log', 'Production'],
 ] as const
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -29,7 +28,32 @@ const CATEGORY_COLORS: Record<string, string> = {
   ai_log: 'bg-cyan-100 text-cyan-800',
   delivery_log: 'bg-orange-100 text-orange-800',
   store_log: 'bg-gray-100 text-gray-800',
+  production_log: 'bg-rose-100 text-rose-800',
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  prescription_log: 'Prescription activity',
+  quote_log: 'Quotation activity',
+  order_log: 'Order activity',
+  support_log: 'Support activity',
+  security_log: 'Security event',
+  ai_log: 'AI scan event',
+  delivery_log: 'Delivery activity',
+  store_log: 'Store activity',
+  production_log: 'Production event',
+}
+
+const PRODUCTION_CATEGORIES = new Set(['support_log', 'security_log', 'production_log'])
+
+const PRODUCTION_SECTIONS = [
+  { title: 'Authentication', description: 'Login, token, and suspicious access events.', icon: ShieldAlert },
+  { title: 'Payments', description: 'Razorpay order, verification, refund, and subscription events.', icon: CreditCard },
+  { title: 'Orders', description: 'Order creation, status changes, and cancellations.', icon: Package },
+  { title: 'Uploads', description: 'Prescription, document, and S3 upload failures.', icon: Upload },
+  { title: 'Notifications', description: 'Expo notification sent/failed and invalid push tokens.', icon: Bell },
+  { title: 'Complaints', description: 'Complaint creation, status changes, and admin resolution.', icon: MessageSquare },
+  { title: 'System', description: 'Database errors, slow APIs, unhandled exceptions, and background jobs.', icon: Server },
+] as const
 
 export const ActivityLogList = () => {
   const [category, setCategory] = useState<string>('all')
@@ -50,6 +74,11 @@ export const ActivityLogList = () => {
   if (!data) return <ErrorState />
 
   const logs = data.data?.results ?? []
+  const visibleLogs = category === 'all'
+    ? logs
+    : category === 'production_log'
+      ? logs.filter((log: { category?: string }) => PRODUCTION_CATEGORIES.has(log.category || ''))
+      : logs
 
   const formatActor = (log: { actor_type?: string; actor_id?: string }) => {
     if (!log.actor_type && !log.actor_id) return 'System'
@@ -67,9 +96,28 @@ export const ActivityLogList = () => {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Business activity log</h1>
-          <p className="text-gray-500 mt-1">Track prescriptions, quotes, orders, deliveries, AI scans, and support events.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Production activity log</h1>
+          <p className="text-gray-500 mt-1">Track production, support, and security events in one place for admin and supervisor review.</p>
         </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {PRODUCTION_SECTIONS.map((section) => {
+          const Icon = section.icon
+          return (
+            <div key={section.title} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{section.title}</p>
+                  <p className="text-xs text-slate-500">{section.description}</p>
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
@@ -87,11 +135,11 @@ export const ActivityLogList = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {logs.length === 0 ? (
+        {visibleLogs.length === 0 ? (
           <div className="p-12 text-center text-gray-500">No activity has been recorded yet.</div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {logs.map((log: unknown) => {
+            {visibleLogs.map((log: unknown) => {
               const logData = log as {
                 id: string | number
                 category: string
@@ -105,6 +153,7 @@ export const ActivityLogList = () => {
                 created_at?: string
               }
               const categoryColor = CATEGORY_COLORS[logData.category] || 'bg-gray-100 text-gray-800'
+              const categoryLabel = CATEGORY_LABELS[logData.category] || logData.category
               const subject = formatSubject(logData)
               return (
                 <div key={logData.id} className="px-6 py-4 flex items-start gap-4">
@@ -114,7 +163,7 @@ export const ActivityLogList = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${categoryColor}`}>
-                        {logData.category}
+                        {categoryLabel}
                       </span>
                       <span className="text-sm font-semibold text-gray-900">{logData.action}</span>
                       {subject && (

@@ -17,6 +17,7 @@ Usage:
 import uuid
 import logging
 from django.conf import settings
+from support_admin.services.logging_service import log_production_event
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,12 @@ def generate_presigned_upload_url(folder, content_type='application/octet-stream
         }
     except Exception as e:
         logger.exception("Failed to generate presigned upload URL for folder=%s", folder)
+        log_production_event(
+            "production_log",
+            "s3_presign_failed",
+            "S3 presigned upload URL failed",
+            details={"folder": folder, "content_type": content_type, "error": str(e)},
+        )
         raise
 
 
@@ -131,6 +138,12 @@ def generate_presigned_download_url(object_key, expiry=None):
         return presigned_url
     except Exception as e:
         logger.exception("Failed to generate presigned download URL for key=%s", object_key)
+        log_production_event(
+            "production_log",
+            "s3_download_failed",
+            "S3 presigned download URL failed",
+            details={"object_key": object_key, "error": str(e)},
+        )
         return None
 
 
@@ -203,6 +216,12 @@ def copy_s3_object(source_key, dest_folder, dest_filename=None):
         return dest_key
     except Exception as e:
         logger.exception("Failed to copy S3 object from %s to %s", source_key, dest_key)
+        log_production_event(
+            "production_log",
+            "s3_copy_failed",
+            "S3 object copy failed",
+            details={"source_key": source_key, "dest_key": dest_key, "error": str(e)},
+        )
         return None
 
 

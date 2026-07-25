@@ -1,6 +1,7 @@
 # utils/notifications.py
 import requests
 import logging
+from support_admin.services.logging_service import log_production_event
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,12 @@ def send_push_notification(expo_push_token, title, body, data=None):
     """Send a single push notification."""
     if not is_valid_expo_push_token(expo_push_token):
         logger.warning(f"Invalid token skipped: {expo_push_token}")
+        log_production_event(
+            "notification_log",
+            "invalid_push_token",
+            "Invalid Expo push token",
+            details={"token": expo_push_token},
+        )
         return None
 
     message = {
@@ -41,6 +48,12 @@ def send_push_notification(expo_push_token, title, body, data=None):
         return res_data
     except Exception as e:
         logger.error(f"Push send error: {e}")
+        log_production_event(
+            "notification_log",
+            "expo_push_failed",
+            "Expo push notification failed",
+            details={"title": title, "error": str(e)},
+        )
         return None
 
 
@@ -78,5 +91,11 @@ def send_push_notification_batch(messages):
             logger.info(f"Batch sent: {len(chunk)} notifications, results: {chunk_results}")
         except Exception as e:
             logger.error(f"Batch push error for chunk {i}-{i+len(chunk)}: {e}")
+            log_production_event(
+                "notification_log",
+                "expo_push_batch_failed",
+                "Expo push batch failed",
+                details={"chunk_start": i, "chunk_end": i + len(chunk), "error": str(e)},
+            )
 
     return results

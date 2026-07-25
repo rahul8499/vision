@@ -1,6 +1,7 @@
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
+import { logger } from '@/lib/logger'
 
 const WS_BASE_URL = (import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000').replace(/\/$/, '')
 
@@ -19,11 +20,11 @@ export const supportWebSocket = () => {
   }
 
   const ticketUpdateHandler = (payload: unknown) => {
-    console.log('Ticket update:', payload)
+    logger.debug('ws.ticket_update', { payload })
   }
 
   const complaintUpdateHandler = (payload: unknown) => {
-    console.log('Complaint update:', payload)
+    logger.debug('ws.complaint_update', { payload })
   }
 
   connect()
