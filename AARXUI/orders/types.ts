@@ -12,6 +12,9 @@ export type DeliveryPersonSummary = {
   vehicle_number?: string | null;
   current_order_count?: number;
   max_concurrent_orders?: number;
+  is_available?: boolean;
+  is_active?: boolean;
+  last_assigned_at?: string | null;
 };
 
 export type DeliveryOfferSummary = {

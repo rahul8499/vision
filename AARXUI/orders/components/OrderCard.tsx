@@ -37,8 +37,9 @@ const formatDate = (value?: string | null) => {
 const getStatusLabel = (stageInfo: StageResolution, order: SellerOrder) => {
   if (order.delivery_assignment_status === 'pending') return 'Partner के जवाब का इंतजार';
   if (order.delivery_assignment_status === 'rejected') return 'Partner ने delivery मना की';
-  if (order.delivery_reached_at) return 'Delivery partner reached customer';
-  if (order.delivery_picked_up_at) return 'Picked up • On the way';
+  if (order.delivery_reached_at) return 'Delivery partner customer पहुँचा';
+  if (order.delivery_picked_up_at) return 'Pickup हुआ • On the way';
+  if (order.delivery_offer?.assignment_status === 'accepted') return 'Partner स्वीकार • आगे बढ़ रहा है';
   if (stageInfo.stage === 'NEW') return 'Billing Pending';
   if (stageInfo.stage === 'COMPLETED' || stageInfo.stage === 'CANCELLED') return stageInfo.config.label;
   return `${stageInfo.config.label} Stage`;
@@ -57,8 +58,8 @@ const getSellerGuidance = (order: SellerOrder, stageInfo: StageResolution) => {
     case 'READY': return { title: 'Customer आने पर OTP लेकर order दें', next: 'सही OTP डालने के बाद order Completed हो जाएगा।', icon: 'account-check-outline' };
     case 'DELIVERY':
       return order.delivery_reached_at
-        ? { title: 'Partner customer के पास पहुंच गया है', next: 'Customer का OTP verify होते ही order Completed होगा।', icon: 'map-marker-check-outline' }
-        : { title: 'Delivery partner यह order पहुंचा रहा है', next: 'Pickup, रास्ते और delivery की स्थिति यहीं update होगी।', icon: 'truck-fast-outline' };
+        ? { title: 'Partner customer के पास पहुँच गया है', next: 'Customer का OTP verify होते ही order Completed होगा।', icon: 'map-marker-check-outline' }
+        : { title: 'Delivery partner यह order Deliver कर रहा है', next: 'Pickup, रास्ता और delivery की स्थिति यहीं update होगी।', icon: 'truck-fast-outline' };
     case 'OTP': return { title: 'Customer से मिला OTP verify करें', next: 'सही OTP के बाद order Completed में सुरक्षित हो जाएगा।', icon: 'shield-key-outline' };
     default: return null;
   }

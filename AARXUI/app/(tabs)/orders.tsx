@@ -143,12 +143,13 @@ type OrderLike = {
   updated_at?: string | null;
 };
 
-type OrderSection = 'active' | 'completed' | 'cancelled';
+type OrderSection = 'active' | 'completed' | 'cancelled' | 'delivery';
 
 const ORDER_SECTION_OPTIONS: { key: OrderSection; label: string; icon: string; color: string; bg: string; desc: string }[] = [
   { key: 'active', label: 'Orders', icon: 'progress-clock', color: '#059669', bg: '#ecfdf5', desc: 'Accepted & live orders' },
   { key: 'completed', label: 'Completed', icon: 'check-circle-outline', color: '#16a34a', bg: '#f0fdf4', desc: 'Delivered orders' },
   { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline', color: '#dc2626', bg: '#fef2f2', desc: 'Cancelled orders' },
+  { key: 'delivery', label: 'Home Delivery', icon: 'truck-delivery-outline', color: '#0284c7', bg: '#f0f9ff', desc: 'Home delivery orders' },
 ];
 
 const predefinedReportReasons = [
@@ -880,6 +881,7 @@ export default function OrdersScreen() {
     }).length,
     completed: orders.filter((order) => normalizeStatus(order.user_status) === 'completed').length,
     cancelled: orders.filter((order) => normalizeStatus(order.user_status) === 'cancelled').length,
+    delivery: orders.filter((order) => order.delivery_option === 'online').length,
   }), [orders]);
 
   const sortedOrders = useMemo(() => {
@@ -889,6 +891,7 @@ export default function OrdersScreen() {
         const status = normalizeStatus(order.user_status);
         if (orderSection === 'completed') return status === 'completed';
         if (orderSection === 'cancelled') return status === 'cancelled';
+        if (orderSection === 'delivery') return order.delivery_option === 'online';
         return status !== 'completed' && status !== 'cancelled';
       })
       .sort((a, b) => {
