@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { useSignup } from '../context/SignupContext';
+import { useSignup } from '@/context/SignupContext';
 
 const gradient = ['#60a5fa', '#2563eb'] as const;
 const accent = '#2563eb';

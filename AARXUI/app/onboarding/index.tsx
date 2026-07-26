@@ -3,7 +3,7 @@ import { LocalizedText as Text } from '@/components/Language/LocalizedPrimitives
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -103,6 +103,14 @@ export default function OnboardingScreen() {
     setIsOpening(true);
     if (role === 'delivery') {
       router.push('/delivery/login' as any);
+      return;
+    }
+    if (role === 'buyer') {
+      // Customer email/password login is intentionally retained in
+      // onboarding/login.tsx for history; only the Buyer entry now uses the
+      // verified phone OTP flow.
+      // pathname: '/onboarding/login',
+      router.push('/onboarding/phone-login' as any);
       return;
     }
     router.push({

@@ -28,6 +28,61 @@ from .views import (
 from .serializers import PrescriptionResponseSerializer
 
 
+class UserOtpLoginTests(APITestCase):
+    @patch('prescription.views.verify_access_token')
+    def test_verified_phone_reactivates_soft_deleted_user(self, verify_access_token):
+        user = User.objects.create(
+            name='Returning Customer',
+            mobile='9876543210',
+            is_active=False,
+            is_deleted=True,
+            token=None,
+        )
+
+        response = self.client.post(
+            '/api/user/otp-login/',
+            {'mobile': '9876543210', 'access_token': 'verified-access-token'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.is_deleted)
+        self.assertTrue(user.is_verified)
+        self.assertTrue(user.token)
+        self.assertEqual(response.data['user_id'], user.id)
+        self.assertFalse(response.data['is_new_user'])
+        self.assertFalse(response.data['needs_name'])
+        verify_access_token.assert_called_once_with(
+            'verified-access-token',
+            '919876543210',
+        )
+
+    @patch('prescription.views.verify_access_token')
+    def test_verified_phone_does_not_reactivate_inactive_user(self, verify_access_token):
+        user = User.objects.create(
+            name='Blocked Customer',
+            mobile='9876543210',
+            is_active=False,
+            is_deleted=False,
+            token=None,
+        )
+
+        response = self.client.post(
+            '/api/user/otp-login/',
+            {'mobile': '9876543210', 'access_token': 'verified-access-token'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['error'], 'User account is inactive.')
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)
+        self.assertFalse(user.is_deleted)
+        self.assertIsNone(user.token)
+
+
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
     DEFAULT_FROM_EMAIL='no-reply@aarx.test',

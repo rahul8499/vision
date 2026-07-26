@@ -16,7 +16,7 @@ import {
   View
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { useSignup } from '../context/SignupContext';
+import { useSignup } from '@/context/SignupContext';
 
 const gradient = ['#34d399', '#059669'] as const;
 const accent = '#059669';

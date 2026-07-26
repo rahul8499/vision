@@ -18,7 +18,7 @@ import {
   View
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { useSignup } from '../context/SignupContext';
+import { useSignup } from '@/context/SignupContext';
 
 type PickedFile = DocumentPicker.DocumentPickerAsset | null;
 

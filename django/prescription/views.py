@@ -31,6 +31,12 @@ from django.contrib.gis.geos import Point
 import math
 from .tasks import notify_chat_message_task, notify_store_order_accepted_task, notify_user_response_task
 from .services.activity_log import log_activity
+from .services.msg91 import (
+    Msg91ConfigurationError,
+    Msg91VerificationError,
+    normalize_indian_mobile,
+    verify_access_token,
+)
 
 from .utils.ranking import calculate_quality_score, get_smart_tags
 from django.db.models import Max, Min
@@ -100,7 +106,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
 from .authentication import StoreTokenAuthentication, UserTokenAuthentication, DeliveryPersonTokenAuthentication
-from core.services.capability_service import delete_store_account, delete_user_account, get_store_lifecycle_status, get_user_lifecycle_status
+from core.services.capability_service import activate_user, delete_store_account, delete_user_account, get_store_lifecycle_status, get_user_lifecycle_status
 from core.services.repeat_customer_service import create_order_again_request
 from rest_framework.pagination import PageNumberPagination
 from django.core.cache import cache
@@ -3133,6 +3139,85 @@ class UserRegisterView(APIView):
             )
             return Response({"msg": "User registered successfully!"}, status=201)
         return Response(serializer.errors, status=400)
+
+
+class UserOtpLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        try:
+            mobile = normalize_indian_mobile(request.data.get('mobile'))
+            verify_access_token(request.data.get('access_token'), mobile)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        except Msg91ConfigurationError as exc:
+            return Response({'error': str(exc)}, status=503)
+        except Msg91VerificationError as exc:
+            return Response({'error': str(exc)}, status=401)
+
+        with transaction.atomic():
+            # Preserve compatibility with existing ten-digit customer records.
+            user = User.objects.select_for_update().filter(
+                mobile__in=(mobile, mobile[-10:])
+            ).first()
+            created = user is None
+            if created:
+                user = User.objects.create(
+                    mobile=mobile,
+                    name='',
+                    email=None,
+                    password='',
+                    address='',
+                    pincode='',
+                    is_verified=True,
+                )
+            user_status = get_user_lifecycle_status(user)
+            if user_status.value == 'user_deleted':
+                # Account deletion is a soft delete so related orders and audit
+                # records remain intact. A fresh, verified OTP proves ownership
+                # of the number and allows the customer to use the app again.
+                activate_user(user, reason='verified_phone_login_after_deletion')
+                user_status = get_user_lifecycle_status(user)
+            if user_status.value == 'user_inactive':
+                return Response({'error': 'User account is inactive.'}, status=403)
+
+            # Rotate the application session on every successful OTP login.
+            user.token = str(uuid.uuid4())
+            user.is_verified = True
+            user.save(update_fields=['token', 'is_verified'])
+
+        log_activity(
+            'security_log',
+            'login',
+            'User logged in with verified phone OTP',
+            actor=user,
+            subject=user,
+            details={'user_id': user.id, 'method': 'msg91_otp', 'new_user': created},
+        )
+        return Response({
+            'msg': 'Phone verified successfully.',
+            'user_id': user.id,
+            'token': user.token,
+            'user_type': 'user',
+            'is_new_user': created,
+            'needs_name': not bool(user.name.strip()),
+        })
+
+
+class UserCompleteProfileView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        name = ' '.join(str(request.data.get('name') or '').split())
+        if len(name) < 2:
+            return Response({'error': 'Please enter your name.'}, status=400)
+        if len(name) > 100:
+            return Response({'error': 'Name cannot exceed 100 characters.'}, status=400)
+        request.user.name = name
+        request.user.save(update_fields=['name'])
+        return Response(UserSerializer(request.user).data)
+
 
 class UserLoginView(APIView):
     permission_classes = [AllowAny]  # Allow unauthenticated users to access login

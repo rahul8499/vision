@@ -29,7 +29,7 @@
 import { Stack, useLocalSearchParams, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image, StyleSheet, View } from 'react-native';
-import { SignupProvider } from '../context/SignupContext';
+import { SignupProvider } from '@/context/SignupContext';
 
 const buyerGradient = ['#f0fdf4', '#ecfeff', '#eff6ff'] as const;
 const sellerGradient = ['#eff6ff', '#ecfeff', '#f8fafc'] as const;

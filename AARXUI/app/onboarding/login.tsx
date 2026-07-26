@@ -1480,7 +1480,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { useSignup } from '../context/SignupContext';
+import { useSignup } from '@/context/SignupContext';
 
 const { width, height } = Dimensions.get('window');
 const isSmallPhone = width < 380 || height < 700;

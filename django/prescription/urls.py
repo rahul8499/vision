@@ -9,6 +9,7 @@ from rest_framework.authtoken import views
 from .views import (
     StoreRegisterView, StoreLoginView,StoreLogoutView,
     StoreListView, StoreDetailUpdateDeleteView,UserRegisterView, UserLoginView, UserLogoutView,
+    UserOtpLoginView, UserCompleteProfileView,
     UserListView, UserDetailUpdateDeleteView,NearbyPrescriptionsView,LoggedInUserView,GetPrescriptionByIdView,SubmitResponseToUserPrescription,GetResponsesForUserPrescription,DeletePrescriptionResponse, GetResponseByIdViewForUserPrescription,StoreSubmittedResponsesView, StoreSubmittedResponseDetailView,StoreDashboardSummaryView,StoreMeView,UpdateResponseStatusAPIView,UserContactNoteUpdateView,StoreContactNoteView,SaveExpoPushTokenView,SaveUserExpoPushTokenView,
     LocationSearchView, LocationDetailsView, ChatInboxView, ChatThreadMessagesView, ChatInitView, ChatAudioUploadView, ChatMessageMediaUploadView,
     RequestStockRefreshView, VerifyStockAPIView,
@@ -72,6 +73,8 @@ urlpatterns = [
     path('store/<int:pk>/', StoreDetailUpdateDeleteView.as_view(), name='store_detail'),
     path('user/register/', UserRegisterView.as_view(), name='user_register'),
     path('user/login/', UserLoginView.as_view(), name='user_login'),
+    path('user/otp-login/', UserOtpLoginView.as_view(), name='user_otp_login'),
+    path('user/complete-profile/', UserCompleteProfileView.as_view(), name='user_complete_profile'),
     path('user/logout/', UserLogoutView.as_view(), name='user_logout'),
 
     path('users/', UserListView.as_view(), name='user_list'),

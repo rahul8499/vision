@@ -192,6 +192,7 @@ API_RATE_LIMITS = {
 }
 API_RATE_LIMIT_RULES = [
     {'pattern': r'^/api/(?:user|store)/login/?$', 'methods': {'POST'}, 'scope': 'login'},
+    {'pattern': r'^/api/user/otp-login/?$', 'methods': {'POST'}, 'scope': 'otp_verify'},
     {'pattern': r'^/api/(?:user|store)/register/?$', 'methods': {'POST'}, 'scope': 'registration'},
     {'pattern': r'^/api/password-reset/request-otp/?$', 'methods': {'POST'}, 'scope': 'otp_request'},
     {'pattern': r'^/api/password-reset/(?:verify-otp|confirm)/?$', 'methods': {'POST'}, 'scope': 'otp_verify'},
@@ -475,6 +476,16 @@ WHATSAPP_OTP_COPY_CODE_BUTTON = os.getenv(
     'WHATSAPP_OTP_COPY_CODE_BUTTON',
     'True',
 ).lower() in ('1', 'true', 'yes', 'on')
+
+# MSG91 OTP Widget. The widget token is used by the mobile SDK; the Authkey is
+# server-only and validates the one-time access token before an AARX session is
+# created.
+MSG91_AUTH_KEY = os.getenv('MSG91_AUTH_KEY', '')
+MSG91_VERIFY_ACCESS_TOKEN_URL = os.getenv(
+    'MSG91_VERIFY_ACCESS_TOKEN_URL',
+    'https://control.msg91.com/api/v5/widget/verifyAccessToken',
+)
+MSG91_HTTP_TIMEOUT_SECONDS = float(os.getenv('MSG91_HTTP_TIMEOUT_SECONDS', '8'))
 
 # Razorpay Configuration
 RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')

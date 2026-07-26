@@ -262,12 +262,12 @@ class StoreDeliveryPerson(models.Model):
 #     def __str__(self):
 #         return f"Prescription {self.id}"
 class User(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, blank=True, default='')
     mobile = models.CharField(max_length=15, unique=True)
-    email = models.EmailField(unique=True)
-    password = models.CharField(max_length=255)
-    address = models.TextField()
-    pincode = models.CharField(max_length=10)
+    email = models.EmailField(unique=True, null=True, blank=True)
+    password = models.CharField(max_length=255, blank=True, default='')
+    address = models.TextField(blank=True, default='')
+    pincode = models.CharField(max_length=10, blank=True, default='')
     token = models.CharField(max_length=255, blank=True, null=True, unique=True)
     expo_push_token = models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -290,7 +290,7 @@ class User(models.Model):
         return True
 
     def save(self, *args, **kwargs):
-        if not self.pk:
+        if not self.pk and self.password:
             self.password = make_password(self.password)
         super().save(*args, **kwargs)
 
