@@ -83,6 +83,80 @@ class UserOtpLoginTests(APITestCase):
         self.assertIsNone(user.token)
 
 
+class UserGoogleIdentityTests(APITestCase):
+    @patch('prescription.views.verify_google_id_token')
+    def test_phone_authenticated_user_can_link_google(self, verify_google):
+        verify_google.return_value = {
+            'sub': 'google-sub-123',
+            'email': 'customer@gmail.com',
+            'name': 'Customer Name',
+        }
+        user = User.objects.create(name='', mobile='919876543210', token='phone-session')
+
+        response = self.client.post(
+            '/api/user/google/link/',
+            {'id_token': 'verified-google-token'},
+            format='json',
+            HTTP_AUTHORIZATION='Bearer phone-session',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.google_sub, 'google-sub-123')
+        self.assertEqual(user.google_email, 'customer@gmail.com')
+        self.assertEqual(user.email, 'customer@gmail.com')
+        self.assertEqual(user.name, 'Customer Name')
+        self.assertIsNotNone(user.google_linked_at)
+
+    @patch('prescription.views.verify_google_id_token')
+    def test_google_login_only_opens_previously_linked_account(self, verify_google):
+        verify_google.return_value = {
+            'sub': 'linked-google-sub',
+            'email': 'linked@gmail.com',
+            'name': 'Linked Customer',
+        }
+        user = User.objects.create(
+            name='Linked Customer',
+            mobile='919876543211',
+            google_sub='linked-google-sub',
+            google_email='linked@gmail.com',
+        )
+
+        response = self.client.post(
+            '/api/user/google-login/',
+            {'id_token': 'verified-google-token'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(response.data['user_id'], user.id)
+        self.assertTrue(user.token)
+
+    @patch('prescription.views.verify_google_id_token')
+    def test_unlinked_google_does_not_create_or_merge_user(self, verify_google):
+        verify_google.return_value = {
+            'sub': 'unknown-google-sub',
+            'email': 'existing@gmail.com',
+            'name': 'Unknown',
+        }
+        User.objects.create(
+            name='Existing',
+            mobile='919876543212',
+            email='existing@gmail.com',
+        )
+
+        response = self.client.post(
+            '/api/user/google-login/',
+            {'id_token': 'verified-google-token'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['code'], 'google_not_linked')
+        self.assertEqual(User.objects.count(), 1)
+
+
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
     DEFAULT_FROM_EMAIL='no-reply@aarx.test',

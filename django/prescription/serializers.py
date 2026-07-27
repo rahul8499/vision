@@ -990,7 +990,10 @@ class UserSerializer(serializers.ModelSerializer):
             'lifecycle_status',
             'profile_completion_percent',  # ✅ Add this line
             'preferred_language',
+            'google_email',
+            'google_linked_at',
         ]
+        read_only_fields = ['google_email', 'google_linked_at']
 
     def get_lifecycle_status(self, obj):
         return get_user_lifecycle_status(obj).value

@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import { getGoogleIdToken } from '@/utils/googleIdentity';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -56,6 +57,8 @@ export default function PhoneLoginScreen() {
   const [resendIn, setResendIn] = useState(0);
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [phoneTouched, setPhoneTouched] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [pendingGoogleIdToken, setPendingGoogleIdToken] = useState<string | null>(null);
   const otpRef = useRef<any>(null);
   const entrance = useRef(new Animated.Value(0)).current;
 
@@ -86,6 +89,22 @@ export default function PhoneLoginScreen() {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error || 'Could not complete login.');
+
+    if (pendingGoogleIdToken) {
+      const linkResponse = await fetch(`${baseUrl}/api/user/google/link/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${data.token}`,
+        },
+        body: JSON.stringify({ id_token: pendingGoogleIdToken }),
+      });
+      const linkData = await linkResponse.json();
+      if (!linkResponse.ok) {
+        throw new Error(linkData?.error || 'Phone verified, but Google could not be linked.');
+      }
+      setPendingGoogleIdToken(null);
+    }
 
     await Promise.all([
       SecureStore.setItemAsync('authToken', data.token),
@@ -157,6 +176,43 @@ export default function PhoneLoginScreen() {
       Alert.alert('Could not resend OTP', error?.message || 'Please try again.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    if (busy || googleBusy) return;
+    try {
+      setGoogleBusy(true);
+      const idToken = await getGoogleIdToken();
+      if (!idToken) return;
+      if (!baseUrl) throw new Error('App API address is not configured.');
+      const response = await fetch(`${baseUrl}/api/user/google-login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: idToken }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 404 && data?.code === 'google_not_linked') {
+          setPendingGoogleIdToken(idToken);
+          Alert.alert(
+            'Verify your phone',
+            'Enter your phone number and OTP once. We will link this Google account automatically.',
+          );
+          return;
+        }
+        throw new Error(data?.error || 'Google login failed.');
+      }
+      await Promise.all([
+        SecureStore.setItemAsync('authToken', data.token),
+        SecureStore.setItemAsync('userType', 'user'),
+        SecureStore.setItemAsync('userId', String(data.user_id)),
+      ]);
+      router.replace((data.needs_name ? '/onboarding/complete-profile' : '/(tabs)') as any);
+    } catch (error: any) {
+      Alert.alert('Could not continue with Google', error?.message || 'Please try again.');
+    } finally {
+      setGoogleBusy(false);
     }
   };
 
@@ -316,6 +372,7 @@ export default function PhoneLoginScreen() {
                       </Text>
                     </TouchableOpacity>
                   </View>
+
                 </>
               )}
 
@@ -353,6 +410,37 @@ export default function PhoneLoginScreen() {
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              {step === 'phone' ? (
+                <>
+                  <View className="my-5 flex-row items-center">
+                    <View className="h-px flex-1 bg-[#e0e7e2]" />
+                    <Text className="mx-3 text-[10px] font-black uppercase tracking-[1.2px] text-[#8a968e]">
+                      Or
+                    </Text>
+                    <View className="h-px flex-1 bg-[#e0e7e2]" />
+                  </View>
+                  <TouchableOpacity
+                    onPress={loginWithGoogle}
+                    disabled={busy || googleBusy}
+                    activeOpacity={0.82}
+                    className="h-[58px] flex-row items-center justify-center rounded-2xl border border-[#d4ddd6] bg-white"
+                    style={styles.googleButtonShadow}
+                  >
+                    {googleBusy ? (
+                      <ActivityIndicator color="#183c25" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="google" size={21} color="#4285F4" />
+                        <Text className="ml-3 text-[14px] font-black text-[#243229]">Continue with Google</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <Text className="mt-2.5 text-center text-[10px] font-semibold text-[#849087]">
+                    Available after Google is linked to your phone-verified account.
+                  </Text>
+                </>
+              ) : null}
 
               <Text className="mt-4 px-2 text-center text-[11px] font-medium leading-[18px] text-[#6f7d74]">
                 By signing in, you agree to our{' '}
@@ -395,6 +483,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.14,
     shadowRadius: 12,
+  },
+  googleButtonShadow: {
+    elevation: 3,
+    shadowColor: '#1f5030',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.09,
+    shadowRadius: 10,
   },
   softShadow: {
     elevation: 4,

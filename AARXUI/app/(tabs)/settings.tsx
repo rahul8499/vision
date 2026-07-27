@@ -221,6 +221,7 @@ import {
 import * as Progress from 'react-native-progress';
 import { LanguagePickerModal } from '@/components/Language/LanguagePickerModal';
 import { useAppLanguage } from '@/context/LanguageContext';
+import { getGoogleIdToken } from '@/utils/googleIdentity';
 
 export default function SellerSettingsScreen() {
   /* 📦 ENV */
@@ -255,6 +256,30 @@ export default function SellerSettingsScreen() {
   const [ratingFeedback, setRatingFeedback] = useState('');
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
   const [profileSuccessVisible, setProfileSuccessVisible] = useState(false);
+  const [googleLinkBusy, setGoogleLinkBusy] = useState(false);
+
+  const handleGoogleLink = async () => {
+    if (!token || googleLinkBusy) return;
+    try {
+      setGoogleLinkBusy(true);
+      const idToken = await getGoogleIdToken();
+      if (!idToken) return;
+      const response = await axios.post(
+        `${BASE_URL}/api/user/google/link/`,
+        { id_token: idToken },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      await dispatch(fetchUserProfile());
+      Alert.alert('Google linked', `Google sign-in is active for ${response.data.google_email}.`);
+    } catch (error: any) {
+      Alert.alert(
+        'Could not link Google',
+        error?.response?.data?.error || error?.message || 'Please try again.',
+      );
+    } finally {
+      setGoogleLinkBusy(false);
+    }
+  };
 
   const handleAppRatingSubmit = async () => {
     if (ratingValue === 0) {
@@ -487,6 +512,19 @@ export default function SellerSettingsScreen() {
                   title="Email Address"
                   value={userData.email || "Add Email"}
                   onPress={() => setEditOpen(true)}
+                  isLast={false}
+                />
+                <SettingsRow
+                  icon={userData.google_linked_at ? "google" : "link-variant"}
+                  title="Google Sign-In"
+                  value={
+                    googleLinkBusy
+                      ? "Linking…"
+                      : userData.google_linked_at
+                        ? userData.google_email || "Linked"
+                        : "Link Google account"
+                  }
+                  onPress={userData.google_linked_at || googleLinkBusy ? undefined : handleGoogleLink}
                   isLast={false}
                 />
                 <SettingsRow

@@ -37,6 +37,11 @@ from .services.msg91 import (
     normalize_indian_mobile,
     verify_access_token,
 )
+from .services.google_identity import (
+    GoogleIdentityConfigurationError,
+    GoogleIdentityVerificationError,
+    verify_google_id_token,
+)
 
 from .utils.ranking import calculate_quality_score, get_smart_tags
 from django.db.models import Max, Min
@@ -3200,6 +3205,108 @@ class UserOtpLoginView(APIView):
             'token': user.token,
             'user_type': 'user',
             'is_new_user': created,
+            'needs_name': not bool(user.name.strip()),
+        })
+
+
+class UserGoogleLinkView(APIView):
+    authentication_classes = [UserTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            identity = verify_google_id_token(request.data.get('id_token'))
+        except GoogleIdentityConfigurationError as exc:
+            return Response({'error': str(exc)}, status=503)
+        except GoogleIdentityVerificationError as exc:
+            return Response({'error': str(exc)}, status=401)
+
+        user = request.user
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(pk=user.pk)
+            linked_user = User.objects.filter(google_sub=identity['sub']).exclude(pk=user.pk).first()
+            if linked_user:
+                return Response(
+                    {'error': 'This Google account is already linked to another AARX account.'},
+                    status=409,
+                )
+
+            email_owner = User.objects.filter(email__iexact=identity['email']).exclude(pk=user.pk).first()
+            if email_owner:
+                return Response(
+                    {'error': 'This email belongs to another AARX account. Contact support to merge accounts safely.'},
+                    status=409,
+                )
+
+            user.google_sub = identity['sub']
+            user.google_email = identity['email']
+            user.google_linked_at = timezone.now()
+            update_fields = ['google_sub', 'google_email', 'google_linked_at']
+            if not user.email:
+                user.email = identity['email']
+                update_fields.append('email')
+            if not user.name and identity['name']:
+                user.name = identity['name']
+                update_fields.append('name')
+            user.save(update_fields=update_fields)
+
+        log_activity(
+            'security_log',
+            'google_account_linked',
+            'Google account linked to user',
+            actor=user,
+            subject=user,
+            details={'user_id': user.id, 'google_email': identity['email']},
+        )
+        return Response({
+            'msg': 'Google account linked successfully.',
+            'google_email': user.google_email,
+            'needs_name': not bool(user.name.strip()),
+        })
+
+
+class UserGoogleLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        try:
+            identity = verify_google_id_token(request.data.get('id_token'))
+        except GoogleIdentityConfigurationError as exc:
+            return Response({'error': str(exc)}, status=503)
+        except GoogleIdentityVerificationError as exc:
+            return Response({'error': str(exc)}, status=401)
+
+        with transaction.atomic():
+            user = User.objects.select_for_update().filter(google_sub=identity['sub']).first()
+            if not user:
+                return Response({
+                    'error': 'This Google account is not linked yet. Sign in with phone OTP first, then link Google.',
+                    'code': 'google_not_linked',
+                }, status=404)
+
+            user_status = get_user_lifecycle_status(user)
+            if user_status.value == 'user_deleted':
+                return Response({'error': 'User account has been deleted.'}, status=403)
+            if user_status.value == 'user_inactive':
+                return Response({'error': 'User account is inactive.'}, status=403)
+
+            user.token = str(uuid.uuid4())
+            user.google_email = identity['email']
+            user.save(update_fields=['token', 'google_email'])
+
+        log_activity(
+            'security_log',
+            'login',
+            'User logged in with linked Google account',
+            actor=user,
+            subject=user,
+            details={'user_id': user.id, 'method': 'google'},
+        )
+        return Response({
+            'msg': 'Google login successful.',
+            'user_id': user.id,
+            'token': user.token,
+            'user_type': 'user',
             'needs_name': not bool(user.name.strip()),
         })
 

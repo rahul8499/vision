@@ -276,6 +276,9 @@ class User(models.Model):
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(default=timezone.now)
     preferred_language = models.CharField(max_length=2, choices=[('en', 'English'), ('hi', 'Hindi'), ('mr', 'Marathi')], default='en', db_index=True)
+    google_sub = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    google_email = models.EmailField(blank=True, default='')
+    google_linked_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def is_user(self):

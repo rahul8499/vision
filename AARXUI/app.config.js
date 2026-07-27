@@ -6,6 +6,7 @@ module.exports = () => ({
     BASE_URL: process.env.EXPO_PUBLIC_BASE_URL,
     MSG91_WIDGET_ID: process.env.EXPO_PUBLIC_MSG91_WIDGET_ID,
     MSG91_TOKEN_AUTH: process.env.EXPO_PUBLIC_MSG91_TOKEN_AUTH,
+    GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     GOOGLE_MAPS_API_KEY_CONFIGURED: Boolean(process.env.GOOGLE_MAPS_API_KEY),
   },
   android: {

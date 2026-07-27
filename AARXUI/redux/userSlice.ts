@@ -18,6 +18,8 @@ interface User {
   lifecycle_status?: string;
   is_deleted?: boolean;
   preferred_language?: 'en' | 'hi' | 'mr';
+  google_email?: string;
+  google_linked_at?: string | null;
   // Store specific fields
   owner_name?: string;
   gst_number?: string;

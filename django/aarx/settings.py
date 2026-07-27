@@ -192,6 +192,8 @@ API_RATE_LIMITS = {
 }
 API_RATE_LIMIT_RULES = [
     {'pattern': r'^/api/(?:user|store)/login/?$', 'methods': {'POST'}, 'scope': 'login'},
+    {'pattern': r'^/api/user/google-login/?$', 'methods': {'POST'}, 'scope': 'login'},
+    {'pattern': r'^/api/user/google/link/?$', 'methods': {'POST'}, 'scope': 'login'},
     {'pattern': r'^/api/user/otp-login/?$', 'methods': {'POST'}, 'scope': 'otp_verify'},
     {'pattern': r'^/api/(?:user|store)/register/?$', 'methods': {'POST'}, 'scope': 'registration'},
     {'pattern': r'^/api/password-reset/request-otp/?$', 'methods': {'POST'}, 'scope': 'otp_request'},
@@ -210,6 +212,8 @@ API_RATE_LIMIT_RULES = [
     {'pattern': r'^/api/(?:search-location|location-details)/?$', 'scope': 'location_lookup'},
     {'pattern': r'^/api/language/?$', 'methods': {'POST', 'PUT', 'PATCH'}, 'scope': 'language_change'},
 ]
+
+GOOGLE_OAUTH_WEB_CLIENT_ID = os.getenv('GOOGLE_OAUTH_WEB_CLIENT_ID', '').strip()
 API_RATE_LIMIT_FAIL_CLOSED_SCOPES = {'login', 'registration', 'otp_request', 'otp_verify', 'account_delete', 'payment_create', 'payment_verify'}
 NUM_PROXIES = int(os.getenv('API_NUM_PROXIES', '0'))
 WEBSOCKET_RATE_LIMITS = {
