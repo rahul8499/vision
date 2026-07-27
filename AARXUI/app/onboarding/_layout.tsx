@@ -39,6 +39,7 @@ export default function OnboardingLayout() {
   const params = useLocalSearchParams<{ userType?: string }>();
   const isSellerTheme =
     pathname.includes('seller-signup') || params.userType === 'seller';
+  const isPhoneLogin = pathname.includes('phone-login');
 
   return (
     <SignupProvider>
@@ -50,13 +51,15 @@ export default function OnboardingLayout() {
           style={StyleSheet.absoluteFillObject}
         />
 
-        <View className="items-center" style={{ height: 190 }}>
-          <Image
-            source={require('../../assets/images/aarxcolorthemelogo.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+        {!isPhoneLogin ? (
+          <View className="items-center" style={{ height: 190 }}>
+            <Image
+              source={require('../../assets/images/aarxcolorthemelogo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+        ) : null}
 
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
