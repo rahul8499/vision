@@ -1,6 +1,7 @@
 import { LocalizedText as Text, LocalizedTextInput as TextInput } from '@/components/Language/LocalizedPrimitives';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -8,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -16,6 +18,7 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -41,6 +44,7 @@ type Step = 'phone' | 'otp';
 
 export default function PhoneLoginScreen() {
   const router = useRouter();
+  const { height: screenHeight } = useWindowDimensions();
   const baseUrl = Constants.expoConfig?.extra?.BASE_URL as string | undefined;
   const widgetId = Constants.expoConfig?.extra?.MSG91_WIDGET_ID as string | undefined;
   const tokenAuth = Constants.expoConfig?.extra?.MSG91_TOKEN_AUTH as string | undefined;
@@ -50,10 +54,22 @@ export default function PhoneLoginScreen() {
   const [requestId, setRequestId] = useState('');
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
+  const [phoneFocused, setPhoneFocused] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const otpRef = useRef<any>(null);
+  const entrance = useRef(new Animated.Value(0)).current;
 
   const validMobile = /^[6-9]\d{9}$/.test(mobile);
   const validOtp = /^\d{4,8}$/.test(otp);
+  const canSubmit = !busy && (step === 'phone' ? validMobile : validOtp);
+
+  useEffect(() => {
+    Animated.timing(entrance, {
+      toValue: 1,
+      duration: 520,
+      useNativeDriver: true,
+    }).start();
+  }, [entrance]);
 
   useEffect(() => {
     if (!resendIn) return;
@@ -80,12 +96,17 @@ export default function PhoneLoginScreen() {
   };
 
   const sendOtp = async () => {
-    if (!validMobile || busy) return;
+    setPhoneTouched(true);
+    if (!validMobile || busy) {
+      if (!validMobile) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
     if (!widgetId || !tokenAuth) {
       Alert.alert('OTP unavailable', 'MSG91 widget configuration is missing.');
       return;
     }
     Keyboard.dismiss();
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setBusy(true);
     try {
       await OTPWidget.initializeWidget(widgetId, tokenAuth);
@@ -108,6 +129,7 @@ export default function PhoneLoginScreen() {
   const verifyOtp = async () => {
     if (!validOtp || !requestId || busy) return;
     Keyboard.dismiss();
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setBusy(true);
     try {
       const response = await OTPWidget.verifyOTP({ reqId: requestId, otp });
@@ -158,14 +180,13 @@ export default function PhoneLoginScreen() {
           contentContainerStyle={styles.content}
           bounces={false}
         >
-          <View className="relative w-full overflow-hidden bg-[#07170e]" style={styles.hero}>
+          <View className="relative w-full overflow-hidden bg-white" style={styles.hero}>
             <Image
               source={require('../../assets/images/userlogin.png')}
               resizeMode="contain"
               style={styles.heroImage}
               accessibilityLabel="AARX trusted pharmacy and medicine delivery services"
             />
-            <View pointerEvents="none" style={styles.heroShade} />
             <TouchableOpacity
               onPress={goBack}
               disabled={busy}
@@ -178,25 +199,59 @@ export default function PhoneLoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <View className="w-full max-w-[480px] self-center px-6 pb-8 pt-7">
+          <Animated.View
+            className="-mt-3 w-full self-center rounded-t-[30px] border-t border-[#e6d6a8] bg-[#fffefa]"
+            style={[
+              styles.sheetShadow,
+              { minHeight: screenHeight },
+              {
+                opacity: entrance,
+                transform: [
+                  {
+                    translateY: entrance.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [24, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View className="w-full max-w-[480px] self-center px-6 pb-7 pt-5">
+            <View className="mb-3 h-1 w-10 self-center rounded-full bg-[#d8c892]" />
             <View className="items-center">
-              <Text className="text-center text-[29px] font-black leading-[35px] tracking-tight text-[#102a1b]">
+              <View className="mb-2 flex-row items-center rounded-full bg-[#f5f0df] px-3 py-1">
+                <MaterialCommunityIcons name="shield-check" size={13} color="#9a7926" />
+                <Text className="ml-1.5 text-[9px] font-black uppercase tracking-[1.2px] text-[#80651f]">
+                  Secure customer login
+                </Text>
+              </View>
+              <Text className="text-center text-[27px] font-black leading-[33px] tracking-tight text-[#102a1b]">
                 {step === 'phone' ? 'Welcome to AARX' : 'Check your messages'}
               </Text>
-              <Text className="mt-2 text-center text-[15px] font-semibold leading-6 text-[#65736a]">
+              <Text className="mt-1.5 text-center text-[14px] font-semibold leading-5 text-[#65736a]">
                 {step === 'phone'
                   ? 'Sign in to find trusted medicines at the best prices'
                   : `We sent a one-time password to +91 ${mobile.slice(0, 5)} ${mobile.slice(5)}.`}
               </Text>
             </View>
 
-            <View className="mt-7">
+            <View className="mt-5">
               {step === 'phone' ? (
                 <>
                   <Text className="mb-2.5 ml-1 text-[12px] font-black uppercase tracking-[1.4px] text-[#4f6657]">
                     Mobile number
                   </Text>
-                  <View className={`h-[62px] flex-row items-center rounded-2xl border-2 px-4 ${mobile && !validMobile ? 'border-red-300 bg-red-50/40' : 'border-[#d7dfd9] bg-white'}`}>
+                  <View
+                    className={`h-[64px] flex-row items-center rounded-2xl border-2 px-4 ${
+                      phoneTouched && !validMobile
+                        ? 'border-red-300 bg-red-50/40'
+                        : phoneFocused
+                          ? 'border-[#b7953d] bg-[#fffdf7]'
+                          : 'border-[#d7dfd9] bg-white'
+                    }`}
+                    style={phoneFocused ? styles.inputShadow : undefined}
+                  >
                     <Text className="text-lg">🇮🇳</Text>
                     <Text className="ml-2 border-r border-[#d7dfd9] pr-3 text-[15px] font-black text-[#183c25]">+91</Text>
                     <TextInput
@@ -209,10 +264,23 @@ export default function PhoneLoginScreen() {
                       maxLength={10}
                       returnKeyType="done"
                       onSubmitEditing={sendOtp}
+                      onFocus={() => setPhoneFocused(true)}
+                      onBlur={() => {
+                        setPhoneFocused(false);
+                        setPhoneTouched(true);
+                      }}
                       className="ml-3 flex-1 text-[16px] font-bold tracking-wide text-[#102a1b]"
                     />
                     {validMobile ? <MaterialCommunityIcons name="check-circle" size={21} color="#1d6b3b" /> : null}
                   </View>
+                  {phoneTouched && mobile.length > 0 && !validMobile ? (
+                    <View className="mt-2 flex-row items-center px-1">
+                      <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#dc2626" />
+                      <Text className="ml-1.5 text-[11px] font-bold text-red-600">
+                        Enter a valid 10-digit Indian mobile number
+                      </Text>
+                    </View>
+                  ) : null}
                   <Text className="mt-3 px-1 text-[11px] font-medium leading-4 text-[#7b8980]">
                     We’ll send a one-time password to verify this number.
                   </Text>
@@ -253,16 +321,16 @@ export default function PhoneLoginScreen() {
 
               <TouchableOpacity
                 onPress={step === 'phone' ? sendOtp : verifyOtp}
-                disabled={busy || (step === 'phone' ? !validMobile : !validOtp)}
+                disabled={!canSubmit}
                 activeOpacity={0.9}
                 className="mt-6 overflow-hidden rounded-2xl"
-                style={!busy && (step === 'phone' ? validMobile : validOtp) ? styles.buttonShadow : undefined}
+                style={canSubmit ? styles.buttonShadow : undefined}
               >
                 <LinearGradient
-                  colors={!busy && (step === 'phone' ? validMobile : validOtp) ? ['#1f6b3d', '#0b3d22'] : ['#dce5df', '#becbc2']}
+                  colors={canSubmit ? ['#1f6b3d', '#0b3d22'] : ['#e8eeea', '#d5dfd8']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  className="h-[58px] flex-row items-center justify-center"
+                  className="h-[60px] flex-row items-center justify-center"
                 >
                   {busy ? (
                     <>
@@ -275,22 +343,27 @@ export default function PhoneLoginScreen() {
                     </>
                   ) : (
                     <>
-                      <Text className="text-[15px] font-black text-white">{step === 'phone' ? 'Get OTP' : 'Verify & continue'}</Text>
-                      <MaterialCommunityIcons name="arrow-right" size={20} color="white" style={{ marginLeft: 8 }} />
+                      <Text className={`text-[15px] font-black ${canSubmit ? 'text-white' : 'text-[#718078]'}`}>
+                        {step === 'phone' ? 'Get OTP' : 'Verify & continue'}
+                      </Text>
+                      <View className="ml-3 h-8 w-8 items-center justify-center rounded-full bg-white/15">
+                        <MaterialCommunityIcons name="arrow-right" size={18} color={canSubmit ? 'white' : '#718078'} />
+                      </View>
                     </>
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              <Text className="mt-4 px-2 text-center text-[11px] font-medium leading-[18px] text-[#6f7d74]">
+                By signing in, you agree to our{' '}
+                <Text className="font-black text-[#244c32] underline">Terms of Service</Text>
+                {' '}and{' '}
+                <Text className="font-black text-[#244c32] underline">Privacy Policy</Text>.
+              </Text>
             </View>
 
-            <View className="mt-5 flex-row items-center justify-center">
-              <MaterialCommunityIcons name="shield-check-outline" size={15} color="#738078" />
-              <Text className="ml-1.5 text-[10px] font-bold text-[#738078]">Secure login • Powered by MSG91</Text>
             </View>
-            <Text className="mt-4 text-center text-[11px] font-medium leading-[17px] text-[#7b8980]">
-              By continuing, you agree to our Terms of Service and Privacy Policy.
-            </Text>
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -309,9 +382,19 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroShade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 20, 8, 0.04)',
+  sheetShadow: {
+    elevation: 16,
+    shadowColor: '#07170e',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 22,
+  },
+  inputShadow: {
+    elevation: 5,
+    shadowColor: '#b7953d',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
   },
   softShadow: {
     elevation: 4,
