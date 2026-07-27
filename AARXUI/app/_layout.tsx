@@ -79,10 +79,12 @@ import {
   Roboto_400Regular,
   Roboto_500Medium
 } from '@expo-google-fonts/roboto';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import 'react-native-reanimated';
 import { Provider as PaperProvider } from 'react-native-paper';
 import Toast from 'react-native-toast-message';
@@ -100,8 +102,22 @@ export default function RootLayout() {
 
   if (!fontsLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#008080" />
+      <View style={loaderStyles.screen}>
+        <LinearGradient
+          colors={['#ecfdf5', '#f8fafc', '#eff6ff']}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View style={loaderStyles.glow} />
+        <View style={loaderStyles.logoShell}>
+          <View style={loaderStyles.logo}>
+            <MaterialCommunityIcons name="medical-bag" size={45} color="#059669" />
+          </View>
+          <View style={loaderStyles.spinner}>
+            <ActivityIndicator size="large" color="#10b981" />
+          </View>
+        </View>
+        <Text style={loaderStyles.brand}>AARX</Text>
+        <Text style={loaderStyles.caption}>Healthcare, delivered with care</Text>
       </View>
     );
   }
@@ -129,3 +145,17 @@ export default function RootLayout() {
     </ThemeProvider>
   );
 }
+
+const loaderStyles = StyleSheet.create({
+  screen: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' },
+  glow: { position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(16,185,129,0.08)' },
+  logoShell: { width: 106, height: 106, alignItems: 'center', justifyContent: 'center' },
+  logo: {
+    width: 78, height: 78, borderRadius: 26, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#ffffff', elevation: 10, shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.18, shadowRadius: 18,
+  },
+  spinner: { position: 'absolute', width: 106, height: 106, alignItems: 'center', justifyContent: 'center', transform: [{ scale: 1.35 }] },
+  brand: { marginTop: 20, color: '#0f172a', fontSize: 25, fontWeight: '900', letterSpacing: 5 },
+  caption: { marginTop: 7, color: '#64748b', fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
+});
