@@ -1,6 +1,11 @@
 from django.conf import settings
-from google.auth.transport import requests as google_requests
-from google.oauth2 import id_token
+
+try:
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token
+except ImportError:
+    google_requests = None
+    id_token = None
 
 
 class GoogleIdentityConfigurationError(Exception):
@@ -12,6 +17,10 @@ class GoogleIdentityVerificationError(Exception):
 
 
 def verify_google_id_token(raw_token):
+    if google_requests is None or id_token is None:
+        raise GoogleIdentityConfigurationError(
+            'Google Sign-In dependency is unavailable. Install google-auth.'
+        )
     audience = settings.GOOGLE_OAUTH_WEB_CLIENT_ID
     if not audience:
         raise GoogleIdentityConfigurationError('Google Sign-In is not configured.')

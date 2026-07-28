@@ -279,6 +279,8 @@ class User(models.Model):
     google_sub = models.CharField(max_length=255, unique=True, null=True, blank=True)
     google_email = models.EmailField(blank=True, default='')
     google_linked_at = models.DateTimeField(null=True, blank=True)
+    google_link_nonce_hash = models.CharField(max_length=64, blank=True, default='')
+    google_link_nonce_expires_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def is_user(self):

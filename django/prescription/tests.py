@@ -1,6 +1,9 @@
 from asgiref.sync import async_to_sync
+import hashlib
 from django.core import mail
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
+from datetime import timedelta
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APITestCase, APIRequestFactory
 
@@ -84,6 +87,13 @@ class UserOtpLoginTests(APITestCase):
 
 
 class UserGoogleIdentityTests(APITestCase):
+    @staticmethod
+    def authorize_google_link(user, ticket='one-time-google-link-ticket'):
+        user.google_link_nonce_hash = hashlib.sha256(ticket.encode('utf-8')).hexdigest()
+        user.google_link_nonce_expires_at = timezone.now() + timedelta(minutes=10)
+        user.save(update_fields=['google_link_nonce_hash', 'google_link_nonce_expires_at'])
+        return ticket
+
     @patch('prescription.views.verify_google_id_token')
     def test_phone_authenticated_user_can_link_google(self, verify_google):
         verify_google.return_value = {
@@ -92,10 +102,11 @@ class UserGoogleIdentityTests(APITestCase):
             'name': 'Customer Name',
         }
         user = User.objects.create(name='', mobile='919876543210', token='phone-session')
+        link_ticket = self.authorize_google_link(user)
 
         response = self.client.post(
             '/api/user/google/link/',
-            {'id_token': 'verified-google-token'},
+            {'id_token': 'verified-google-token', 'link_ticket': link_ticket},
             format='json',
             HTTP_AUTHORIZATION='Bearer phone-session',
         )
@@ -107,6 +118,85 @@ class UserGoogleIdentityTests(APITestCase):
         self.assertEqual(user.email, 'customer@gmail.com')
         self.assertEqual(user.name, 'Customer Name')
         self.assertIsNotNone(user.google_linked_at)
+        self.assertEqual(user.google_link_nonce_hash, '')
+        self.assertIsNone(user.google_link_nonce_expires_at)
+
+    @patch('prescription.views.verify_google_id_token')
+    def test_google_link_requires_fresh_phone_verification(self, verify_google):
+        user = User.objects.create(
+            name='Customer',
+            mobile='919876543213',
+            token='existing-session',
+        )
+
+        response = self.client.post(
+            '/api/user/google/link/',
+            {'id_token': 'verified-google-token'},
+            format='json',
+            HTTP_AUTHORIZATION='Bearer existing-session',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['code'], 'fresh_phone_verification_required')
+        verify_google.assert_not_called()
+
+    @patch('prescription.views.verify_google_id_token')
+    def test_expired_google_link_ticket_is_rejected(self, verify_google):
+        user = User.objects.create(
+            name='Customer',
+            mobile='919876543215',
+            token='expired-phone-session',
+        )
+        link_ticket = self.authorize_google_link(user)
+        user.google_link_nonce_expires_at = timezone.now() - timedelta(seconds=1)
+        user.save(update_fields=['google_link_nonce_expires_at'])
+
+        response = self.client.post(
+            '/api/user/google/link/',
+            {'id_token': 'verified-google-token', 'link_ticket': link_ticket},
+            format='json',
+            HTTP_AUTHORIZATION='Bearer expired-phone-session',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['code'], 'fresh_phone_verification_required')
+        verify_google.assert_not_called()
+
+    @patch('prescription.views.verify_google_id_token')
+    def test_google_link_ticket_cannot_be_reused(self, verify_google):
+        verify_google.return_value = {
+            'sub': 'first-google-sub',
+            'email': 'first@gmail.com',
+            'name': 'Customer',
+        }
+        user = User.objects.create(
+            name='Customer',
+            mobile='919876543214',
+            token='phone-session-reuse',
+        )
+        link_ticket = self.authorize_google_link(user)
+        request = {
+            'id_token': 'verified-google-token',
+            'link_ticket': link_ticket,
+        }
+
+        first_response = self.client.post(
+            '/api/user/google/link/',
+            request,
+            format='json',
+            HTTP_AUTHORIZATION='Bearer phone-session-reuse',
+        )
+        second_response = self.client.post(
+            '/api/user/google/link/',
+            request,
+            format='json',
+            HTTP_AUTHORIZATION='Bearer phone-session-reuse',
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 403)
+        self.assertEqual(second_response.data['code'], 'fresh_phone_verification_required')
+        self.assertEqual(verify_google.call_count, 1)
 
     @patch('prescription.views.verify_google_id_token')
     def test_google_login_only_opens_previously_linked_account(self, verify_google):

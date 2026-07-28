@@ -29,6 +29,8 @@ from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.measure import D
 from django.contrib.gis.geos import Point
 import math
+import hashlib
+import secrets
 from .tasks import notify_chat_message_task, notify_store_order_accepted_task, notify_user_response_task
 from .services.activity_log import log_activity
 from .services.msg91 import (
@@ -3189,7 +3191,19 @@ class UserOtpLoginView(APIView):
             # Rotate the application session on every successful OTP login.
             user.token = str(uuid.uuid4())
             user.is_verified = True
-            user.save(update_fields=['token', 'is_verified'])
+            google_link_ticket = secrets.token_urlsafe(32)
+            user.google_link_nonce_hash = hashlib.sha256(
+                google_link_ticket.encode('utf-8')
+            ).hexdigest()
+            user.google_link_nonce_expires_at = timezone.now() + timedelta(
+                seconds=getattr(settings, 'GOOGLE_LINK_TICKET_MAX_AGE_SECONDS', 600)
+            )
+            user.save(update_fields=[
+                'token',
+                'is_verified',
+                'google_link_nonce_hash',
+                'google_link_nonce_expires_at',
+            ])
 
         log_activity(
             'security_log',
@@ -3206,6 +3220,7 @@ class UserOtpLoginView(APIView):
             'user_type': 'user',
             'is_new_user': created,
             'needs_name': not bool(user.name.strip()),
+            'google_link_ticket': google_link_ticket,
         })
 
 
@@ -3214,6 +3229,20 @@ class UserGoogleLinkView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        link_ticket = str(request.data.get('link_ticket') or '')
+        link_ticket_hash = hashlib.sha256(link_ticket.encode('utf-8')).hexdigest()
+        user = request.user
+        if (
+            not link_ticket
+            or not secrets.compare_digest(user.google_link_nonce_hash, link_ticket_hash)
+            or not user.google_link_nonce_expires_at
+            or user.google_link_nonce_expires_at <= timezone.now()
+        ):
+            return Response({
+                'error': 'Fresh phone OTP verification is required before linking Google.',
+                'code': 'fresh_phone_verification_required',
+            }, status=403)
+
         try:
             identity = verify_google_id_token(request.data.get('id_token'))
         except GoogleIdentityConfigurationError as exc:
@@ -3221,9 +3250,28 @@ class UserGoogleLinkView(APIView):
         except GoogleIdentityVerificationError as exc:
             return Response({'error': str(exc)}, status=401)
 
-        user = request.user
         with transaction.atomic():
             user = User.objects.select_for_update().get(pk=user.pk)
+            if (
+                not user.google_link_nonce_hash
+                or not secrets.compare_digest(user.google_link_nonce_hash, link_ticket_hash)
+                or not user.google_link_nonce_expires_at
+                or user.google_link_nonce_expires_at <= timezone.now()
+            ):
+                return Response({
+                    'error': 'Phone verification expired or was already used. Verify your phone again.',
+                    'code': 'fresh_phone_verification_required',
+                }, status=403)
+
+            # Consume before any identity mutation. The row lock makes this
+            # single-use even when two link requests arrive concurrently.
+            user.google_link_nonce_hash = ''
+            user.google_link_nonce_expires_at = None
+            user.save(update_fields=[
+                'google_link_nonce_hash',
+                'google_link_nonce_expires_at',
+            ])
+
             linked_user = User.objects.filter(google_sub=identity['sub']).exclude(pk=user.pk).first()
             if linked_user:
                 return Response(

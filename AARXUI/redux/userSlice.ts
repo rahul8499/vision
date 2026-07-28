@@ -106,6 +106,7 @@ const userSlice = createSlice({
       SecureStore.deleteItemAsync('authToken');
       SecureStore.deleteItemAsync('userId');
       SecureStore.deleteItemAsync('userType');
+      SecureStore.deleteItemAsync('googleLinkTicket');
     },
   },
   extraReducers: (builder) => {

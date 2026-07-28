@@ -25,6 +25,9 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-local-development-only-change-me')
+GOOGLE_LINK_TICKET_MAX_AGE_SECONDS = int(
+    os.getenv('GOOGLE_LINK_TICKET_MAX_AGE_SECONDS', '600')
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes', 'on')

@@ -97,7 +97,10 @@ export default function PhoneLoginScreen() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${data.token}`,
         },
-        body: JSON.stringify({ id_token: pendingGoogleIdToken }),
+        body: JSON.stringify({
+          id_token: pendingGoogleIdToken,
+          link_ticket: data.google_link_ticket,
+        }),
       });
       const linkData = await linkResponse.json();
       if (!linkResponse.ok) {
@@ -106,11 +109,17 @@ export default function PhoneLoginScreen() {
       setPendingGoogleIdToken(null);
     }
 
-    await Promise.all([
+    const secureWrites = [
       SecureStore.setItemAsync('authToken', data.token),
       SecureStore.setItemAsync('userType', 'user'),
       SecureStore.setItemAsync('userId', String(data.user_id)),
-    ]);
+    ];
+    if (!pendingGoogleIdToken && data.google_link_ticket) {
+      secureWrites.push(SecureStore.setItemAsync('googleLinkTicket', data.google_link_ticket));
+    } else if (pendingGoogleIdToken) {
+      secureWrites.push(SecureStore.deleteItemAsync('googleLinkTicket'));
+    }
+    await Promise.all(secureWrites);
     router.replace((data.needs_name ? '/onboarding/complete-profile' : '/(tabs)') as any);
   };
 
@@ -238,7 +247,7 @@ export default function PhoneLoginScreen() {
         >
           <View className="relative w-full overflow-hidden bg-white" style={styles.hero}>
             <Image
-              source={require('../../assets/images/userlogin.png')}
+              source={require('../../assets/images/userlogin.jpeg')}
               resizeMode="contain"
               style={styles.heroImage}
               accessibilityLabel="AARX trusted pharmacy and medicine delivery services"
@@ -274,181 +283,180 @@ export default function PhoneLoginScreen() {
             ]}
           >
             <View className="w-full max-w-[480px] self-center px-6 pb-7 pt-5">
-            <View className="mb-3 h-1 w-10 self-center rounded-full bg-[#d8c892]" />
-            <View className="items-center">
-              <View className="mb-2 flex-row items-center rounded-full bg-[#f5f0df] px-3 py-1">
-                <MaterialCommunityIcons name="shield-check" size={13} color="#9a7926" />
-                <Text className="ml-1.5 text-[9px] font-black uppercase tracking-[1.2px] text-[#80651f]">
-                  Secure customer login
+              <View className="mb-3 h-1 w-10 self-center rounded-full bg-[#d8c892]" />
+              <View className="items-center">
+                <View className="mb-2 flex-row items-center rounded-full bg-[#f5f0df] px-3 py-1">
+                  <MaterialCommunityIcons name="shield-check" size={13} color="#9a7926" />
+                  <Text className="ml-1.5 text-[9px] font-black uppercase tracking-[1.2px] text-[#80651f]">
+                    Secure customer login
+                  </Text>
+                </View>
+                <Text className="text-center text-[27px] font-black leading-[33px] tracking-tight text-[#102a1b]">
+                  {step === 'phone' ? 'Welcome to AARX' : 'Check your messages'}
+                </Text>
+                <Text className="mt-1.5 text-center text-[14px] font-semibold leading-5 text-[#65736a]">
+                  {step === 'phone'
+                    ? 'Sign in to find trusted medicines at the best prices'
+                    : `We sent a one-time password to +91 ${mobile.slice(0, 5)} ${mobile.slice(5)}.`}
                 </Text>
               </View>
-              <Text className="text-center text-[27px] font-black leading-[33px] tracking-tight text-[#102a1b]">
-                {step === 'phone' ? 'Welcome to AARX' : 'Check your messages'}
-              </Text>
-              <Text className="mt-1.5 text-center text-[14px] font-semibold leading-5 text-[#65736a]">
-                {step === 'phone'
-                  ? 'Sign in to find trusted medicines at the best prices'
-                  : `We sent a one-time password to +91 ${mobile.slice(0, 5)} ${mobile.slice(5)}.`}
-              </Text>
-            </View>
 
-            <View className="mt-5">
-              {step === 'phone' ? (
-                <>
-                  <Text className="mb-2.5 ml-1 text-[12px] font-black uppercase tracking-[1.4px] text-[#4f6657]">
-                    Mobile number
-                  </Text>
-                  <View
-                    className={`h-[64px] flex-row items-center rounded-2xl border-2 px-4 ${
-                      phoneTouched && !validMobile
-                        ? 'border-red-300 bg-red-50/40'
-                        : phoneFocused
-                          ? 'border-[#b7953d] bg-[#fffdf7]'
-                          : 'border-[#d7dfd9] bg-white'
-                    }`}
-                    style={phoneFocused ? styles.inputShadow : undefined}
-                  >
-                    <Text className="text-lg">🇮🇳</Text>
-                    <Text className="ml-2 border-r border-[#d7dfd9] pr-3 text-[15px] font-black text-[#183c25]">+91</Text>
-                    <TextInput
-                      value={mobile}
-                      onChangeText={(value) => setMobile(value.replace(/\D/g, '').slice(0, 10))}
-                      placeholder="Enter 10-digit number"
-                      placeholderTextColor="#89968d"
-                      keyboardType="phone-pad"
-                      autoComplete="tel"
-                      maxLength={10}
-                      returnKeyType="done"
-                      onSubmitEditing={sendOtp}
-                      onFocus={() => setPhoneFocused(true)}
-                      onBlur={() => {
-                        setPhoneFocused(false);
-                        setPhoneTouched(true);
-                      }}
-                      className="ml-3 flex-1 text-[16px] font-bold tracking-wide text-[#102a1b]"
-                    />
-                    {validMobile ? <MaterialCommunityIcons name="check-circle" size={21} color="#1d6b3b" /> : null}
-                  </View>
-                  {phoneTouched && mobile.length > 0 && !validMobile ? (
-                    <View className="mt-2 flex-row items-center px-1">
-                      <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#dc2626" />
-                      <Text className="ml-1.5 text-[11px] font-bold text-red-600">
-                        Enter a valid 10-digit Indian mobile number
-                      </Text>
-                    </View>
-                  ) : null}
-                  <Text className="mt-3 px-1 text-[11px] font-medium leading-4 text-[#7b8980]">
-                    We’ll send a one-time password to verify this number.
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-[11px] font-black uppercase tracking-[1.5px] text-slate-500">Enter OTP</Text>
-                    <TouchableOpacity disabled={busy} onPress={() => setStep('phone')} className="flex-row items-center">
-                      <MaterialCommunityIcons name="pencil-outline" size={14} color="#1d6b3b" />
-                      <Text className="ml-1 text-xs font-black text-[#1d6b3b]">Change number</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <TextInput
-                    ref={otpRef}
-                    value={otp}
-                    onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 8))}
-                    placeholder="•  •  •  •  •  •"
-                    placeholderTextColor="#94a3b8"
-                    keyboardType="number-pad"
-                    autoComplete="sms-otp"
-                    textContentType="oneTimeCode"
-                    maxLength={8}
-                    returnKeyType="done"
-                    onSubmitEditing={verifyOtp}
-                    className="mt-3 h-[68px] rounded-2xl border-2 border-[#d7dfd9] bg-white px-5 text-center text-[24px] font-black tracking-[8px] text-[#102a1b]"
-                  />
-                  <View className="mt-4 flex-row items-center justify-center">
-                    <Text className="text-xs font-semibold text-slate-400">Didn’t receive the code? </Text>
-                    <TouchableOpacity disabled={resendIn > 0 || busy} onPress={resendOtp}>
-                      <Text className={`text-xs font-black ${resendIn ? 'text-slate-400' : 'text-emerald-700'}`}>
-                        {resendIn ? `Resend in ${resendIn}s` : 'Resend OTP'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                </>
-              )}
-
-              <TouchableOpacity
-                onPress={step === 'phone' ? sendOtp : verifyOtp}
-                disabled={!canSubmit}
-                activeOpacity={0.9}
-                className="mt-6 overflow-hidden rounded-2xl"
-                style={canSubmit ? styles.buttonShadow : undefined}
-              >
-                <LinearGradient
-                  colors={canSubmit ? ['#1f6b3d', '#0b3d22'] : ['#e8eeea', '#d5dfd8']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  className="h-[60px] flex-row items-center justify-center"
-                >
-                  {busy ? (
-                    <>
-                      <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-white/15">
-                        <ActivityIndicator size="small" color="white" />
-                      </View>
-                      <Text className="text-[15px] font-black text-white">
-                        {step === 'phone' ? 'Sending secure code…' : 'Verifying securely…'}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text className={`text-[15px] font-black ${canSubmit ? 'text-white' : 'text-[#718078]'}`}>
-                        {step === 'phone' ? 'Get OTP' : 'Verify & continue'}
-                      </Text>
-                      <View className="ml-3 h-8 w-8 items-center justify-center rounded-full bg-white/15">
-                        <MaterialCommunityIcons name="arrow-right" size={18} color={canSubmit ? 'white' : '#718078'} />
-                      </View>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {step === 'phone' ? (
-                <>
-                  <View className="my-5 flex-row items-center">
-                    <View className="h-px flex-1 bg-[#e0e7e2]" />
-                    <Text className="mx-3 text-[10px] font-black uppercase tracking-[1.2px] text-[#8a968e]">
-                      Or
+              <View className="mt-5">
+                {step === 'phone' ? (
+                  <>
+                    <Text className="mb-2.5 ml-1 text-[12px] font-black uppercase tracking-[1.4px] text-[#4f6657]">
+                      Mobile number
                     </Text>
-                    <View className="h-px flex-1 bg-[#e0e7e2]" />
-                  </View>
-                  <TouchableOpacity
-                    onPress={loginWithGoogle}
-                    disabled={busy || googleBusy}
-                    activeOpacity={0.82}
-                    className="h-[58px] flex-row items-center justify-center rounded-2xl border border-[#d4ddd6] bg-white"
-                    style={styles.googleButtonShadow}
+                    <View
+                      className={`h-[64px] flex-row items-center rounded-2xl border-2 px-4 ${phoneTouched && !validMobile
+                          ? 'border-red-300 bg-red-50/40'
+                          : phoneFocused
+                            ? 'border-[#b7953d] bg-[#fffdf7]'
+                            : 'border-[#d7dfd9] bg-white'
+                        }`}
+                      style={phoneFocused ? styles.inputShadow : undefined}
+                    >
+                      <Text className="text-lg">🇮🇳</Text>
+                      <Text className="ml-2 border-r border-[#d7dfd9] pr-3 text-[15px] font-black text-[#183c25]">+91</Text>
+                      <TextInput
+                        value={mobile}
+                        onChangeText={(value) => setMobile(value.replace(/\D/g, '').slice(0, 10))}
+                        placeholder="Enter 10-digit number"
+                        placeholderTextColor="#89968d"
+                        keyboardType="phone-pad"
+                        autoComplete="tel"
+                        maxLength={10}
+                        returnKeyType="done"
+                        onSubmitEditing={sendOtp}
+                        onFocus={() => setPhoneFocused(true)}
+                        onBlur={() => {
+                          setPhoneFocused(false);
+                          setPhoneTouched(true);
+                        }}
+                        className="ml-3 flex-1 text-[16px] font-bold tracking-wide text-[#102a1b]"
+                      />
+                      {validMobile ? <MaterialCommunityIcons name="check-circle" size={21} color="#1d6b3b" /> : null}
+                    </View>
+                    {phoneTouched && mobile.length > 0 && !validMobile ? (
+                      <View className="mt-2 flex-row items-center px-1">
+                        <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#dc2626" />
+                        <Text className="ml-1.5 text-[11px] font-bold text-red-600">
+                          Enter a valid 10-digit Indian mobile number
+                        </Text>
+                      </View>
+                    ) : null}
+                    <Text className="mt-3 px-1 text-[11px] font-medium leading-4 text-[#7b8980]">
+                      We’ll send a one-time password to verify this number.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-[11px] font-black uppercase tracking-[1.5px] text-slate-500">Enter OTP</Text>
+                      <TouchableOpacity disabled={busy} onPress={() => setStep('phone')} className="flex-row items-center">
+                        <MaterialCommunityIcons name="pencil-outline" size={14} color="#1d6b3b" />
+                        <Text className="ml-1 text-xs font-black text-[#1d6b3b]">Change number</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <TextInput
+                      ref={otpRef}
+                      value={otp}
+                      onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 8))}
+                      placeholder="•  •  •  •  •  •"
+                      placeholderTextColor="#94a3b8"
+                      keyboardType="number-pad"
+                      autoComplete="sms-otp"
+                      textContentType="oneTimeCode"
+                      maxLength={8}
+                      returnKeyType="done"
+                      onSubmitEditing={verifyOtp}
+                      className="mt-3 h-[68px] rounded-2xl border-2 border-[#d7dfd9] bg-white px-5 text-center text-[24px] font-black tracking-[8px] text-[#102a1b]"
+                    />
+                    <View className="mt-4 flex-row items-center justify-center">
+                      <Text className="text-xs font-semibold text-slate-400">Didn’t receive the code? </Text>
+                      <TouchableOpacity disabled={resendIn > 0 || busy} onPress={resendOtp}>
+                        <Text className={`text-xs font-black ${resendIn ? 'text-slate-400' : 'text-emerald-700'}`}>
+                          {resendIn ? `Resend in ${resendIn}s` : 'Resend OTP'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                  </>
+                )}
+
+                <TouchableOpacity
+                  onPress={step === 'phone' ? sendOtp : verifyOtp}
+                  disabled={!canSubmit}
+                  activeOpacity={0.9}
+                  className="mt-6 overflow-hidden rounded-2xl"
+                  style={canSubmit ? styles.buttonShadow : undefined}
+                >
+                  <LinearGradient
+                    colors={canSubmit ? ['#1f6b3d', '#0b3d22'] : ['#e8eeea', '#d5dfd8']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    className="h-[60px] flex-row items-center justify-center"
                   >
-                    {googleBusy ? (
-                      <ActivityIndicator color="#183c25" />
+                    {busy ? (
+                      <>
+                        <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-white/15">
+                          <ActivityIndicator size="small" color="white" />
+                        </View>
+                        <Text className="text-[15px] font-black text-white">
+                          {step === 'phone' ? 'Sending secure code…' : 'Verifying securely…'}
+                        </Text>
+                      </>
                     ) : (
                       <>
-                        <MaterialCommunityIcons name="google" size={21} color="#4285F4" />
-                        <Text className="ml-3 text-[14px] font-black text-[#243229]">Continue with Google</Text>
+                        <Text className={`text-[15px] font-black ${canSubmit ? 'text-white' : 'text-[#718078]'}`}>
+                          {step === 'phone' ? 'Get OTP' : 'Verify & continue'}
+                        </Text>
+                        <View className="ml-3 h-8 w-8 items-center justify-center rounded-full bg-white/15">
+                          <MaterialCommunityIcons name="arrow-right" size={18} color={canSubmit ? 'white' : '#718078'} />
+                        </View>
                       </>
                     )}
-                  </TouchableOpacity>
-                  <Text className="mt-2.5 text-center text-[10px] font-semibold text-[#849087]">
-                    Available after Google is linked to your phone-verified account.
-                  </Text>
-                </>
-              ) : null}
+                  </LinearGradient>
+                </TouchableOpacity>
 
-              <Text className="mt-4 px-2 text-center text-[11px] font-medium leading-[18px] text-[#6f7d74]">
-                By signing in, you agree to our{' '}
-                <Text className="font-black text-[#244c32] underline">Terms of Service</Text>
-                {' '}and{' '}
-                <Text className="font-black text-[#244c32] underline">Privacy Policy</Text>.
-              </Text>
-            </View>
+                {step === 'phone' ? (
+                  <>
+                    <View className="my-5 flex-row items-center">
+                      <View className="h-px flex-1 bg-[#e0e7e2]" />
+                      <Text className="mx-3 text-[10px] font-black uppercase tracking-[1.2px] text-[#8a968e]">
+                        Or
+                      </Text>
+                      <View className="h-px flex-1 bg-[#e0e7e2]" />
+                    </View>
+                    <TouchableOpacity
+                      onPress={loginWithGoogle}
+                      disabled={busy || googleBusy}
+                      activeOpacity={0.82}
+                      className="h-[58px] flex-row items-center justify-center rounded-2xl border border-[#d4ddd6] bg-white"
+                      style={styles.googleButtonShadow}
+                    >
+                      {googleBusy ? (
+                        <ActivityIndicator color="#183c25" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="google" size={21} color="#4285F4" />
+                          <Text className="ml-3 text-[14px] font-black text-[#243229]">Continue with Google</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    <Text className="mt-2.5 text-center text-[10px] font-semibold text-[#849087]">
+                      Available after Google is linked to your phone-verified account.
+                    </Text>
+                  </>
+                ) : null}
+
+                <Text className="mt-4 px-2 text-center text-[11px] font-medium leading-[18px] text-[#6f7d74]">
+                  By signing in, you agree to our{' '}
+                  <Text className="font-black text-[#244c32] underline">Terms of Service</Text>
+                  {' '}and{' '}
+                  <Text className="font-black text-[#244c32] underline">Privacy Policy</Text>.
+                </Text>
+              </View>
 
             </View>
           </Animated.View>

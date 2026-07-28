@@ -262,16 +262,35 @@ export default function SellerSettingsScreen() {
     if (!token || googleLinkBusy) return;
     try {
       setGoogleLinkBusy(true);
+      const linkTicket = await SecureStore.getItemAsync('googleLinkTicket');
+      if (!linkTicket) {
+        Alert.alert(
+          'Phone verification required',
+          'For security, verify your phone before linking Google. On the next screen, choose Continue with Google.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Verify now',
+              onPress: () => router.push('/onboarding/phone-login' as any),
+            },
+          ],
+        );
+        return;
+      }
       const idToken = await getGoogleIdToken();
       if (!idToken) return;
       const response = await axios.post(
         `${BASE_URL}/api/user/google/link/`,
-        { id_token: idToken },
+        { id_token: idToken, link_ticket: linkTicket },
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      await SecureStore.deleteItemAsync('googleLinkTicket');
       await dispatch(fetchUserProfile());
       Alert.alert('Google linked', `Google sign-in is active for ${response.data.google_email}.`);
     } catch (error: any) {
+      if (error?.response?.data?.code === 'fresh_phone_verification_required') {
+        await SecureStore.deleteItemAsync('googleLinkTicket');
+      }
       Alert.alert(
         'Could not link Google',
         error?.response?.data?.error || error?.message || 'Please try again.',

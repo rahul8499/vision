@@ -22,17 +22,24 @@ export default function CompleteProfileScreen() {
       setGoogleBusy(true);
       const idToken = await getGoogleIdToken();
       if (!idToken) return;
-      const token = await SecureStore.getItemAsync('authToken');
+      const [token, linkTicket] = await Promise.all([
+        SecureStore.getItemAsync('authToken'),
+        SecureStore.getItemAsync('googleLinkTicket'),
+      ]);
+      if (!linkTicket) {
+        throw new Error('For security, verify your phone again before linking Google.');
+      }
       const response = await fetch(`${baseUrl}/api/user/google/link/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ id_token: idToken }),
+        body: JSON.stringify({ id_token: idToken, link_ticket: linkTicket }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Could not link Google.');
+      await SecureStore.deleteItemAsync('googleLinkTicket');
       setGoogleEmail(data.google_email || '');
       Alert.alert('Google linked', 'You can now use Google to sign in to this AARX account.');
     } catch (error: any) {
