@@ -3,6 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { getGoogleIdToken } from '@/utils/googleIdentity';
@@ -247,7 +248,7 @@ export default function PhoneLoginScreen() {
         >
           <View className="relative w-full overflow-hidden bg-white" style={styles.hero}>
             <Image
-              source={require('../../assets/images/userlogin.jpeg')}
+              source={require('../../assets/images/userloginlatest.jpeg')}
               resizeMode="contain"
               style={styles.heroImage}
               accessibilityLabel="AARX trusted pharmacy and medicine delivery services"
@@ -265,10 +266,10 @@ export default function PhoneLoginScreen() {
           </View>
 
           <Animated.View
-            className="-mt-3 w-full self-center rounded-t-[30px] border-t border-[#e6d6a8] bg-[#fffefa]"
+            className="-mt-7 w-[87%] max-w-[470px] self-center rounded-[30px] border border-[#e8ebe5] bg-[#fffefa]"
             style={[
               styles.sheetShadow,
-              { minHeight: screenHeight },
+              { minHeight: Math.max(440, screenHeight * 0.5) },
               {
                 opacity: entrance,
                 transform: [
@@ -282,37 +283,36 @@ export default function PhoneLoginScreen() {
               },
             ]}
           >
-            <View className="w-full max-w-[480px] self-center px-6 pb-7 pt-5">
-              <View className="mb-3 h-1 w-10 self-center rounded-full bg-[#d8c892]" />
+            <View className="w-full self-center px-5 pb-5 pt-4">
               <View className="items-center">
-                <View className="mb-2 flex-row items-center rounded-full bg-[#f5f0df] px-3 py-1">
-                  <MaterialCommunityIcons name="shield-check" size={13} color="#9a7926" />
-                  <Text className="ml-1.5 text-[9px] font-black uppercase tracking-[1.2px] text-[#80651f]">
+                <View className="mb-2 flex-row items-center rounded-full border border-[#dce8d8] bg-[#f4f8f1] px-3 py-1.5">
+                  <MaterialCommunityIcons name="shield-check" size={14} color="#5c9147" />
+                  <Text className="ml-1.5 text-[10px] font-black uppercase tracking-[1.2px] text-[#34713b]">
                     Secure customer login
                   </Text>
                 </View>
-                <Text className="text-center text-[27px] font-black leading-[33px] tracking-tight text-[#102a1b]">
+                <Text className="text-center text-[24px] font-black leading-[30px] tracking-tight text-[#064a24]">
                   {step === 'phone' ? 'Welcome to AARX' : 'Check your messages'}
                 </Text>
-                <Text className="mt-1.5 text-center text-[14px] font-semibold leading-5 text-[#65736a]">
+                <Text className="mt-1 text-center text-[13px] font-medium leading-5 text-[#68716b]">
                   {step === 'phone'
                     ? 'Sign in to find trusted medicines at the best prices'
                     : `We sent a one-time password to +91 ${mobile.slice(0, 5)} ${mobile.slice(5)}.`}
                 </Text>
               </View>
 
-              <View className="mt-5">
+              <View className="mt-3">
                 {step === 'phone' ? (
                   <>
-                    <Text className="mb-2.5 ml-1 text-[12px] font-black uppercase tracking-[1.4px] text-[#4f6657]">
+                    <Text className="mb-2.5 text-[11px] font-black uppercase tracking-[1.3px] text-[#245b32]">
                       Mobile number
                     </Text>
                     <View
-                      className={`h-[64px] flex-row items-center rounded-2xl border-2 px-4 ${phoneTouched && !validMobile
-                          ? 'border-red-300 bg-red-50/40'
-                          : phoneFocused
-                            ? 'border-[#b7953d] bg-[#fffdf7]'
-                            : 'border-[#d7dfd9] bg-white'
+                      className={`h-[58px] flex-row items-center rounded-xl border px-4 ${phoneTouched && !validMobile
+                        ? 'border-red-300 bg-red-50/40'
+                        : phoneFocused
+                          ? 'border-[#b7953d] bg-[#fffdf7]'
+                          : 'border-[#d7dfd9] bg-white'
                         }`}
                       style={phoneFocused ? styles.inputShadow : undefined}
                     >
@@ -388,14 +388,14 @@ export default function PhoneLoginScreen() {
                   onPress={step === 'phone' ? sendOtp : verifyOtp}
                   disabled={!canSubmit}
                   activeOpacity={0.9}
-                  className="mt-6 overflow-hidden rounded-2xl"
+                  className="mt-3 overflow-hidden rounded-xl"
                   style={canSubmit ? styles.buttonShadow : undefined}
                 >
                   <LinearGradient
-                    colors={canSubmit ? ['#1f6b3d', '#0b3d22'] : ['#e8eeea', '#d5dfd8']}
+                    colors={['#126331', '#72a942']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
-                    className="h-[60px] flex-row items-center justify-center"
+                    className="h-[55px] flex-row items-center justify-center"
                   >
                     {busy ? (
                       <>
@@ -408,11 +408,11 @@ export default function PhoneLoginScreen() {
                       </>
                     ) : (
                       <>
-                        <Text className={`text-[15px] font-black ${canSubmit ? 'text-white' : 'text-[#718078]'}`}>
+                        <Text className="text-[16px] font-black text-white">
                           {step === 'phone' ? 'Get OTP' : 'Verify & continue'}
                         </Text>
-                        <View className="ml-3 h-8 w-8 items-center justify-center rounded-full bg-white/15">
-                          <MaterialCommunityIcons name="arrow-right" size={18} color={canSubmit ? 'white' : '#718078'} />
+                        <View className="ml-3 h-8 w-8 items-center justify-center rounded-full bg-white">
+                          <MaterialCommunityIcons name="arrow-right" size={18} color="#236b36" />
                         </View>
                       </>
                     )}
@@ -421,7 +421,7 @@ export default function PhoneLoginScreen() {
 
                 {step === 'phone' ? (
                   <>
-                    <View className="my-5 flex-row items-center">
+                    <View className="my-3 flex-row items-center">
                       <View className="h-px flex-1 bg-[#e0e7e2]" />
                       <Text className="mx-3 text-[10px] font-black uppercase tracking-[1.2px] text-[#8a968e]">
                         Or
@@ -432,14 +432,14 @@ export default function PhoneLoginScreen() {
                       onPress={loginWithGoogle}
                       disabled={busy || googleBusy}
                       activeOpacity={0.82}
-                      className="h-[58px] flex-row items-center justify-center rounded-2xl border border-[#d4ddd6] bg-white"
+                      className="h-[54px] flex-row items-center justify-center rounded-xl border border-[#dfe3df] bg-white"
                       style={styles.googleButtonShadow}
                     >
                       {googleBusy ? (
                         <ActivityIndicator color="#183c25" />
                       ) : (
                         <>
-                          <MaterialCommunityIcons name="google" size={21} color="#4285F4" />
+                          <GoogleMark />
                           <Text className="ml-3 text-[14px] font-black text-[#243229]">Continue with Google</Text>
                         </>
                       )}
@@ -450,7 +450,7 @@ export default function PhoneLoginScreen() {
                   </>
                 ) : null}
 
-                <Text className="mt-4 px-2 text-center text-[11px] font-medium leading-[18px] text-[#6f7d74]">
+                <Text className="mt-3 px-1 text-center text-[10px] font-medium leading-[16px] text-[#6f7d74]">
                   By signing in, you agree to our{' '}
                   <Text className="font-black text-[#244c32] underline">Terms of Service</Text>
                   {' '}and{' '}
@@ -460,30 +460,73 @@ export default function PhoneLoginScreen() {
 
             </View>
           </Animated.View>
+          <PharmacyFooter />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+function GoogleMark() {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" accessibilityLabel="Google">
+      <Path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z" />
+      <Path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.6 0-4.81-1.76-5.6-4.12H3.06v2.62A10 10 0 0 0 12 22Z" />
+      <Path fill="#FBBC05" d="M6.4 13.94A6 6 0 0 1 6.08 12c0-.67.12-1.32.32-1.94V7.44H3.06A10 10 0 0 0 2 12c0 1.64.39 3.2 1.06 4.56l3.34-2.62Z" />
+      <Path fill="#EA4335" d="M12 5.94c1.47 0 2.78.5 3.82 1.5l2.87-2.87A9.64 9.64 0 0 0 12 2a10 10 0 0 0-8.94 5.44l3.34 2.62c.79-2.36 3-4.12 5.6-4.12Z" />
+    </Svg>
+  );
+}
+
+function PharmacyFooter() {
+  return (
+    <View style={styles.footerArt} pointerEvents="none">
+      <View style={styles.footerBottomFill} />
+      <Svg width="100%" height={100} viewBox="0 0 390 100" preserveAspectRatio="none">
+        <Path d="M0 43 C47 33 69 8 117 21 C159 32 190 43 230 31 C281 15 315 9 390 36 L390 101 L0 101 Z" fill="#176235" />
+        <Path d="M0 34 C48 24 69 5 117 15 C159 26 190 37 230 25 C281 9 315 6 390 27" fill="none" stroke="#d4a72c" strokeWidth="1.4" />
+        <Path d="M20 60 C14 47 14 34 20 20 M20 45 C9 40 5 32 4 24 M21 36 C31 29 35 20 35 11 M365 59 C373 45 375 32 369 18 M370 44 C380 39 384 30 385 22 M369 34 C358 28 354 19 354 10" fill="none" stroke="#d9dfce" strokeWidth="1.2" />
+        <Circle cx="195" cy="55" r="17" fill="#fffef9" stroke="#d4a72c" strokeWidth="1.6" />
+        <Path d="M195 43 L195 67 M188 50 L202 50" stroke="#d4a72c" strokeWidth="3" strokeLinecap="round" />
+      </Svg>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  content: { flexGrow: 1, backgroundColor: '#ffffff' },
+  footerArt: {
+    width: '100%',
+    height: 94,
+    marginTop: -8,
+    marginBottom: -6,
+    overflow: 'hidden',
+  },
+  footerBottomFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 18,
+    backgroundColor: '#176235',
+  },
+  content: { flexGrow: 1, backgroundColor: '#fffef9' },
   hero: {
     width: '100%',
-    aspectRatio: 1536 / 1024,
-    minHeight: 280,
-    maxHeight: 360,
+    marginTop: -32,
+    marginBottom: 8,
+    aspectRatio: 1280 / 1127,
   },
   heroImage: {
     width: '100%',
     height: '100%',
+    alignSelf: 'center',
   },
   sheetShadow: {
-    elevation: 16,
+    elevation: 12,
     shadowColor: '#07170e',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.11,
+    shadowRadius: 18,
   },
   inputShadow: {
     elevation: 5,
