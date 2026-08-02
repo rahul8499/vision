@@ -10,6 +10,7 @@ from .views import (
     StoreRegisterView, StoreLoginView,StoreLogoutView,
     StoreListView, StoreDetailUpdateDeleteView,UserRegisterView, UserLoginView, UserLogoutView,
     UserOtpLoginView, UserCompleteProfileView, UserGoogleLinkView, UserGoogleLoginView,
+    StoreOtpLoginView, StoreGoogleLinkView, StoreGoogleLoginView, StoreCompleteOnboardingView,
     UserListView, UserDetailUpdateDeleteView,NearbyPrescriptionsView,LoggedInUserView,GetPrescriptionByIdView,SubmitResponseToUserPrescription,GetResponsesForUserPrescription,DeletePrescriptionResponse, GetResponseByIdViewForUserPrescription,StoreSubmittedResponsesView, StoreSubmittedResponseDetailView,StoreDashboardSummaryView,StoreMeView,UpdateResponseStatusAPIView,UserContactNoteUpdateView,StoreContactNoteView,SaveExpoPushTokenView,SaveUserExpoPushTokenView,
     LocationSearchView, LocationDetailsView, ChatInboxView, ChatThreadMessagesView, ChatInitView, ChatAudioUploadView, ChatMessageMediaUploadView,
     RequestStockRefreshView, VerifyStockAPIView,
@@ -67,6 +68,10 @@ urlpatterns = [
 
     path('store/register/', StoreRegisterView.as_view(), name='store_register'),
     path('store/login/', StoreLoginView.as_view(), name='store_login'),
+    path('store/otp-login/', StoreOtpLoginView.as_view(), name='store_otp_login'),
+    path('store/google-login/', StoreGoogleLoginView.as_view(), name='store_google_login'),
+    path('store/google/link/', StoreGoogleLinkView.as_view(), name='store_google_link'),
+    path('store/complete-onboarding/', StoreCompleteOnboardingView.as_view(), name='store_complete_onboarding'),
     path('store/logout/', StoreLogoutView.as_view(), name='store_logout'),
 
     path('stores/', StoreListView.as_view(), name='store_list'),

@@ -27,6 +27,7 @@ interface User {
   auto_accept_prescription?: boolean;
   is_verified?: boolean;
   is_active?: boolean;
+  needs_onboarding?: boolean;
 }
 
 interface UserState {

@@ -271,7 +271,7 @@ export default function SellerSettingsScreen() {
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Verify now',
-              onPress: () => router.push('/onboarding/phone-login' as any),
+              onPress: () => router.push({ pathname: '/onboarding/phone-login', params: { userType: 'buyer' } } as any),
             },
           ],
         );

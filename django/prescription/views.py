@@ -31,6 +31,7 @@ from django.contrib.gis.geos import Point
 import math
 import hashlib
 import secrets
+import re
 from .tasks import notify_chat_message_task, notify_store_order_accepted_task, notify_user_response_task
 from .services.activity_log import log_activity
 from .services.msg91 import (
@@ -71,7 +72,7 @@ from .utils.app_notifications import (
 )
 from core.services.s3_service import get_file_url
 
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.generics import RetrieveAPIView
 from .serializers import (
     StoreMeSerializer, StoreMeUpdateSerializer, StoreDeliverySettingsSerializer,
@@ -4149,6 +4150,240 @@ class StoreLogoutView(APIView):
             details={'store_id': store.id},
         )
         return Response({"msg": "Store Logout successful."})
+
+
+def store_needs_onboarding(store):
+    return not all([
+        str(store.name or '').strip(),
+        str(store.owner_name or '').strip(),
+        str(store.address or '').strip(),
+        str(store.pincode or '').strip(),
+        str(store.drug_license_number or '').strip(),
+        bool(store.store_license_document),
+    ])
+
+
+class StoreOtpLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        try:
+            mobile = normalize_indian_mobile(request.data.get('mobile'))
+            verify_access_token(request.data.get('access_token'), mobile)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        except Msg91ConfigurationError as exc:
+            return Response({'error': str(exc)}, status=503)
+        except Msg91VerificationError as exc:
+            return Response({'error': str(exc)}, status=401)
+
+        with transaction.atomic():
+            store = Store.objects.select_for_update().filter(
+                mobile__in=(mobile, mobile[-10:])
+            ).first()
+            created = store is None
+            if created:
+                store = Store.objects.create(
+                    name='',
+                    owner_name='',
+                    mobile=mobile,
+                    email=f'pending-{mobile}@seller.aarx.local',
+                    password=secrets.token_urlsafe(32),
+                    address='',
+                    pincode='',
+                )
+
+            store_status = get_store_lifecycle_status(store)
+            if store_status.value == 'store_deleted':
+                return Response({'error': 'Store account has been deleted.'}, status=403)
+            if store_status.value == 'store_inactive':
+                return Response({'error': 'Store account is inactive.'}, status=403)
+
+            store.token = str(uuid.uuid4())
+            google_link_ticket = secrets.token_urlsafe(32)
+            store.google_link_nonce_hash = hashlib.sha256(
+                google_link_ticket.encode('utf-8')
+            ).hexdigest()
+            store.google_link_nonce_expires_at = timezone.now() + timedelta(
+                seconds=getattr(settings, 'GOOGLE_LINK_TICKET_MAX_AGE_SECONDS', 600)
+            )
+            store.save(update_fields=[
+                'token', 'google_link_nonce_hash', 'google_link_nonce_expires_at',
+            ])
+
+        needs_onboarding = store_needs_onboarding(store)
+        log_activity(
+            'security_log', 'login', 'Store logged in with verified phone OTP',
+            actor=store, subject=store,
+            details={'store_id': store.id, 'method': 'msg91_otp', 'new_store': created},
+        )
+        return Response({
+            'msg': 'Phone verified successfully.',
+            'store_id': store.id,
+            'token': store.token,
+            'user_type': 'store',
+            'is_new_store': created,
+            'needs_onboarding': needs_onboarding,
+            'google_link_ticket': google_link_ticket,
+        })
+
+
+class StoreGoogleLinkView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        link_ticket = str(request.data.get('link_ticket') or '')
+        link_ticket_hash = hashlib.sha256(link_ticket.encode('utf-8')).hexdigest()
+        store = request.user
+        if (
+            not link_ticket
+            or not secrets.compare_digest(store.google_link_nonce_hash, link_ticket_hash)
+            or not store.google_link_nonce_expires_at
+            or store.google_link_nonce_expires_at <= timezone.now()
+        ):
+            return Response({
+                'error': 'Fresh phone OTP verification is required before linking Google.',
+                'code': 'fresh_phone_verification_required',
+            }, status=403)
+
+        try:
+            identity = verify_google_id_token(request.data.get('id_token'))
+        except GoogleIdentityConfigurationError as exc:
+            return Response({'error': str(exc)}, status=503)
+        except GoogleIdentityVerificationError as exc:
+            return Response({'error': str(exc)}, status=401)
+
+        with transaction.atomic():
+            store = Store.objects.select_for_update().get(pk=store.pk)
+            if (
+                not store.google_link_nonce_hash
+                or not secrets.compare_digest(store.google_link_nonce_hash, link_ticket_hash)
+                or not store.google_link_nonce_expires_at
+                or store.google_link_nonce_expires_at <= timezone.now()
+            ):
+                return Response({
+                    'error': 'Phone verification expired or was already used. Verify your phone again.',
+                    'code': 'fresh_phone_verification_required',
+                }, status=403)
+
+            store.google_link_nonce_hash = ''
+            store.google_link_nonce_expires_at = None
+            store.save(update_fields=['google_link_nonce_hash', 'google_link_nonce_expires_at'])
+
+            if Store.objects.filter(google_sub=identity['sub']).exclude(pk=store.pk).exists():
+                return Response({'error': 'This Google account is already linked to another store.'}, status=409)
+            if Store.objects.filter(email__iexact=identity['email']).exclude(pk=store.pk).exists():
+                return Response({'error': 'This email belongs to another store.'}, status=409)
+
+            store.google_sub = identity['sub']
+            store.google_email = identity['email']
+            store.google_linked_at = timezone.now()
+            update_fields = ['google_sub', 'google_email', 'google_linked_at']
+            if store.email.endswith('@seller.aarx.local'):
+                store.email = identity['email']
+                update_fields.append('email')
+            store.save(update_fields=update_fields)
+
+        return Response({
+            'msg': 'Google account linked successfully.',
+            'google_email': store.google_email,
+            'needs_onboarding': store_needs_onboarding(store),
+        })
+
+
+class StoreGoogleLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        try:
+            identity = verify_google_id_token(request.data.get('id_token'))
+        except GoogleIdentityConfigurationError as exc:
+            return Response({'error': str(exc)}, status=503)
+        except GoogleIdentityVerificationError as exc:
+            return Response({'error': str(exc)}, status=401)
+
+        with transaction.atomic():
+            store = Store.objects.select_for_update().filter(google_sub=identity['sub']).first()
+            if not store:
+                return Response({
+                    'error': 'This Google account is not linked yet. Sign in with phone OTP first, then link Google.',
+                    'code': 'google_not_linked',
+                }, status=404)
+            store_status = get_store_lifecycle_status(store)
+            if store_status.value == 'store_deleted':
+                return Response({'error': 'Store account has been deleted.'}, status=403)
+            if store_status.value == 'store_inactive':
+                return Response({'error': 'Store account is inactive.'}, status=403)
+            store.token = str(uuid.uuid4())
+            store.google_email = identity['email']
+            store.save(update_fields=['token', 'google_email'])
+
+        return Response({
+            'msg': 'Google login successful.',
+            'store_id': store.id,
+            'token': store.token,
+            'user_type': 'store',
+            'needs_onboarding': store_needs_onboarding(store),
+        })
+
+
+class StoreCompleteOnboardingView(APIView):
+    authentication_classes = [StoreTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        store = request.user
+        required_text = {
+            'name': 'Store name is required.',
+            'owner_name': 'Owner name is required.',
+            'email': 'Email is required.',
+            'address': 'Complete store address is required.',
+            'pincode': 'Pincode is required.',
+            'drug_license_number': 'Drug licence number is required.',
+        }
+        cleaned = {
+            key: ' '.join(str(request.data.get(key) or '').split())
+            for key in required_text
+        }
+        errors = {
+            key: [message] for key, message in required_text.items() if not cleaned[key]
+        }
+        licence = request.FILES.get('store_license_document')
+        if not licence and not store.store_license_document:
+            errors['store_license_document'] = ['Drug licence document is required.']
+        if cleaned['pincode'] and not re.fullmatch(r'\d{6}', cleaned['pincode']):
+            errors['pincode'] = ['Enter a valid 6-digit pincode.']
+        try:
+            serializers.EmailField().run_validation(cleaned['email'])
+        except serializers.ValidationError:
+            errors['email'] = ['Enter a valid email address.']
+        if Store.objects.filter(email__iexact=cleaned['email']).exclude(pk=store.pk).exists():
+            errors['email'] = ['This email belongs to another store.']
+        if errors:
+            return Response({'message': 'Complete all compulsory store details.', 'errors': errors}, status=400)
+
+        for field, value in cleaned.items():
+            setattr(store, field, value)
+        if licence:
+            store.store_license_document = licence
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        try:
+            if latitude not in (None, '') and longitude not in (None, ''):
+                store.latitude = float(latitude)
+                store.longitude = float(longitude)
+        except (TypeError, ValueError):
+            return Response({'errors': {'location': ['Store location is invalid.']}}, status=400)
+        store.save()
+
+        return Response({
+            'msg': 'Store onboarding completed.',
+            'store_id': store.id,
+            'user_type': 'store',
+            'needs_onboarding': store_needs_onboarding(store),
+        })
 
 
 class StoreRegisterView(APIView):

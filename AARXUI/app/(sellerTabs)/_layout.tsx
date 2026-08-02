@@ -182,6 +182,8 @@ export default function TabLayout() {
   useEffect(() => {
     if (user?.user_type === 'user') {
       router.replace('/(tabs)');
+    } else if (user?.user_type === 'store' && user.needs_onboarding) {
+      router.replace('/onboarding/seller-signup-step1?otpVerified=1' as any);
     }
   }, [router, user]);
 

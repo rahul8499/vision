@@ -29,11 +29,14 @@ export default function SignupStep1() {
     mobile?: string;
     email?: string;
     owner_name?: string;
+    otpVerified?: string;
   }>();
   const router = useRouter();
   const { signupData, setSignupData } = useSignup();
+  const isOtpVerified = params.otpVerified === '1';
 
   const [name, setName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -48,13 +51,15 @@ export default function SignupStep1() {
 
   const isValid =
     name.trim() !== '' &&
-    mobile.trim() !== '' &&
+    ownerName.trim() !== '' &&
+    (isOtpVerified || mobile.trim() !== '') &&
     email.trim() !== '' &&
-    password.trim() !== '' &&
+    (isOtpVerified || password.trim() !== '') &&
     emailError === '';
 
   useEffect(() => {
     setName(signupData.name || getParamValue(params.name));
+    setOwnerName(signupData.ownerName || getParamValue(params.owner_name));
     setMobile(signupData.mobile || getParamValue(params.mobile));
     setEmail(signupData.email || getParamValue(params.email));
     setPassword(signupData.password || '');
@@ -62,9 +67,11 @@ export default function SignupStep1() {
     params.email,
     params.mobile,
     params.name,
+    params.owner_name,
     signupData.email,
     signupData.mobile,
     signupData.name,
+    signupData.ownerName,
     signupData.password,
   ]);
 
@@ -108,19 +115,20 @@ export default function SignupStep1() {
     setSignupData((prev) => ({
       ...prev,
       name: name.trim(),
-      ownerName: name.trim(), // Use store name as owner name
+      ownerName: ownerName.trim(),
       mobile: mobile.trim(),
       email: email.trim(),
-      password: password.trim(),
+      password: isOtpVerified ? '' : password.trim(),
     }));
 
     router.push({
       pathname: '/onboarding/seller-signup-step2',
       params: {
         name,
-        owner_name: name.trim(),
+        owner_name: ownerName.trim(),
         mobile,
         email,
+        otpVerified: isOtpVerified ? '1' : '0',
       },
     });
   };
@@ -149,7 +157,7 @@ export default function SignupStep1() {
           keyboardDismissMode="on-drag"
           bounces={false}
           overScrollMode="never"
-          scrollEnabled={keyboardVisible || isSmallPhone}
+          scrollEnabled
           contentContainerStyle={[
             styles.scrollContent,
             keyboardVisible && styles.keyboardScrollContent,
@@ -157,13 +165,13 @@ export default function SignupStep1() {
         >
           <View className="flex-1 px-5">
             <Header
-              chip="Pharmacy Partner"
-              title="Create Store"
-              subtitle="Quick account setup"
+              chip="Step 1 of 2"
+              title="Set up your pharmacy"
+              subtitle="Add the basic details customers will see"
               icon="storefront-outline"
               onBack={() =>
-                router.push({
-                  pathname: '/onboarding/login',
+                router.replace({
+                  pathname: '/onboarding/phone-login',
                   params: { userType: 'seller' },
                 })
               }
@@ -173,6 +181,17 @@ export default function SignupStep1() {
               className="mt-4 rounded-[26px] border border-white bg-white/90 p-4"
               style={styles.cardShadow}
             >
+              {isOtpVerified ? (
+                <View className="mb-4 flex-row items-center rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
+                  <MaterialCommunityIcons name="check-decagram" size={20} color="#059669" />
+                  <View className="ml-2.5 flex-1">
+                    <Text className="text-[12px] font-black text-emerald-800">Mobile number verified</Text>
+                    <Text className="mt-0.5 text-[10px] font-semibold text-emerald-700">Secure pharmacy account created</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              <Text className="mb-3 text-[10px] font-black uppercase tracking-[1.2px] text-slate-400">Pharmacy details</Text>
               <InputRow
                 icon="home"
                 placeholder="Store name"
@@ -182,6 +201,17 @@ export default function SignupStep1() {
                 onFocus={scrollInputIntoView}
               />
 
+              <InputRow
+                icon="user"
+                placeholder="Owner / proprietor name"
+                value={ownerName}
+                onChangeText={setOwnerName}
+                returnKeyType="next"
+                onFocus={scrollInputIntoView}
+              />
+
+              {!isOtpVerified && (
+                <>
               <InputRow
                 icon="phone"
                 placeholder="Mobile number"
@@ -199,6 +229,8 @@ export default function SignupStep1() {
                 onToggleSecure={() => setSecureEntry(!secureEntry)}
                 onFocus={scrollInputIntoView}
               />
+                </>
+              )}
 
               <InputRow
                 icon="mail"
@@ -220,7 +252,7 @@ export default function SignupStep1() {
 
               <PrimaryButton
                 disabled={!isValid || isOpening}
-                label={isOpening ? 'Opening' : 'Continue'}
+                label={isOpening ? 'Opening' : 'Continue to licence'}
                 onPress={handleNext}
               />
             </View>
@@ -243,38 +275,21 @@ type HeaderProps = {
 
 function Header({ chip, title, subtitle, icon, onBack }: HeaderProps) {
   return (
-    <>
-      <View className="flex-row items-center justify-between">
-        <TouchableOpacity
-          onPress={onBack}
-          className="h-10 w-10 items-center justify-center rounded-full bg-white/90"
-          style={styles.softShadow}
-        >
-          <Feather name="arrow-left" size={21} color="#334155" />
-        </TouchableOpacity>
-
-        <View className="rounded-[26px] bg-white p-1.5" style={styles.iconOuterShadow}>
-          <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroIcon}>
-            <MaterialCommunityIcons name={icon} size={isSmallPhone ? 34 : 38} color="#ffffff" />
-          </LinearGradient>
+    <View className="mt-2 flex-row items-center">
+      <TouchableOpacity onPress={onBack} className="h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white">
+        <Feather name="arrow-left" size={21} color="#1e293b" />
+      </TouchableOpacity>
+      <View className="ml-3 flex-1">
+        <View className="self-start rounded-full bg-blue-100 px-2.5 py-1">
+          <Text className="text-[10px] font-black uppercase tracking-[1px] text-blue-700">{chip}</Text>
         </View>
-
-        <View className="h-10 w-10" />
+        <Text className="mt-2 text-[23px] font-black leading-7 text-slate-950">{title}</Text>
+        <Text className="mt-0.5 text-[12px] font-semibold text-slate-500">{subtitle}</Text>
       </View>
-
-      <View className="items-center">
-        <View className="mt-3 flex-row items-center rounded-full border border-white bg-white/80 px-3 py-1">
-          <MaterialCommunityIcons name="shield-check-outline" size={14} color={accent} />
-          <Text className="ml-1.5 text-[11px] font-black text-blue-700">{chip}</Text>
-        </View>
-        <Text className="mt-3 text-center text-[26px] font-black leading-8 text-slate-950">
-          {title}
-        </Text>
-        <Text className="mt-1 text-center text-[13px] font-bold leading-5 text-slate-500">
-          {subtitle}
-        </Text>
-      </View>
-    </>
+      <LinearGradient colors={gradient} style={styles.compactIcon}>
+        <MaterialCommunityIcons name={icon} size={25} color="#ffffff" />
+      </LinearGradient>
+    </View>
   );
 }
 
@@ -419,6 +434,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.22,
     shadowRadius: 30,
+  },
+  compactIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonShadow: {
     elevation: 10,

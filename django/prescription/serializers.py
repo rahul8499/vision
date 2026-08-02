@@ -1027,6 +1027,7 @@ class StoreMeSerializer(serializers.ModelSerializer):
     avg_delivery_time = serializers.IntegerField(source='avg_delivery_time_mins', read_only=True)
     badge_progress = serializers.SerializerMethodField()
     lifecycle_status = serializers.SerializerMethodField()
+    needs_onboarding = serializers.SerializerMethodField()
 
     class Meta:
         model  = Store
@@ -1048,6 +1049,7 @@ class StoreMeSerializer(serializers.ModelSerializer):
             "is_active",
             "is_deleted",
             "lifecycle_status",
+            "needs_onboarding",
             "profile_completion_percent",
             "quality_score",
             "badges",
@@ -1061,6 +1063,16 @@ class StoreMeSerializer(serializers.ModelSerializer):
 
     def get_lifecycle_status(self, obj):
         return get_store_lifecycle_status(obj).value
+
+    def get_needs_onboarding(self, obj):
+        return not all([
+            str(obj.name or '').strip(),
+            str(obj.owner_name or '').strip(),
+            str(obj.address or '').strip(),
+            str(obj.pincode or '').strip(),
+            str(obj.drug_license_number or '').strip(),
+            bool(obj.store_license_document),
+        ])
 
     def _abs_url(self, obj, field_name):
         file_field = getattr(obj, field_name)

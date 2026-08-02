@@ -69,6 +69,11 @@ class Store(models.Model):
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(default=timezone.now)
     preferred_language = models.CharField(max_length=2, choices=[('en', 'English'), ('hi', 'Hindi'), ('mr', 'Marathi')], default='en', db_index=True)
+    google_sub = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    google_email = models.EmailField(blank=True, default='')
+    google_linked_at = models.DateTimeField(null=True, blank=True)
+    google_link_nonce_hash = models.CharField(max_length=64, blank=True, default='')
+    google_link_nonce_expires_at = models.DateTimeField(null=True, blank=True)
     city = models.ForeignKey('emergency_services.City', on_delete=models.SET_NULL, null=True, blank=True, related_name='stores')
     service_zone = models.ForeignKey('emergency_services.ServiceZone', on_delete=models.SET_NULL, null=True, blank=True, related_name='stores')
 

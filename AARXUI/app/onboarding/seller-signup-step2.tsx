@@ -4,8 +4,8 @@ import * as Location from 'expo-location';
 import * as DocumentPicker from 'expo-document-picker';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useSignup } from '@/context/SignupContext';
+import * as SecureStore from 'expo-secure-store';
 
 type PickedFile = DocumentPicker.DocumentPickerAsset | null;
 
@@ -39,10 +40,10 @@ export default function SignupStep2() {
     email,
     address: addressParam,
     pincode: pincodeParam,
-    gstNumber: gstNumberParam,
     drugLicense: drugLicenseParam,
     latitude: latitudeParam,
     longitude: longitudeParam,
+    otpVerified,
   } = useLocalSearchParams<{
     name?: string;
     owner_name?: string;
@@ -50,10 +51,10 @@ export default function SignupStep2() {
     email?: string;
     address?: string;
     pincode?: string;
-    gstNumber?: string;
     drugLicense?: string;
     latitude?: string;
     longitude?: string;
+    otpVerified?: string;
   }>();
   const routeName = getParamValue(name);
   const routeOwnerName = getParamValue(owner_name);
@@ -61,20 +62,20 @@ export default function SignupStep2() {
   const routeEmail = getParamValue(email);
   const routeAddress = getParamValue(addressParam);
   const routePincode = getParamValue(pincodeParam);
-  const routeGstNumber = getParamValue(gstNumberParam);
   const routeDrugLicense = getParamValue(drugLicenseParam);
   const routeLatitude = getParamValue(latitudeParam);
   const routeLongitude = getParamValue(longitudeParam);
-  const { signupData, setSignupData } = useSignup();
+  const { signupData } = useSignup();
+  const isOtpVerified = getParamValue(otpVerified) === '1';
   const BASE_URL = Constants.expoConfig?.extra?.BASE_URL;
 
   const [address, setAddress] = useState('');
   const [pincode, setPincode] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+  const [drugLicense, setDrugLicense] = useState('');
   const [locationBusy, setLocationBusy] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [isOpening, setIsOpening] = useState(false);
   const [storeLicenseDoc, setStoreLicenseDoc] = useState<PickedFile>(null);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -83,6 +84,7 @@ export default function SignupStep2() {
   const isValid =
     address.trim() !== '' &&
     pincode.trim() !== '' &&
+    drugLicense.trim() !== '' &&
     storeLicenseDoc !== null;
 
   useEffect(() => {
@@ -90,22 +92,19 @@ export default function SignupStep2() {
     setPincode(signupData.pincode || routePincode);
     setLatitude(signupData.latitude || routeLatitude);
     setLongitude(signupData.longitude || routeLongitude);
+    setDrugLicense(signupData.drugLicense || routeDrugLicense);
   }, [
     routeAddress,
+    routeDrugLicense,
     routeLatitude,
     routeLongitude,
     routePincode,
     signupData.address,
     signupData.latitude,
     signupData.longitude,
+    signupData.drugLicense,
     signupData.pincode,
   ]);
-
-  useFocusEffect(
-    useCallback(() => {
-      setIsOpening(false);
-    }, [])
-  );
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -259,12 +258,15 @@ export default function SignupStep2() {
     formData.append('pincode', pincode.trim());
     formData.append('latitude', latitude.trim());
     formData.append('longitude', longitude.trim());
+    formData.append('drug_license_number', drugLicense.trim());
 
     appendFile(formData, 'store_license_document', storeLicenseDoc);
 
     try {
-      const response = await fetch(`${BASE_URL}/api/store/register/`, {
+      const token = isOtpVerified ? await SecureStore.getItemAsync('authToken') : null;
+      const response = await fetch(`${BASE_URL}/api/store/${isOtpVerified ? 'complete-onboarding' : 'register'}/`, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,
       });
 
@@ -273,14 +275,19 @@ export default function SignupStep2() {
       if (response.ok) {
         Toast.show({
           type: 'success',
-          text1: 'Registration successful!',
+          text1: 'Store submitted for review',
           position: 'bottom',
         });
 
-        router.push({
-          pathname: '/onboarding/login',
-          params: { userType: 'seller' },
-        });
+        if (isOtpVerified) {
+          await SecureStore.deleteItemAsync('googleLinkTicket');
+          router.replace('/(sellerTabs)/home' as any);
+        } else {
+          router.push({
+            pathname: '/onboarding/phone-login',
+            params: { userType: 'seller' },
+          });
+        }
         return;
       }
 
@@ -328,7 +335,7 @@ export default function SignupStep2() {
           keyboardDismissMode="on-drag"
           bounces={false}
           overScrollMode="never"
-          scrollEnabled={keyboardVisible || isSmallPhone}
+          scrollEnabled
           contentContainerStyle={[
             styles.scrollContent,
             keyboardVisible && styles.keyboardScrollContent,
@@ -336,9 +343,9 @@ export default function SignupStep2() {
         >
           <View className="flex-1 px-5">
             <Header
-              chip="Store Location"
-              title="Verify Store"
-              subtitle="Capture location and licence"
+              chip="Step 2 of 2"
+              title="Location & licence"
+              subtitle="Required once to activate your pharmacy"
               icon="store-marker-outline"
               onBack={() =>
                 router.push({
@@ -348,6 +355,7 @@ export default function SignupStep2() {
                     owner_name: routeOwnerName,
                     mobile: routeMobile,
                     email: routeEmail,
+                    otpVerified: isOtpVerified ? '1' : '0',
                   },
                 })
               }
@@ -357,6 +365,12 @@ export default function SignupStep2() {
               className="mt-4 rounded-[26px] border border-white bg-white/90 p-4"
               style={styles.cardShadow}
             >
+              <View className="mb-4 flex-row rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+                <MaterialCommunityIcons name="shield-check-outline" size={20} color="#2563eb" />
+                <Text className="ml-2.5 flex-1 text-[11px] font-semibold leading-4 text-blue-800">
+                  Address and drug licence are compulsory. Your pharmacy can start receiving orders after review.
+                </Text>
+              </View>
               <TouchableOpacity
                 disabled={locationBusy}
                 activeOpacity={0.9}
@@ -412,9 +426,19 @@ export default function SignupStep2() {
                 onFocus={scrollInputIntoView}
               />
 
+              <InputRow
+                icon="file-text"
+                placeholder="Drug licence number (Form 20 / 21)"
+                value={drugLicense}
+                onChangeText={setDrugLicense}
+                autoCapitalize="characters"
+                returnKeyType="next"
+                onFocus={scrollInputIntoView}
+              />
+
               <UploadButton
                 icon="file-text"
-                label="Store licence document"
+                label="Drug licence document (Form 20 / 21)"
                 file={storeLicenseDoc}
                 onPress={() => pickFile(setStoreLicenseDoc)}
               />
@@ -474,38 +498,21 @@ type HeaderProps = {
 
 function Header({ chip, title, subtitle, icon, onBack }: HeaderProps) {
   return (
-    <>
-      <View className="flex-row items-center justify-between">
-        <TouchableOpacity
-          onPress={onBack}
-          className="h-10 w-10 items-center justify-center rounded-full bg-white/90"
-          style={styles.softShadow}
-        >
-          <Feather name="arrow-left" size={21} color="#334155" />
-        </TouchableOpacity>
-
-        <View className="rounded-[26px] bg-white p-1.5" style={styles.iconOuterShadow}>
-          <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroIcon}>
-            <MaterialCommunityIcons name={icon} size={isSmallPhone ? 36 : 40} color="#ffffff" />
-          </LinearGradient>
+    <View className="mt-2 flex-row items-center">
+      <TouchableOpacity onPress={onBack} className="h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white">
+        <Feather name="arrow-left" size={21} color="#1e293b" />
+      </TouchableOpacity>
+      <View className="ml-3 flex-1">
+        <View className="self-start rounded-full bg-blue-100 px-2.5 py-1">
+          <Text className="text-[10px] font-black uppercase tracking-[1px] text-blue-700">{chip}</Text>
         </View>
-
-        <View className="h-10 w-10" />
+        <Text className="mt-2 text-[23px] font-black leading-7 text-slate-950">{title}</Text>
+        <Text className="mt-0.5 text-[12px] font-semibold text-slate-500">{subtitle}</Text>
       </View>
-
-      <View className="items-center">
-        <View className="mt-3 flex-row items-center rounded-full border border-white bg-white/80 px-3 py-1">
-          <MaterialCommunityIcons name="shield-check-outline" size={14} color={accent} />
-          <Text className="ml-1.5 text-[11px] font-black text-blue-700">{chip}</Text>
-        </View>
-        <Text className="mt-3 text-center text-[26px] font-black leading-8 text-slate-950">
-          {title}
-        </Text>
-        <Text className="mt-1 text-center text-[13px] font-bold leading-5 text-slate-500">
-          {subtitle}
-        </Text>
-      </View>
-    </>
+      <LinearGradient colors={gradient} style={styles.compactIcon}>
+        <MaterialCommunityIcons name={icon} size={25} color="#ffffff" />
+      </LinearGradient>
+    </View>
   );
 }
 
@@ -619,6 +626,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.22,
     shadowRadius: 30,
+  },
+  compactIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonShadow: {
     elevation: 10,

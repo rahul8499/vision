@@ -105,12 +105,15 @@ export default function OnboardingScreen() {
       router.push('/delivery/login' as any);
       return;
     }
-    if (role === 'buyer') {
+    if (role === 'buyer' || role === 'seller') {
       // Customer email/password login is intentionally retained in
       // onboarding/login.tsx for history; only the Buyer entry now uses the
       // verified phone OTP flow.
       // pathname: '/onboarding/login',
-      router.push('/onboarding/phone-login' as any);
+      router.push({
+        pathname: '/onboarding/phone-login',
+        params: { userType: role },
+      } as any);
       return;
     }
     router.push({

@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { getGoogleIdToken } from '@/utils/googleIdentity';
 import { useEffect, useRef, useState } from 'react';
@@ -19,8 +19,9 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  TextInput as NativeTextInput,
   TouchableOpacity,
-  useWindowDimensions,
+  Dimensions,
   View,
 } from 'react-native';
 
@@ -46,7 +47,14 @@ type Step = 'phone' | 'otp';
 
 export default function PhoneLoginScreen() {
   const router = useRouter();
-  const { height: screenHeight } = useWindowDimensions();
+  const params = useLocalSearchParams<{ userType?: string | string[] }>();
+  const requestedRole = Array.isArray(params.userType) ? params.userType[0] : params.userType;
+  const isSeller = requestedRole === 'seller';
+  const expectedUserType = isSeller ? 'store' : 'user';
+  // Keep the sheet height stable while Android adjustResize opens the keyboard.
+  // A live window-height value here causes a second layout resize and can blur
+  // the focused phone input on some devices.
+  const screenHeight = useRef(Dimensions.get('window').height).current;
   const baseUrl = Constants.expoConfig?.extra?.BASE_URL as string | undefined;
   const widgetId = Constants.expoConfig?.extra?.MSG91_WIDGET_ID as string | undefined;
   const tokenAuth = Constants.expoConfig?.extra?.MSG91_TOKEN_AUTH as string | undefined;
@@ -56,11 +64,12 @@ export default function PhoneLoginScreen() {
   const [requestId, setRequestId] = useState('');
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
-  const [phoneFocused, setPhoneFocused] = useState(false);
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [pendingGoogleIdToken, setPendingGoogleIdToken] = useState<string | null>(null);
   const otpRef = useRef<any>(null);
+  const phoneRef = useRef<NativeTextInput>(null);
+  const keepPhoneFocusedRef = useRef(false);
   const entrance = useRef(new Animated.Value(0)).current;
 
   const validMobile = /^[6-9]\d{9}$/.test(mobile);
@@ -83,16 +92,19 @@ export default function PhoneLoginScreen() {
 
   const completeLogin = async (accessToken: string) => {
     if (!baseUrl) throw new Error('App API address is not configured.');
-    const response = await fetch(`${baseUrl}/api/user/otp-login/`, {
+    const response = await fetch(`${baseUrl}/api/${isSeller ? 'store' : 'user'}/otp-login/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mobile: `91${mobile}`, access_token: accessToken }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error || 'Could not complete login.');
+    if (data?.user_type !== expectedUserType) {
+      throw new Error('Login role mismatch. Please go back and select Buyer or Seller again.');
+    }
 
     if (pendingGoogleIdToken) {
-      const linkResponse = await fetch(`${baseUrl}/api/user/google/link/`, {
+      const linkResponse = await fetch(`${baseUrl}/api/${isSeller ? 'store' : 'user'}/google/link/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,8 +124,8 @@ export default function PhoneLoginScreen() {
 
     const secureWrites = [
       SecureStore.setItemAsync('authToken', data.token),
-      SecureStore.setItemAsync('userType', 'user'),
-      SecureStore.setItemAsync('userId', String(data.user_id)),
+      SecureStore.setItemAsync('userType', isSeller ? 'store' : 'user'),
+      SecureStore.setItemAsync('userId', String(isSeller ? data.store_id : data.user_id)),
     ];
     if (!pendingGoogleIdToken && data.google_link_ticket) {
       secureWrites.push(SecureStore.setItemAsync('googleLinkTicket', data.google_link_ticket));
@@ -121,7 +133,13 @@ export default function PhoneLoginScreen() {
       secureWrites.push(SecureStore.deleteItemAsync('googleLinkTicket'));
     }
     await Promise.all(secureWrites);
-    router.replace((data.needs_name ? '/onboarding/complete-profile' : '/(tabs)') as any);
+    router.replace((isSeller
+      ? data.needs_onboarding
+        ? `/onboarding/seller-signup-step1?otpVerified=1&mobile=${mobile}`
+        : '/(sellerTabs)/home'
+      : data.needs_name
+        ? '/onboarding/complete-profile'
+        : '/(tabs)') as any);
   };
 
   const sendOtp = async () => {
@@ -134,6 +152,7 @@ export default function PhoneLoginScreen() {
       Alert.alert('OTP unavailable', 'MSG91 widget configuration is missing.');
       return;
     }
+    keepPhoneFocusedRef.current = false;
     Keyboard.dismiss();
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setBusy(true);
@@ -191,12 +210,13 @@ export default function PhoneLoginScreen() {
 
   const loginWithGoogle = async () => {
     if (busy || googleBusy) return;
+    keepPhoneFocusedRef.current = false;
     try {
       setGoogleBusy(true);
       const idToken = await getGoogleIdToken();
       if (!idToken) return;
       if (!baseUrl) throw new Error('App API address is not configured.');
-      const response = await fetch(`${baseUrl}/api/user/google-login/`, {
+      const response = await fetch(`${baseUrl}/api/${isSeller ? 'store' : 'user'}/google-login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_token: idToken }),
@@ -213,12 +233,21 @@ export default function PhoneLoginScreen() {
         }
         throw new Error(data?.error || 'Google login failed.');
       }
+      if (data?.user_type !== expectedUserType) {
+        throw new Error('Login role mismatch. Please go back and select Buyer or Seller again.');
+      }
       await Promise.all([
         SecureStore.setItemAsync('authToken', data.token),
-        SecureStore.setItemAsync('userType', 'user'),
-        SecureStore.setItemAsync('userId', String(data.user_id)),
+        SecureStore.setItemAsync('userType', isSeller ? 'store' : 'user'),
+        SecureStore.setItemAsync('userId', String(isSeller ? data.store_id : data.user_id)),
       ]);
-      router.replace((data.needs_name ? '/onboarding/complete-profile' : '/(tabs)') as any);
+      router.replace((isSeller
+        ? data.needs_onboarding
+          ? '/onboarding/seller-signup-step1?otpVerified=1'
+          : '/(sellerTabs)/home'
+        : data.needs_name
+          ? '/onboarding/complete-profile'
+          : '/(tabs)') as any);
     } catch (error: any) {
       Alert.alert('Could not continue with Google', error?.message || 'Please try again.');
     } finally {
@@ -228,6 +257,7 @@ export default function PhoneLoginScreen() {
 
   const goBack = () => {
     if (busy) return;
+    keepPhoneFocusedRef.current = false;
     if (step === 'otp') {
       setStep('phone');
       setOtp('');
@@ -239,9 +269,10 @@ export default function PhoneLoginScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
           bounces={false}
@@ -288,15 +319,17 @@ export default function PhoneLoginScreen() {
                 <View className="mb-2 flex-row items-center rounded-full border border-[#dce8d8] bg-[#f4f8f1] px-3 py-1.5">
                   <MaterialCommunityIcons name="shield-check" size={14} color="#5c9147" />
                   <Text className="ml-1.5 text-[10px] font-black uppercase tracking-[1.2px] text-[#34713b]">
-                    Secure customer login
+                    {isSeller ? 'Secure pharmacy login' : 'Secure customer login'}
                   </Text>
                 </View>
                 <Text className="text-center text-[24px] font-black leading-[30px] tracking-tight text-[#064a24]">
-                  {step === 'phone' ? 'Welcome to AARX' : 'Check your messages'}
+                  {step === 'phone' ? (isSeller ? 'AARX Pharmacy Partner' : 'Welcome to AARX') : 'Check your messages'}
                 </Text>
                 <Text className="mt-1 text-center text-[13px] font-medium leading-5 text-[#68716b]">
                   {step === 'phone'
-                    ? 'Sign in to find trusted medicines at the best prices'
+                    ? isSeller
+                      ? 'Sign in securely to manage your pharmacy and orders'
+                      : 'Sign in to find trusted medicines at the best prices'
                     : `We sent a one-time password to +91 ${mobile.slice(0, 5)} ${mobile.slice(5)}.`}
                 </Text>
               </View>
@@ -307,18 +340,11 @@ export default function PhoneLoginScreen() {
                     <Text className="mb-2.5 text-[11px] font-black uppercase tracking-[1.3px] text-[#245b32]">
                       Mobile number
                     </Text>
-                    <View
-                      className={`h-[58px] flex-row items-center rounded-xl border px-4 ${phoneTouched && !validMobile
-                        ? 'border-red-300 bg-red-50/40'
-                        : phoneFocused
-                          ? 'border-[#b7953d] bg-[#fffdf7]'
-                          : 'border-[#d7dfd9] bg-white'
-                        }`}
-                      style={phoneFocused ? styles.inputShadow : undefined}
-                    >
+                    <View className={`h-[58px] flex-row items-center rounded-xl border px-4 ${phoneTouched && !validMobile ? 'border-red-300 bg-red-50/40' : 'border-[#d7dfd9] bg-white'}`}>
                       <Text className="text-lg">🇮🇳</Text>
                       <Text className="ml-2 border-r border-[#d7dfd9] pr-3 text-[15px] font-black text-[#183c25]">+91</Text>
-                      <TextInput
+                      <NativeTextInput
+                        ref={phoneRef}
                         value={mobile}
                         onChangeText={(value) => setMobile(value.replace(/\D/g, '').slice(0, 10))}
                         placeholder="Enter 10-digit number"
@@ -328,14 +354,17 @@ export default function PhoneLoginScreen() {
                         maxLength={10}
                         returnKeyType="done"
                         onSubmitEditing={sendOtp}
-                        onFocus={() => setPhoneFocused(true)}
+                        onFocus={() => { keepPhoneFocusedRef.current = true; }}
                         onBlur={() => {
-                          setPhoneFocused(false);
-                          setPhoneTouched(true);
+                          if (keepPhoneFocusedRef.current && step === 'phone' && !busy) {
+                            setTimeout(() => phoneRef.current?.focus(), 80);
+                          }
                         }}
                         className="ml-3 flex-1 text-[16px] font-bold tracking-wide text-[#102a1b]"
                       />
-                      {validMobile ? <MaterialCommunityIcons name="check-circle" size={21} color="#1d6b3b" /> : null}
+                      <View className="h-6 w-6 items-center justify-center">
+                        {validMobile ? <MaterialCommunityIcons name="check-circle" size={21} color="#1d6b3b" /> : null}
+                      </View>
                     </View>
                     {phoneTouched && mobile.length > 0 && !validMobile ? (
                       <View className="mt-2 flex-row items-center px-1">
@@ -527,13 +556,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.11,
     shadowRadius: 18,
-  },
-  inputShadow: {
-    elevation: 5,
-    shadowColor: '#b7953d',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
   },
   googleButtonShadow: {
     elevation: 3,

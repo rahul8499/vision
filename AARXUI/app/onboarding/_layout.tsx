@@ -40,6 +40,7 @@ export default function OnboardingLayout() {
   const isSellerTheme =
     pathname.includes('seller-signup') || params.userType === 'seller';
   const isPhoneLogin = pathname.includes('phone-login');
+  const isSellerOnboarding = pathname.includes('seller-signup');
 
   return (
     <SignupProvider>
@@ -51,7 +52,7 @@ export default function OnboardingLayout() {
           style={StyleSheet.absoluteFillObject}
         />
 
-        {!isPhoneLogin ? (
+        {!isPhoneLogin && !isSellerOnboarding ? (
           <View className="items-center" style={{ height: 190 }}>
             <Image
               source={require('../../assets/images/aarxcolorthemelogo.png')}
