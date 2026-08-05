@@ -3,10 +3,14 @@ import Constants from 'expo-constants';
 let configuredClientId = '';
 
 function getGoogleModule() {
-  // Loaded only when the button is pressed so an older dev-client build can
-  // still open the app and show a useful rebuild/configuration error.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('@react-native-google-signin/google-signin') as typeof import('@react-native-google-signin/google-signin');
+  try {
+    // Loaded only when the button is pressed so an older dev-client build can
+    // still open the app and show a useful rebuild/configuration error.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@react-native-google-signin/google-signin') as typeof import('@react-native-google-signin/google-signin');
+  } catch (error) {
+    throw new Error('Google Sign-In native module is not available in this build. Please rebuild/reinstall the app.');
+  }
 }
 
 function configureGoogle() {
@@ -27,13 +31,17 @@ function configureGoogle() {
 }
 
 export async function getGoogleIdToken() {
-  configureGoogle();
-  const { GoogleSignin, isSuccessResponse } = getGoogleModule();
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-  const response = await GoogleSignin.signIn();
-  if (!isSuccessResponse(response)) return null;
-  if (!response.data.idToken) {
-    throw new Error('Google did not return an identity token.');
+  try {
+    configureGoogle();
+    const { GoogleSignin, isSuccessResponse } = getGoogleModule();
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    const response = await GoogleSignin.signIn();
+    if (!isSuccessResponse(response)) return null;
+    if (!response.data.idToken) {
+      throw new Error('Google did not return an identity token.');
+    }
+    return response.data.idToken;
+  } catch (error: any) {
+    throw new Error(error?.message || 'Google Sign-In could not be completed.');
   }
-  return response.data.idToken;
 }
