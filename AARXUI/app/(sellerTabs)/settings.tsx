@@ -23,6 +23,8 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import * as Progress from 'react-native-progress';
+import * as SecureStore from 'expo-secure-store';
+import { getGoogleIdToken } from '@/utils/googleIdentity';
 import { LanguagePickerModal } from '@/components/Language/LanguagePickerModal';
 import { useAppLanguage } from '@/context/LanguageContext';
 
@@ -94,6 +96,40 @@ export default function SellerSettingsScreen() {
   const [deliveryPersonPin, setDeliveryPersonPin] = useState('');
   const [partnerPinTarget, setPartnerPinTarget] = useState<any>(null);
   const [partnerNewPin, setPartnerNewPin] = useState('');
+  const [googleLinkBusy, setGoogleLinkBusy] = useState(false);
+
+  const handleGoogleLink = async () => {
+    if (!token || googleLinkBusy) return;
+    try {
+      setGoogleLinkBusy(true);
+      const linkTicket = await SecureStore.getItemAsync('googleLinkTicket');
+      if (!linkTicket) {
+        Alert.alert(
+          'Verify your phone first',
+          'For security, complete phone OTP once before linking Google.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Verify phone', onPress: () => router.push({ pathname: '/onboarding/phone-login', params: { userType: 'seller' } } as any) },
+          ],
+        );
+        return;
+      }
+      const idToken = await getGoogleIdToken();
+      if (!idToken) return;
+      const response = await axios.post(
+        `${BASE_URL}/api/store/google/link/`,
+        { id_token: idToken, link_ticket: linkTicket },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      await SecureStore.deleteItemAsync('googleLinkTicket');
+      Alert.alert('Google linked', `Google sign-in is active for ${response.data.google_email}.`);
+      await dispatch(fetchUserProfile());
+    } catch (error: any) {
+      Alert.alert('Could not link Google', error?.response?.data?.error || error?.message || 'Please try again.');
+    } finally {
+      setGoogleLinkBusy(false);
+    }
+  };
 
   const fetchDeliveryConfiguration = async () => {
     if (!token) return;
@@ -1125,6 +1161,18 @@ export default function SellerSettingsScreen() {
                   title="Notifications"
                   subtitle="Order and chat alerts are active"
                   onPress={() => Alert.alert('Notifications', 'Seller notification preferences are active.')}
+                  isLast={false}
+                />
+                <SettingsRow
+                  icon="google"
+                  title="Google Sign-In"
+                  subtitle={googleLinkBusy
+                    ? 'Linking Google account…'
+                    : storeData.google_linked_at
+                      ? storeData.google_email || 'Google account linked'
+                      : 'Link Google for faster seller login'}
+                  value={storeData.google_linked_at ? 'Linked' : 'Link'}
+                  onPress={storeData.google_linked_at || googleLinkBusy ? undefined : handleGoogleLink}
                   isLast={false}
                 />
                 <SettingsRow

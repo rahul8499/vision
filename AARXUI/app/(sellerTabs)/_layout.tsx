@@ -60,7 +60,7 @@
 //         <Tabs.Screen name="index" options={{ title: 'Enquiry' }} />
 //         <Tabs.Screen name="quotes" options={{ title: 'Quotes' }} />
 //         <Tabs.Screen name="history" options={{ title: 'History' }} />
-        <Tabs.Screen name="emergency-rewards" options={{ title: "Emergency Rewards", href: null }} />
+<Tabs.Screen name="emergency-rewards" options={{ title: "Emergency Rewards", href: null }} />
 //         <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
 //       </Tabs>
 //     </SafeAreaView>

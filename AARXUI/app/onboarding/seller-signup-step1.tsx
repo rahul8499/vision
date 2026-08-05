@@ -15,8 +15,8 @@ import {
 } from 'react-native';
 import { useSignup } from '@/context/SignupContext';
 
-const gradient = ['#60a5fa', '#2563eb'] as const;
-const accent = '#2563eb';
+const gradient = ['#123B5D', '#0F8B8D'] as const;
+const accent = '#123B5D';
 const { width, height } = Dimensions.get('window');
 const isSmallPhone = width < 380 || height < 700;
 
@@ -134,16 +134,16 @@ export default function SignupStep1() {
   };
 
   return (
-    <View className="flex-1 bg-slate-50">
+    <View className="flex-1 bg-[#F4F8FA]">
       <LinearGradient
-        colors={['#eff6ff', '#ecfeff', '#f8fafc']}
+        colors={['#F4F8FA', '#E8F4F5', '#F8FAFC']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
 
-      <View className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-200/45" />
-      <View className="absolute -left-16 top-28 h-44 w-44 rounded-full bg-cyan-200/40" />
+      <View className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#D8EEF0]/55" />
+      <View className="absolute -left-16 top-28 h-44 w-44 rounded-full bg-[#DCECEF]/45" />
 
       <KeyboardAvoidingView
         className="flex-1"
@@ -176,6 +176,31 @@ export default function SignupStep1() {
                 })
               }
             />
+
+            <LinearGradient
+              colors={['#123B5D', '#0F8B8D']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              className="mt-5 overflow-hidden rounded-[26px] px-5 py-4"
+              style={styles.heroCard}
+            >
+              <View className="flex-row items-center">
+                <View className="h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+                  <MaterialCommunityIcons name="store-check-outline" size={27} color="#ffffff" />
+                </View>
+                <View className="ml-3 flex-1">
+                  <Text className="text-[16px] font-black text-white">Your pharmacy workspace</Text>
+                  <Text className="mt-1 text-[11px] font-medium leading-4 text-cyan-50">
+                    Get discovered by nearby customers and manage every order in one place.
+                  </Text>
+                </View>
+              </View>
+              <View className="mt-4 flex-row items-center">
+                <HeroPill icon="shield-check" label="Verified phone" />
+                <HeroPill icon="clock-outline" label="2 min setup" />
+                <HeroPill icon="lock-outline" label="Secure" />
+              </View>
+            </LinearGradient>
 
             <View
               className="mt-4 rounded-[26px] border border-white bg-white/90 p-4"
@@ -280,8 +305,8 @@ function Header({ chip, title, subtitle, icon, onBack }: HeaderProps) {
         <Feather name="arrow-left" size={21} color="#1e293b" />
       </TouchableOpacity>
       <View className="ml-3 flex-1">
-        <View className="self-start rounded-full bg-blue-100 px-2.5 py-1">
-          <Text className="text-[10px] font-black uppercase tracking-[1px] text-blue-700">{chip}</Text>
+                <View className="self-start rounded-full bg-[#E8F4F5] px-2.5 py-1">
+          <Text className="text-[10px] font-black uppercase tracking-[1px] text-[#123B5D]">{chip}</Text>
         </View>
         <Text className="mt-2 text-[23px] font-black leading-7 text-slate-950">{title}</Text>
         <Text className="mt-0.5 text-[12px] font-semibold text-slate-500">{subtitle}</Text>
@@ -289,6 +314,15 @@ function Header({ chip, title, subtitle, icon, onBack }: HeaderProps) {
       <LinearGradient colors={gradient} style={styles.compactIcon}>
         <MaterialCommunityIcons name={icon} size={25} color="#ffffff" />
       </LinearGradient>
+    </View>
+  );
+}
+
+function HeroPill({ icon, label }: { icon: ComponentProps<typeof MaterialCommunityIcons>['name']; label: string }) {
+  return (
+    <View className="mr-2 flex-row items-center rounded-full bg-white/15 px-2.5 py-1.5">
+      <MaterialCommunityIcons name={icon} size={12} color="#D8EEF0" />
+      <Text className="ml-1 text-[9px] font-black text-white">{label}</Text>
     </View>
   );
 }
@@ -301,7 +335,7 @@ type InputRowProps = ComponentProps<typeof TextInput> & {
 function InputRow({ icon, marginBottom = 14, ...props }: InputRowProps) {
   return (
     <View
-      className="flex-row items-center rounded-[20px] border border-slate-100 bg-slate-50 px-3.5"
+      className="flex-row items-center rounded-[20px] border border-[#D6E5E8] bg-white px-3.5"
       style={{ marginBottom }}
     >
       <View className="h-8 w-8 items-center justify-center rounded-full bg-white">
@@ -332,7 +366,7 @@ function PasswordRow({
   onFocus,
 }: PasswordRowProps) {
   return (
-    <View className="mb-3.5 flex-row items-center rounded-[20px] border border-slate-100 bg-slate-50 px-3.5">
+    <View className="mb-3.5 flex-row items-center rounded-[20px] border border-[#D6E5E8] bg-white px-3.5">
       <View className="h-8 w-8 items-center justify-center rounded-full bg-white">
         <Feather name="lock" size={17} color="#64748b" />
       </View>
@@ -398,6 +432,13 @@ function Progress({ current }: { current: number }) {
 }
 
 const styles = StyleSheet.create({
+  heroCard: {
+    elevation: 10,
+    shadowColor: '#123B5D',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+  },
   scrollContent: {
     flexGrow: 1,
     paddingTop: isSmallPhone ? 6 : 12,
@@ -415,7 +456,7 @@ const styles = StyleSheet.create({
   },
   iconOuterShadow: {
     elevation: 12,
-    shadowColor: '#2563eb',
+    shadowColor: '#123B5D',
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.22,
     shadowRadius: 22,
@@ -444,7 +485,7 @@ const styles = StyleSheet.create({
   },
   buttonShadow: {
     elevation: 10,
-    shadowColor: '#2563eb',
+    shadowColor: '#123B5D',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.28,
     shadowRadius: 20,

@@ -98,6 +98,10 @@ const userSlice = createSlice({
   reducers: {
     setAuth: (state, action: PayloadAction<{ token: string; userType: 'user' | 'store' }>) => {
       state.token = action.payload.token;
+      // Do not let the previous role's profile redirect the new session.
+      // The profile is fetched immediately afterwards using the new role.
+      state.user = null;
+      state.error = null;
       // Note: Full user object will be fetched by fetchUserProfile
     },
     logout: (state) => {

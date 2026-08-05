@@ -1059,6 +1059,8 @@ class StoreMeSerializer(serializers.ModelSerializer):
             "badge_progress",
             "auto_accept_prescription",
             "preferred_language",
+            "google_email",
+            "google_linked_at",
         ]
 
     def get_lifecycle_status(self, obj):

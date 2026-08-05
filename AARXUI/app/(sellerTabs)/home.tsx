@@ -10,6 +10,7 @@ import {
   Image,
   RefreshControl,
   ScrollView,
+  Switch,
   TouchableOpacity,
   View
 } from 'react-native';
@@ -35,23 +36,23 @@ const workloadTiles: {
   bg: string;
   border: string;
 }[] = [
-    { key: 'new', label: 'New', stage: 'NEW', icon: 'bell-ring-outline', color: '#0b9b69', bg: '#f1fbf4', border: '#dcf3e5' },
-    { key: 'billing', label: 'Billing', stage: 'BILLING', icon: 'script-text-outline', color: '#2f80d9', bg: '#f5faff', border: '#e3f0fb' },
-    { key: 'packed', label: 'Packed', stage: 'PACKED', icon: 'package-variant-closed', color: '#9b5ac6', bg: '#fbf7ff', border: '#f0e3fb' },
-    { key: 'ready', label: 'Ready', stage: 'READY', icon: 'scooter', color: '#d4a914', bg: '#fffdf2', border: '#f8efc5' },
-    { key: 'delivery', label: 'Delivery', stage: 'DELIVERY', icon: 'truck-delivery-outline', color: '#198b91', bg: '#f2fbfb', border: '#d9eeee' },
-    { key: 'otp', label: 'OTP', stage: 'OTP', icon: 'shield-key-outline', color: '#d48b13', bg: '#fff8ef', border: '#f7e5cd' },
+    { key: 'new', label: 'New', stage: 'NEW', icon: 'bell-ring-outline', color: '#0F8B8D', bg: '#E8F4F5', border: '#B9DDE0' },
+    { key: 'billing', label: 'Billing', stage: 'BILLING', icon: 'script-text-outline', color: '#123B5D', bg: '#EEF3F7', border: '#D5E1E9' },
+    { key: 'packed', label: 'Packed', stage: 'PACKED', icon: 'package-variant-closed', color: '#397A93', bg: '#EDF6F8', border: '#CDE5EA' },
+    { key: 'ready', label: 'Ready', stage: 'READY', icon: 'scooter', color: '#F59E0B', bg: '#FFF7E6', border: '#F6D99A' },
+    { key: 'delivery', label: 'Delivery', stage: 'DELIVERY', icon: 'truck-delivery-outline', color: '#0F8B8D', bg: '#E8F4F5', border: '#B9DDE0' },
+    { key: 'otp', label: 'OTP', stage: 'OTP', icon: 'shield-key-outline', color: '#F59E0B', bg: '#FFF7E6', border: '#F6D99A' },
   ];
 
 const getAttentionTone = (stage?: string) => {
   const key = (stage || '').toUpperCase();
-  if (key === 'OTP') return { color: '#d48b13', bg: '#fff8ef', border: '#f7e5cd', icon: 'shield-key-outline' };
-  if (key === 'NEW') return { color: '#0b9b69', bg: '#f1fbf4', border: '#dcf3e5', icon: 'bell-ring-outline' };
-  if (key === 'BILLING') return { color: '#2f80d9', bg: '#f5faff', border: '#e3f0fb', icon: 'script-text-outline' };
-  if (key === 'PACKED') return { color: '#9b5ac6', bg: '#fbf7ff', border: '#f0e3fb', icon: 'package-variant-closed' };
-  if (key === 'READY') return { color: '#d4a914', bg: '#fffdf2', border: '#f8efc5', icon: 'scooter' };
-  if (key === 'DELIVERY') return { color: '#198b91', bg: '#f2fbfb', border: '#d9eeee', icon: 'truck-delivery-outline' };
-  return { color: '#e0a10c', bg: '#fff8e1', border: '#fde9a7', icon: 'alert-circle-outline' };
+  if (key === 'OTP') return { color: '#F59E0B', bg: '#FFF7E6', border: '#F6D99A', icon: 'shield-key-outline' };
+  if (key === 'NEW') return { color: '#0F8B8D', bg: '#E8F4F5', border: '#B9DDE0', icon: 'bell-ring-outline' };
+  if (key === 'BILLING') return { color: '#123B5D', bg: '#EEF3F7', border: '#D5E1E9', icon: 'script-text-outline' };
+  if (key === 'PACKED') return { color: '#397A93', bg: '#EDF6F8', border: '#CDE5EA', icon: 'package-variant-closed' };
+  if (key === 'READY') return { color: '#F59E0B', bg: '#FFF7E6', border: '#F6D99A', icon: 'scooter' };
+  if (key === 'DELIVERY') return { color: '#0F8B8D', bg: '#E8F4F5', border: '#B9DDE0', icon: 'truck-delivery-outline' };
+  return { color: '#F59E0B', bg: '#FFF7E6', border: '#F6D99A', icon: 'alert-circle-outline' };
 };
 
 const normalizeAttentionStage = (stage?: string): OrderStage => {
@@ -105,6 +106,11 @@ export default function SellerHomeScreen() {
   const summary = dashboard.summary;
 
   const [storeToggleLoading, setStoreToggleLoading] = useState(false);
+  const [isStoreActive, setIsStoreActive] = useState(true);
+
+  useEffect(() => {
+    if (summary?.store?.is_active != null) setIsStoreActive(summary.store.is_active);
+  }, [summary?.store?.is_active]);
 
   useEffect(() => {
     if (!token || !user) dispatch(fetchUserProfile());
@@ -136,7 +142,8 @@ export default function SellerHomeScreen() {
 
   const toggleStore = useCallback(async () => {
     if (!token || !BASE_URL || storeToggleLoading) return;
-    const current = summary?.store?.is_active ?? false;
+    const current = isStoreActive;
+    setIsStoreActive(!current);
     setStoreToggleLoading(true);
     try {
       await axios.patch(
@@ -152,21 +159,20 @@ export default function SellerHomeScreen() {
         position: 'bottom',
       });
     } catch {
+      setIsStoreActive(current);
       Toast.show({ type: 'error', text1: 'Toggle failed', text2: 'Could not update store status.', position: 'bottom' });
     } finally {
       setStoreToggleLoading(false);
     }
-  }, [BASE_URL, dashboard, storeToggleLoading, summary?.store?.is_active, token]);
+  }, [BASE_URL, dashboard, storeToggleLoading, isStoreActive, token]);
 
   const todayCards = [
-    { label: 'Orders', value: summary?.today.orders ?? 0, icon: 'shopping-outline', color: '#0b9b69', bg: '#eaf8f1', trend: 'wave' as const },
-    { label: 'Revenue', value: formatCurrency(summary?.today.revenue), icon: 'currency-inr', color: '#2f80d9', bg: '#edf5ff', trend: 'dip' as const },
-    { label: 'Completed', value: summary?.today.completed ?? 0, icon: 'check-decagram-outline', color: '#8f56c6', bg: '#f4ecff', trend: 'rise' as const },
-    { label: 'Cancelled', value: summary?.today.cancelled ?? 0, icon: 'close-circle-outline', color: '#d84f57', bg: '#fff0f1', trend: 'flat' as const },
+    { label: 'Orders', value: summary?.today.orders ?? 0, icon: 'shopping-outline', color: '#0F8B8D', bg: '#E8F4F5', trend: 'wave' as const },
+    { label: 'Revenue', value: formatCurrency(summary?.today.revenue), icon: 'currency-inr', color: '#123B5D', bg: '#EEF3F7', trend: 'dip' as const },
+    { label: 'Completed', value: summary?.today.completed ?? 0, icon: 'check-decagram-outline', color: '#16A34A', bg: '#EDF8F0', trend: 'rise' as const },
+    { label: 'Cancelled', value: summary?.today.cancelled ?? 0, icon: 'close-circle-outline', color: '#DC2626', bg: '#FFF1F1', trend: 'flat' as const },
   ];
 
-  const isStoreActive = summary?.store?.is_active ?? false;
-  const activeCount = summary?.workload.active ?? 0;
   const selectedFilter = DATE_FILTERS.find((f) => f.key === dateFilter)?.label || 'Today';
   const attentionItems = summary?.attention ?? [];
   const attentionCount = attentionItems.length;
@@ -178,16 +184,16 @@ export default function SellerHomeScreen() {
   };
 
   return (
-    <View className="flex-1 bg-[#fbfcfd]">
+    <View className="flex-1 bg-[#F4F8FA]">
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={dashboard.refreshing} onRefresh={dashboard.refresh} tintColor="#10996d" />}
+        refreshControl={<RefreshControl refreshing={dashboard.refreshing} onRefresh={dashboard.refresh} tintColor="#0F8B8D" />}
         contentContainerStyle={{ paddingBottom: 122 }}
       >
         <View className="px-4 pt-2 pb-1">
           <View className="overflow-hidden rounded-[1.45rem] shadow-sm shadow-slate-300">
             <LinearGradient
-              colors={['#123b59', '#0d8a63']}
+              colors={['#123B5D', '#0F8B8D']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               className="relative min-h-[150px] overflow-hidden px-4 py-4"
@@ -203,45 +209,22 @@ export default function SellerHomeScreen() {
               <View className="min-h-[118px] justify-center">
                 <View className="z-10 w-[54%] min-w-0">
                   <View className="flex-row items-center">
-                    <Text
-                      className="text-[31px] font-black text-white tracking-[2px] leading-9"
-                      numberOfLines={1}
-                    >
-                      {activeCount}
-                    </Text>
-
-                    <View className="mx-3 h-9 w-px rounded-full bg-emerald-300/80" />
 
                     <View className="min-w-0 flex-1">
                       <Text
-                        className="text-[12px] font-black uppercase tracking-[1.6px] text-emerald-300 leading-4"
+                        className="text-[12px] font-black uppercase tracking-[1.6px] text-cyan-100 leading-4"
                         numberOfLines={1}
                       >
-                        {isStoreActive ? 'Receiving' : 'Store'}
+                        Dashboard
                       </Text>
 
                       <Text
                         className="text-[12px] font-black uppercase tracking-[1.2px] text-white leading-4"
                         numberOfLines={1}
                       >
-                        {isStoreActive ? 'Enquiries' : 'Offline'}
+                        {isStoreActive ? 'Overview' : 'Offline'}
                       </Text>
                     </View>
-                  </View>
-
-                  <View className="mt-1.5 flex-row items-center">
-                    <View className={`h-2.5 w-2.5 rounded-full ${isStoreActive ? 'bg-emerald-300' : 'bg-red-300'}`} />
-
-                    <Text
-                      className="ml-2 text-[10px] font-black uppercase tracking-[2px] text-white/45"
-                      numberOfLines={1}
-                    >
-                      Active enquiries
-                    </Text>
-
-                    {storeToggleLoading && (
-                      <ActivityIndicator className="ml-2" size="small" color="#ffffff" />
-                    )}
                   </View>
 
                   <ScrollView
@@ -254,16 +237,17 @@ export default function SellerHomeScreen() {
                       activeOpacity={0.84}
                       disabled={storeToggleLoading}
                       onPress={toggleStore}
-                      className="h-10 flex-row items-center rounded-full bg-white px-3 shadow-sm shadow-slate-950/10"
+                      className="h-10 flex-row items-center rounded-full border border-white/20 bg-white/95 px-2 shadow-sm shadow-slate-950/10"
                     >
-                      <MaterialCommunityIcons name="storefront-outline" size={16} color="#007a53" />
+                      <MaterialCommunityIcons name="storefront-outline" size={14} color="#123B5D" />
 
                       <Text
-                        className="ml-2 text-[10px] font-black uppercase tracking-[1px] text-[#007a53]"
+                        className="ml-2 text-[10px] font-black uppercase tracking-[1px] text-[#123B5D]"
                         numberOfLines={1}
                       >
                         {isStoreActive ? 'Open Store' : 'Closed Store'}
                       </Text>
+                      <Switch value={isStoreActive} onValueChange={toggleStore} disabled={storeToggleLoading} trackColor={{ false: "#CBD5E1", true: "#7DD3C7" }} thumbColor={isStoreActive ? "#0F8B8D" : "#F8FAFC"} ios_backgroundColor="#CBD5E1" />
                     </TouchableOpacity>
                   </ScrollView>
                 </View>
@@ -281,7 +265,7 @@ export default function SellerHomeScreen() {
                     key={f.key}
                     activeOpacity={0.86}
                     onPress={() => setDateFilter(f.key)}
-                    className={`h-8 flex-1 items-center justify-center rounded-xl ${active ? 'bg-[#0d8a63]' : 'bg-transparent'}`}
+                    className={`h-8 flex-1 items-center justify-center rounded-xl ${active ? 'bg-[#123B5D]' : 'bg-transparent'}`}
                   >
                     <Text
                       className={`text-[10px] font-black uppercase tracking-[0.8px] ${active ? 'text-white' : 'text-slate-500'}`}

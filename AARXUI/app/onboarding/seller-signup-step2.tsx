@@ -23,8 +23,8 @@ import * as SecureStore from 'expo-secure-store';
 
 type PickedFile = DocumentPicker.DocumentPickerAsset | null;
 
-const gradient = ['#60a5fa', '#2563eb'] as const;
-const accent = '#2563eb';
+const gradient = ['#123B5D', '#0F8B8D'] as const;
+const accent = '#123B5D';
 const { width, height } = Dimensions.get('window');
 const isSmallPhone = width < 380 || height < 700;
 
@@ -311,16 +311,16 @@ export default function SignupStep2() {
   };
 
   return (
-    <View className="flex-1 bg-slate-50">
+    <View className="flex-1 bg-[#F4F8FA]">
       <LinearGradient
-        colors={['#eff6ff', '#ecfeff', '#f8fafc']}
+        colors={['#F4F8FA', '#E8F4F5', '#F8FAFC']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
 
-      <View className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-200/45" />
-      <View className="absolute -left-16 top-28 h-44 w-44 rounded-full bg-cyan-200/40" />
+      <View className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#D8EEF0]/55" />
+      <View className="absolute -left-16 top-28 h-44 w-44 rounded-full bg-[#DCECEF]/45" />
 
 
       <KeyboardAvoidingView
@@ -365,9 +365,9 @@ export default function SignupStep2() {
               className="mt-4 rounded-[26px] border border-white bg-white/90 p-4"
               style={styles.cardShadow}
             >
-              <View className="mb-4 flex-row rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2.5">
-                <MaterialCommunityIcons name="shield-check-outline" size={20} color="#2563eb" />
-                <Text className="ml-2.5 flex-1 text-[11px] font-semibold leading-4 text-blue-800">
+              <View className="mb-4 flex-row rounded-2xl border border-[#B9DDE0] bg-[#E8F4F5] px-3 py-2.5">
+                <MaterialCommunityIcons name="shield-check-outline" size={20} color="#0F8B8D" />
+                <Text className="ml-2.5 flex-1 text-[11px] font-semibold leading-4 text-[#123B5D]">
                   Address and drug licence are compulsory. Your pharmacy can start receiving orders after review.
                 </Text>
               </View>
@@ -400,8 +400,8 @@ export default function SignupStep2() {
               </TouchableOpacity>
 
               {hasLocation && (
-                <View className="mb-3.5 rounded-[18px] bg-blue-50 px-3 py-2">
-                  <Text className="text-[11px] font-black text-blue-700">
+                <View className="mb-3.5 rounded-[18px] border border-[#B9DDE0] bg-[#E8F4F5] px-3 py-2">
+                  <Text className="text-[11px] font-black text-[#123B5D]">
                     Lat {Number(latitude).toFixed(5)} · Long {Number(longitude).toFixed(5)}
                   </Text>
                 </View>
@@ -503,8 +503,8 @@ function Header({ chip, title, subtitle, icon, onBack }: HeaderProps) {
         <Feather name="arrow-left" size={21} color="#1e293b" />
       </TouchableOpacity>
       <View className="ml-3 flex-1">
-        <View className="self-start rounded-full bg-blue-100 px-2.5 py-1">
-          <Text className="text-[10px] font-black uppercase tracking-[1px] text-blue-700">{chip}</Text>
+        <View className="self-start rounded-full bg-[#E8F4F5] px-2.5 py-1">
+          <Text className="text-[10px] font-black uppercase tracking-[1px] text-[#123B5D]">{chip}</Text>
         </View>
         <Text className="mt-2 text-[23px] font-black leading-7 text-slate-950">{title}</Text>
         <Text className="mt-0.5 text-[12px] font-semibold text-slate-500">{subtitle}</Text>
@@ -524,7 +524,7 @@ type InputRowProps = ComponentProps<typeof TextInput> & {
 function InputRow({ icon, marginBottom = 14, ...props }: InputRowProps) {
   return (
     <View
-      className="flex-row items-center rounded-[20px] border border-slate-100 bg-slate-50 px-3.5"
+      className="flex-row items-center rounded-[20px] border border-[#D6E5E8] bg-white px-3.5"
       style={{ marginBottom }}
     >
       <View className="h-8 w-8 items-center justify-center rounded-full bg-white">
@@ -551,7 +551,7 @@ function UploadButton({ icon, label, file, onPress }: UploadButtonProps) {
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.86}
-      className="mb-4 flex-row items-center rounded-[20px] border border-slate-100 bg-slate-50 px-3.5 py-3.5"
+      className="mb-4 flex-row items-center rounded-[20px] border border-[#D6E5E8] bg-white px-3.5 py-3.5"
     >
       <View className="h-9 w-9 items-center justify-center rounded-full bg-white">
         <Feather name={icon} size={17} color={file ? accent : '#64748b'} />
@@ -607,7 +607,7 @@ const styles = StyleSheet.create({
   },
   iconOuterShadow: {
     elevation: 12,
-    shadowColor: '#2563eb',
+    shadowColor: '#123B5D',
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.22,
     shadowRadius: 22,
@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
   },
   buttonShadow: {
     elevation: 10,
-    shadowColor: '#2563eb',
+    shadowColor: '#123B5D',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.28,
     shadowRadius: 20,

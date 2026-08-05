@@ -8,6 +8,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { getGoogleIdToken } from '@/utils/googleIdentity';
 import { useEffect, useRef, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { AppDispatch } from '@/redux/store';
+import { setAuth } from '@/redux/userSlice';
 import {
   ActivityIndicator,
   Alert,
@@ -47,10 +50,14 @@ type Step = 'phone' | 'otp';
 
 export default function PhoneLoginScreen() {
   const router = useRouter();
+  const dispatch = useDispatch<AppDispatch>();
   const params = useLocalSearchParams<{ userType?: string | string[] }>();
   const requestedRole = Array.isArray(params.userType) ? params.userType[0] : params.userType;
   const isSeller = requestedRole === 'seller';
   const expectedUserType = isSeller ? 'store' : 'user';
+  const enterprisePrimary = isSeller ? '#123B5D' : '#064A24';
+  const enterpriseAccent = isSeller ? '#0F8B8D' : '#1D6B3B';
+  const enterpriseGradient = isSeller ? ['#123B5D', '#0F8B8D'] as const : ['#126331', '#72A942'] as const;
   // Keep the sheet height stable while Android adjustResize opens the keyboard.
   // A live window-height value here causes a second layout resize and can blur
   // the focused phone input on some devices.
@@ -133,6 +140,7 @@ export default function PhoneLoginScreen() {
       secureWrites.push(SecureStore.deleteItemAsync('googleLinkTicket'));
     }
     await Promise.all(secureWrites);
+    dispatch(setAuth({ token: data.token, userType: expectedUserType }));
     router.replace((isSeller
       ? data.needs_onboarding
         ? `/onboarding/seller-signup-step1?otpVerified=1&mobile=${mobile}`
@@ -241,6 +249,7 @@ export default function PhoneLoginScreen() {
         SecureStore.setItemAsync('userType', isSeller ? 'store' : 'user'),
         SecureStore.setItemAsync('userId', String(isSeller ? data.store_id : data.user_id)),
       ]);
+      dispatch(setAuth({ token: data.token, userType: expectedUserType }));
       router.replace((isSeller
         ? data.needs_onboarding
           ? '/onboarding/seller-signup-step1?otpVerified=1'
@@ -279,10 +288,12 @@ export default function PhoneLoginScreen() {
         >
           <View className="relative w-full overflow-hidden bg-white" style={styles.hero}>
             <Image
-              source={require('../../assets/images/userloginlatest.jpeg')}
+              source={isSeller
+                ? require('../../assets/images/sellerlogin.png')
+                : require('../../assets/images/userloginlatest.jpeg')}
               resizeMode="contain"
               style={styles.heroImage}
-              accessibilityLabel="AARX trusted pharmacy and medicine delivery services"
+              accessibilityLabel={isSeller ? 'AARX pharmacy partner login' : 'AARX trusted pharmacy and medicine delivery services'}
             />
             <TouchableOpacity
               onPress={goBack}
@@ -316,13 +327,13 @@ export default function PhoneLoginScreen() {
           >
             <View className="w-full self-center px-5 pb-5 pt-4">
               <View className="items-center">
-                <View className="mb-2 flex-row items-center rounded-full border border-[#dce8d8] bg-[#f4f8f1] px-3 py-1.5">
-                  <MaterialCommunityIcons name="shield-check" size={14} color="#5c9147" />
-                  <Text className="ml-1.5 text-[10px] font-black uppercase tracking-[1.2px] text-[#34713b]">
+                <View className="mb-2 flex-row items-center rounded-full border border-[#dce8d8] bg-[#f4f8f1] px-3 py-1.5" style={isSeller ? { borderColor: '#B9DDE0', backgroundColor: '#E8F4F5' } : undefined}>
+                  <MaterialCommunityIcons name="shield-check" size={14} color={enterpriseAccent} />
+                  <Text className="ml-1.5 text-[10px] font-black uppercase tracking-[1.2px] text-[#34713b]" style={isSeller ? { color: enterprisePrimary } : undefined}>
                     {isSeller ? 'Secure pharmacy login' : 'Secure customer login'}
                   </Text>
                 </View>
-                <Text className="text-center text-[24px] font-black leading-[30px] tracking-tight text-[#064a24]">
+                <Text className="text-center text-[24px] font-black leading-[30px] tracking-tight text-[#064a24]" style={{ color: enterprisePrimary }}>
                   {step === 'phone' ? (isSeller ? 'AARX Pharmacy Partner' : 'Welcome to AARX') : 'Check your messages'}
                 </Text>
                 <Text className="mt-1 text-center text-[13px] font-medium leading-5 text-[#68716b]">
@@ -337,7 +348,7 @@ export default function PhoneLoginScreen() {
               <View className="mt-3">
                 {step === 'phone' ? (
                   <>
-                    <Text className="mb-2.5 text-[11px] font-black uppercase tracking-[1.3px] text-[#245b32]">
+                    <Text className="mb-2.5 text-[11px] font-black uppercase tracking-[1.3px] text-[#245b32]" style={{ color: enterprisePrimary }}>
                       Mobile number
                     </Text>
                     <View className={`h-[58px] flex-row items-center rounded-xl border px-4 ${phoneTouched && !validMobile ? 'border-red-300 bg-red-50/40' : 'border-[#d7dfd9] bg-white'}`}>
@@ -363,7 +374,7 @@ export default function PhoneLoginScreen() {
                         className="ml-3 flex-1 text-[16px] font-bold tracking-wide text-[#102a1b]"
                       />
                       <View className="h-6 w-6 items-center justify-center">
-                        {validMobile ? <MaterialCommunityIcons name="check-circle" size={21} color="#1d6b3b" /> : null}
+                        {validMobile ? <MaterialCommunityIcons name="check-circle" size={21} color={enterpriseAccent} /> : null}
                       </View>
                     </View>
                     {phoneTouched && mobile.length > 0 && !validMobile ? (
@@ -383,8 +394,8 @@ export default function PhoneLoginScreen() {
                     <View className="flex-row items-center justify-between">
                       <Text className="text-[11px] font-black uppercase tracking-[1.5px] text-slate-500">Enter OTP</Text>
                       <TouchableOpacity disabled={busy} onPress={() => setStep('phone')} className="flex-row items-center">
-                        <MaterialCommunityIcons name="pencil-outline" size={14} color="#1d6b3b" />
-                        <Text className="ml-1 text-xs font-black text-[#1d6b3b]">Change number</Text>
+                        <MaterialCommunityIcons name="pencil-outline" size={14} color={enterpriseAccent} />
+                        <Text className="ml-1 text-xs font-black text-[#1d6b3b]" style={{ color: enterpriseAccent }}>Change number</Text>
                       </TouchableOpacity>
                     </View>
                     <TextInput
@@ -421,7 +432,7 @@ export default function PhoneLoginScreen() {
                   style={canSubmit ? styles.buttonShadow : undefined}
                 >
                   <LinearGradient
-                    colors={['#126331', '#72a942']}
+                    colors={enterpriseGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     className="h-[55px] flex-row items-center justify-center"
@@ -441,7 +452,7 @@ export default function PhoneLoginScreen() {
                           {step === 'phone' ? 'Get OTP' : 'Verify & continue'}
                         </Text>
                         <View className="ml-3 h-8 w-8 items-center justify-center rounded-full bg-white">
-                          <MaterialCommunityIcons name="arrow-right" size={18} color="#236b36" />
+                          <MaterialCommunityIcons name="arrow-right" size={18} color={enterprisePrimary} />
                         </View>
                       </>
                     )}
@@ -489,7 +500,7 @@ export default function PhoneLoginScreen() {
 
             </View>
           </Animated.View>
-          <PharmacyFooter />
+          <PharmacyFooter isSeller={isSeller} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -507,16 +518,19 @@ function GoogleMark() {
   );
 }
 
-function PharmacyFooter() {
+function PharmacyFooter({ isSeller }: { isSeller: boolean }) {
+  const footerPrimary = isSeller ? '#123B5D' : '#176235';
+  const footerAccent = isSeller ? '#0F8B8D' : '#D4A72C';
+  const footerLight = isSeller ? '#D8EEF0' : '#D9DFCE';
   return (
     <View style={styles.footerArt} pointerEvents="none">
-      <View style={styles.footerBottomFill} />
+      <View style={[styles.footerBottomFill, { backgroundColor: footerPrimary }]} />
       <Svg width="100%" height={100} viewBox="0 0 390 100" preserveAspectRatio="none">
-        <Path d="M0 43 C47 33 69 8 117 21 C159 32 190 43 230 31 C281 15 315 9 390 36 L390 101 L0 101 Z" fill="#176235" />
-        <Path d="M0 34 C48 24 69 5 117 15 C159 26 190 37 230 25 C281 9 315 6 390 27" fill="none" stroke="#d4a72c" strokeWidth="1.4" />
-        <Path d="M20 60 C14 47 14 34 20 20 M20 45 C9 40 5 32 4 24 M21 36 C31 29 35 20 35 11 M365 59 C373 45 375 32 369 18 M370 44 C380 39 384 30 385 22 M369 34 C358 28 354 19 354 10" fill="none" stroke="#d9dfce" strokeWidth="1.2" />
-        <Circle cx="195" cy="55" r="17" fill="#fffef9" stroke="#d4a72c" strokeWidth="1.6" />
-        <Path d="M195 43 L195 67 M188 50 L202 50" stroke="#d4a72c" strokeWidth="3" strokeLinecap="round" />
+        <Path d="M0 43 C47 33 69 8 117 21 C159 32 190 43 230 31 C281 15 315 9 390 36 L390 101 L0 101 Z" fill={footerPrimary} />
+        <Path d="M0 34 C48 24 69 5 117 15 C159 26 190 37 230 25 C281 9 315 6 390 27" fill="none" stroke={footerAccent} strokeWidth="1.4" />
+        <Path d="M20 60 C14 47 14 34 20 20 M20 45 C9 40 5 32 4 24 M21 36 C31 29 35 20 35 11 M365 59 C373 45 375 32 369 18 M370 44 C380 39 384 30 385 22 M369 34 C358 28 354 19 354 10" fill="none" stroke={footerLight} strokeWidth="1.2" />
+        <Circle cx="195" cy="55" r="17" fill="#fffef9" stroke={footerAccent} strokeWidth="1.6" />
+        <Path d="M195 43 L195 67 M188 50 L202 50" stroke={footerAccent} strokeWidth="3" strokeLinecap="round" />
       </Svg>
     </View>
   );

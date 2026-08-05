@@ -32,7 +32,7 @@ import { Image, StyleSheet, View } from 'react-native';
 import { SignupProvider } from '@/context/SignupContext';
 
 const buyerGradient = ['#f0fdf4', '#ecfeff', '#eff6ff'] as const;
-const sellerGradient = ['#eff6ff', '#ecfeff', '#f8fafc'] as const;
+const sellerGradient = ['#F4F8FA', '#E8F4F5', '#DCECEF'] as const;
 
 export default function OnboardingLayout() {
   const pathname = usePathname();

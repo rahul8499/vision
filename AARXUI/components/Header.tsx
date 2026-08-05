@@ -51,8 +51,10 @@ function Header({
 }: HeaderProps) {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [notifSheetVisible, setNotifSheetVisible] = useState(false);
-  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 8 : 14;
   const isSeller = variant === 'seller';
+  const topInset = Platform.OS === 'android'
+    ? (StatusBar.currentHeight ?? 0) + (isSeller ? 2 : 8)
+    : (isSeller ? 8 : 14);
   const unreadCount = Math.max(0, Number(notificationCount) || 0);
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
@@ -76,14 +78,21 @@ function Header({
 
   return (
     <>
-      <View className="bg-[#fbfcfd] px-5 pb-2" style={{ paddingTop: topInset }}>
-        <View className="h-[88px] flex-row items-center justify-between">
+      <View
+        className="px-5 pb-2"
+        style={{
+          paddingTop: topInset,
+          marginTop: isSeller ? -30 : 0,
+          backgroundColor: isSeller ? '#F4F8FA' : '#fbfcfd',
+        }}
+      >
+        <View className="h-[88px]  flex-row items-center justify-between">
           <TouchableOpacity
             activeOpacity={0.82}
             onPress={handleMenuPress}
             className="h-12 w-12 items-center justify-center"
           >
-            <MaterialCommunityIcons name="menu" size={32} color="#0f172a" />
+            <MaterialCommunityIcons name="menu" size={32} color={isSeller ? '#123B5D' : '#0f172a'} />
           </TouchableOpacity>
 
           <View className="flex-1 items-center px-2">
@@ -99,13 +108,13 @@ function Header({
             onPress={handleNotificationClick}
             className="h-12 w-12 items-center justify-center"
           >
-            <MaterialCommunityIcons name="bell-outline" size={29} color="#0f172a" />
+            <MaterialCommunityIcons name="bell-outline" size={29} color={isSeller ? '#123B5D' : '#0f172a'} />
             {unreadCount > 0 ? (
               <View style={styles.notificationBadge}>
                 <Text style={styles.notificationBadgeText}>{badgeLabel}</Text>
               </View>
             ) : showNotificationDot ? (
-              <View className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[#0fbf84]" />
+              <View className={`absolute right-2.5 top-2.5 h-2 w-2 rounded-full ${isSeller ? 'bg-[#0F8B8D]' : 'bg-[#0fbf84]'}`} />
             ) : null}
           </TouchableOpacity>
         </View>
