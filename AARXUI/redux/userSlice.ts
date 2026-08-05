@@ -49,7 +49,8 @@ export const fetchUserProfile = createAsyncThunk(
   'user/fetchProfile',
   async (_, { rejectWithValue }) => {
     try {
-      const token = await SecureStore.getItemAsync('authToken');
+      const storedToken = await SecureStore.getItemAsync('authToken');
+      const token = storedToken || '';
       let userType = await SecureStore.getItemAsync('userType') as 'user' | 'store' | null;
       
       if (!token) return rejectWithValue('No token found');
@@ -82,6 +83,9 @@ export const fetchUserProfile = createAsyncThunk(
             return { user: { ...response.data, user_type: detectedType }, token };
         } catch (fallbackErr: any) {
             console.error('[Redux] All attempts failed.');
+            if (fallbackErr?.response?.status === 401 || fallbackErr?.response?.status === 403) {
+              return rejectWithValue(fallbackErr.response?.data?.detail || 'Authentication failed. Please log in again.');
+            }
             throw fallbackErr;
         }
       }

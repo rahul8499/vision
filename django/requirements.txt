@@ -23,6 +23,7 @@ python-geohash
 razorpay
 httpx
 google-auth
+sentry-sdk
 
 # 🚀 Option 2: Production Ready (Recommended 🔥)
 

@@ -43,6 +43,7 @@ const AuditLogList = lazy(() => import('@/pages/AuditLogs/AuditLogList').then(m 
 const ActivityLogList = lazy(() => import('@/pages/ActivityLogs/ActivityLogList').then(m => ({ default: m.ActivityLogList })))
 const SettingsPage = lazy(() => import('@/pages/Settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const OperationsPage = lazy(() => import('@/pages/Operations/OperationsPage').then(m => ({ default: m.OperationsPage })))
+const AdminMonitoringPage = lazy(() => import('@/pages/AdminMonitoring/AdminMonitoringPage').then(m => ({ default: m.AdminMonitoringPage })))
 
 export const router = createBrowserRouter([
   {
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
       { path: '', element: LazyWrapper(DashboardPage) },
       { path: 'dashboard', element: LazyWrapper(DashboardPage) },
       { path: 'operations', element: LazyWrapper(OperationsPage) },
+      { path: 'admin-monitoring', element: RoleProtected(AdminMonitoringPage, ['admin']) },
       { path: 'emergency-monitoring', element: LazyWrapper(EmergencyMonitoringPage) },
       { path: 'complaints', element: LazyWrapper(ComplaintList) },
       { path: 'complaints/:id', element: LazyWrapper(ComplaintDetail) },

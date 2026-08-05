@@ -17,15 +17,17 @@ import {
   Radio,
   Headphones,
   Activity,
+  MonitorCog,
 } from 'lucide-react'
 import type { UserRole } from '@/types/auth'
 
-type MenuKey = 'dashboard' | 'operations' | 'emergency' | 'complaints' | 'tickets' | 'payments' | 'refunds' | 'safety' | 'users' | 'stores' | 'staff' | 'audit' | 'activity'
+type MenuKey = 'dashboard' | 'operations' | 'monitoring' | 'emergency' | 'complaints' | 'tickets' | 'payments' | 'refunds' | 'safety' | 'users' | 'stores' | 'staff' | 'audit' | 'activity'
 type MenuItem = { to: string; label: string; description: string; icon: React.ReactNode }
 
 const MENU_ITEMS: Record<MenuKey, MenuItem> = {
   dashboard: { to: '/dashboard', label: "Today's work summary", description: 'See open work, urgent cases, and team progress.', icon: <LayoutDashboard className="h-5 w-5" /> },
   operations: { to: '/operations', label: 'My tasks and tools', description: 'Work assigned cases, follow-ups, ready replies, and reports.', icon: <Headphones className="h-5 w-5" /> },
+  monitoring: { to: '/admin-monitoring', label: 'Admin monitoring', description: 'Watch API status, errors, slow requests, active users, and server health.', icon: <MonitorCog className="h-5 w-5" /> },
   emergency: { to: '/emergency-monitoring', label: 'Urgent medicine requests', description: 'Help when nearby stores have not responded in time.', icon: <Radio className="h-5 w-5" /> },
   complaints: { to: '/complaints', label: 'Customer complaints', description: 'Investigate complaints, reply, assign, and resolve them.', icon: <MessageSquare className="h-5 w-5" /> },
   tickets: { to: '/tickets', label: 'App help requests', description: 'Answer account, app, verification, and technical questions.', icon: <Ticket className="h-5 w-5" /> },
@@ -41,7 +43,7 @@ const MENU_ITEMS: Record<MenuKey, MenuItem> = {
 
 const menu = (...keys: MenuKey[]) => keys.map(key => MENU_ITEMS[key])
 const ROLE_MENU_ITEMS: Record<UserRole, MenuItem[]> = {
-  admin: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores', 'staff', 'audit', 'activity'),
+  admin: menu('dashboard', 'operations', 'monitoring', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores', 'staff', 'audit', 'activity'),
   supervisor: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety', 'users', 'stores', 'activity'),
   agent: menu('dashboard', 'operations', 'emergency', 'complaints', 'tickets', 'payments', 'refunds', 'safety'),
 }

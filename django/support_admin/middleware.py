@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from uuid import uuid4
 
 from django.conf import settings
 
@@ -28,13 +29,19 @@ class ProductionRequestLoggingMiddleware:
             method = getattr(request, "method", "")
             status_code = getattr(response, "status_code", 500 if request else 0)
 
-            if path.startswith("/api/") and status_code >= 500:
+            monitored_prefixes = getattr(settings, "PRODUCTION_MONITORED_PATH_PREFIXES", ("/api/", "/support-api/"))
+            is_monitored_path = any(path.startswith(prefix) for prefix in monitored_prefixes)
+            request_id = request.headers.get("X-Request-ID") or request.headers.get("X-Correlation-ID") or str(uuid4())
+
+            if is_monitored_path and status_code >= 500:
                 payload = {
                     "method": method,
                     "path": path,
                     "status_code": status_code,
                     "duration_ms": elapsed_ms,
                     "query_params": redact_payload(dict(getattr(request, "GET", {}))),
+                    "request_id": request_id,
+                    "user_id": getattr(getattr(request, "user", None), "id", None),
                 }
                 logger.error("Production API failure", extra=payload)
                 log_production_event(
@@ -43,12 +50,14 @@ class ProductionRequestLoggingMiddleware:
                     f"{method} {path} failed",
                     details=payload,
                 )
-            elif path.startswith("/api/") and elapsed_ms >= getattr(settings, "PRODUCTION_SLOW_API_THRESHOLD_MS", 1500):
+            elif is_monitored_path and elapsed_ms >= getattr(settings, "PRODUCTION_SLOW_API_THRESHOLD_MS", 1500):
                 payload = {
                     "method": method,
                     "path": path,
                     "status_code": status_code,
                     "duration_ms": elapsed_ms,
+                    "request_id": request_id,
+                    "user_id": getattr(getattr(request, "user", None), "id", None),
                 }
                 logger.warning("Slow API request", extra=payload)
                 log_production_event(

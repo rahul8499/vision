@@ -341,20 +341,20 @@ const getSellerSectionItems = (items: ResponseItem[], section: SellerEnquirySect
 };
 
 const HISTORY_FILTERS = [
-  { key: 'all', label: 'All', icon: 'history', desc: 'All records', color: '#0f172a' },
-  { key: 'completed', label: 'Completed', icon: 'check-circle-outline', desc: 'Finished requests', color: '#059669' },
-  { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline', desc: 'Cancelled requests', color: '#ef4444' },
-  { key: 'rejected', label: 'Rejected', icon: 'alert-circle-outline', desc: 'Rejected requests', color: '#f59e0b' },
-  { key: 'reported', label: 'Reported', icon: 'flag-triangle', desc: 'Reported records', color: '#dc2626' },
+  { key: 'all', label: 'All', icon: 'history', desc: 'All records', color: '#123B5D' },
+  { key: 'completed', label: 'Completed', icon: 'check-circle-outline', desc: 'Finished requests', color: '#16A34A' },
+  { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline', desc: 'Cancelled requests', color: '#DC2626' },
+  { key: 'rejected', label: 'Rejected', icon: 'alert-circle-outline', desc: 'Rejected requests', color: '#F59E0B' },
+  { key: 'reported', label: 'Reported', icon: 'flag-triangle', desc: 'Reported records', color: '#DC2626' },
 ];
 
 const ENQUIRY_SECTION_OPTIONS: { key: SellerEnquiryMenuSection; label: string; icon: string; color: string; bg: string; desc: string }[] = [
-  { key: 'emergency', label: 'Emergency', icon: 'alarm-light-outline', color: '#e11d48', bg: '#fff1f2', desc: 'Urgent medicine requests' },
-  { key: 'enquiry', label: 'Enquiry', icon: 'radar', color: '#059669', bg: '#ecfdf5', desc: 'Add price quote cards' },
-  { key: 'verification', label: 'Verification', icon: 'cached', color: '#2563eb', bg: '#eff6ff', desc: 'Stock check cards' },
-  { key: 'quote', label: 'Quote', icon: 'receipt-text-send-outline', color: '#7c3aed', bg: '#f5f3ff', desc: 'Sent quote cards' },
-  { key: 'rejected', label: 'Rejected', icon: 'close-circle-outline', color: '#dc2626', bg: '#fef2f2', desc: 'Rejected quotes' },
-  { key: 'history', label: 'History', icon: 'history', color: '#0f172a', bg: '#f1f5f9', desc: 'Past quote records' },
+  { key: 'emergency', label: 'Emergency', icon: 'alarm-light-outline', color: '#DC2626', bg: '#FDECEC', desc: 'Urgent medicine requests' },
+  { key: 'enquiry', label: 'Enquiry', icon: 'radar', color: '#0F8B8D', bg: '#E8F4F5', desc: 'Add price quote cards' },
+  { key: 'verification', label: 'Verification', icon: 'cached', color: '#123B5D', bg: '#F4F8FA', desc: 'Stock check cards' },
+  { key: 'quote', label: 'Quote', icon: 'receipt-text-send-outline', color: '#16A34A', bg: '#ECFDF3', desc: 'Sent quote cards' },
+  { key: 'rejected', label: 'Rejected', icon: 'close-circle-outline', color: '#DC2626', bg: '#FDECEC', desc: 'Rejected quotes' },
+  { key: 'history', label: 'History', icon: 'history', color: '#627D98', bg: '#F4F8FA', desc: 'Past quote records' },
 ];
 
 const SELLER_SECTION_COPY: Record<SellerEnquirySection, {
@@ -374,7 +374,7 @@ const SELLER_SECTION_COPY: Record<SellerEnquirySection, {
     emptyIcon: 'alarm-light-outline',
   },
   enquiry: {
-    title: 'STORE',
+    title: 'ENQUIRY',
     caption: 'Add Price Quote Only',
     filterLabel: 'Add Price',
     emptyTitle: 'No quote requests found',
@@ -2371,10 +2371,10 @@ export default function Prescription() {
     <>
 
 
-      <View className="flex-1 bg-[#fbfcfd]">
+      <View className="flex-1" style={{ backgroundColor: '#F4F8FA' }}>
         <View className="px-4 pt-2 pb-1">
-          <View className="overflow-hidden rounded-[1.45rem] shadow-sm shadow-slate-300">
-            <LinearGradient colors={['#123b59', '#0d8a63']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} className="relative min-h-[150px] overflow-hidden px-4 py-4">
+          <View className="overflow-hidden rounded-[1.45rem] border border-[#B9DDE0] bg-[#FFFFFF] shadow-sm shadow-slate-300/60">
+            <LinearGradient colors={['#123B5D', '#0F8B8D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} className="relative min-h-[150px] overflow-hidden px-4 py-4">
 
               {/* Background Image — absolutely positioned, right side */}
               <View className="absolute -right-14 -bottom-8 h-[190px] w-[286px] items-center justify-center">
@@ -2389,7 +2389,7 @@ export default function Prescription() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => fetchResponses(1, false)}
-                className="absolute top-4 right-4 z-20 h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10"
+                className="absolute top-4 right-4 z-20 h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/15"
               >
                 <MaterialCommunityIcons name="refresh" size={24} color="#FFFFFF" />
               </TouchableOpacity>
@@ -2415,7 +2415,7 @@ export default function Prescription() {
                     <TouchableOpacity
                       activeOpacity={0.84}
                       onPress={() => setSortFilterSheetOpen(true)}
-                      className="h-10 flex-row items-center rounded-full bg-white px-3 shadow-sm shadow-slate-950/10"
+                      className="h-10 flex-row items-center rounded-full border border-[#B9DDE0] bg-[#FFFFFF] px-3 shadow-sm shadow-slate-950/10"
                     >
                       <MaterialCommunityIcons
                         name={(activeSection === 'history' ? 'history' : activeSectionOption.icon) as any}
@@ -2424,16 +2424,16 @@ export default function Prescription() {
                       />
                       <Text
                         className="ml-2 text-[10px] font-black uppercase tracking-[1px]"
-                        style={{ color: activeSectionOption.color }}
+                        style={{ color: '#123B5D' }}
                         numberOfLines={1}
                       >
                         {sectionFilterLabel}
                       </Text>
-                      <View style={{ backgroundColor: activeSectionOption.bg }} className="ml-2 flex-row items-center rounded-full px-2 py-0.5">
-                        <MaterialCommunityIcons name="calendar-range" size={10} color={activeSectionOption.color} />
+                      <View style={{ backgroundColor: '#E8F4F5' }} className="ml-2 flex-row items-center rounded-full px-2 py-0.5">
+                        <MaterialCommunityIcons name="calendar-range" size={10} color="#0F8B8D" />
                         <Text
                           className="ml-1 text-[8px] font-black uppercase tracking-[0.6px]"
-                          style={{ color: activeSectionOption.color }}
+                          style={{ color: '#0F8B8D' }}
                           numberOfLines={1}
                         >
                           {dateRangeLabel}
@@ -2452,7 +2452,7 @@ export default function Prescription() {
             <TouchableOpacity
               activeOpacity={0.86}
               onPress={() => setSectionMenuVisible(true)}
-              className="flex-1 flex-row items-center rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/60"
+              className="flex-1 flex-row items-center rounded-[1.1rem] border border-[#B9DDE0] bg-[#FFFFFF] px-4 py-3 shadow-sm shadow-slate-200/60"
             >
               <View style={{ backgroundColor: activeSectionOption.bg }} className="h-10 w-10 items-center justify-center rounded-xl">
                 <MaterialCommunityIcons name={activeSectionOption.icon as any} size={20} color={activeSectionOption.color} />
@@ -2468,7 +2468,7 @@ export default function Prescription() {
             <TouchableOpacity
               activeOpacity={0.86}
               onPress={() => setSectionMenuVisible(true)}
-              className="h-[48px] w-[48px] items-center justify-center rounded-[1rem] border border-slate-200 bg-white shadow-sm shadow-slate-200/60"
+              className="h-[48px] w-[48px] items-center justify-center rounded-[1rem] border border-[#B9DDE0] bg-[#FFFFFF] shadow-sm shadow-slate-200/60"
             >
               <MaterialCommunityIcons name="menu" size={24} color={activeSectionOption.color} />
             </TouchableOpacity>
@@ -2478,9 +2478,9 @@ export default function Prescription() {
         <Modal visible={sectionMenuVisible} transparent animationType="fade" onRequestClose={() => setSectionMenuVisible(false)}>
           <View className="flex-1">
             <TouchableOpacity activeOpacity={1} onPress={() => setSectionMenuVisible(false)} className="absolute inset-0 bg-black/5" />
-            <View className="absolute right-4 top-[224px] w-[236px] overflow-hidden rounded-[1.15rem] border border-slate-200 bg-white shadow-xl shadow-slate-300/50">
-              <View className="border-b border-slate-100 px-4 py-3">
-                <Text className="text-[10px] font-black uppercase tracking-[1.4px] text-slate-400">Enquiry Tab</Text>
+            <View className="absolute right-4 top-[224px] w-[236px] overflow-hidden rounded-[1.15rem] border border-[#B9DDE0] bg-[#FFFFFF] shadow-xl shadow-slate-300/50">
+              <View className="border-b border-[#E8F4F5] px-4 py-3">
+                <Text className="text-[10px] font-black uppercase tracking-[1.4px] text-[#627D98]">Enquiry Tab</Text>
               </View>
               {ENQUIRY_SECTION_OPTIONS.map((option) => {
                 const selected = activeSection === option.key;
@@ -2490,14 +2490,14 @@ export default function Prescription() {
                     activeOpacity={0.86}
                     onPress={() => selectEnquirySection(option.key)}
                     style={{ backgroundColor: selected ? option.bg : '#ffffff' }}
-                    className="flex-row items-center border-b border-slate-100 px-4 py-3.5"
+                    className="flex-row items-center border-b border-[#E8F4F5] px-4 py-3.5"
                   >
                     <View style={{ backgroundColor: option.bg }} className="h-9 w-9 items-center justify-center rounded-xl">
                       <MaterialCommunityIcons name={option.icon as any} size={19} color={option.color} />
                     </View>
                     <View className="ml-3 flex-1">
-                      <Text className="text-[12px] font-black text-slate-950" numberOfLines={1}>{option.label}</Text>
-                      <Text className="mt-0.5 text-[8px] font-black uppercase tracking-[0.8px] text-slate-400" numberOfLines={1}>
+                      <Text className="text-[12px] font-black text-[#102A43]" numberOfLines={1}>{option.label}</Text>
+                      <Text className="mt-0.5 text-[8px] font-black uppercase tracking-[0.8px] text-[#627D98]" numberOfLines={1}>
                         {getEnquirySectionMetaText(option.key)}
                       </Text>
                     </View>

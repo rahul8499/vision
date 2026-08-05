@@ -3,6 +3,17 @@ type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 type LogContext = Record<string, unknown>
 
 const isDevelopment = import.meta.env.DEV
+const logEndpoint = import.meta.env.VITE_LOG_ENDPOINT?.trim()
+const appName = import.meta.env.VITE_APP_NAME || 'AARX Support Web'
+const appVersion = import.meta.env.VITE_APP_VERSION || 'unknown'
+const enabledLevels: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+}
+const configuredLevel = (import.meta.env.VITE_LOG_LEVEL || (isDevelopment ? 'debug' : 'info')) as LogLevel
+const minimumLevel = enabledLevels[configuredLevel] ?? enabledLevels.info
 
 const safeStringify = (value: unknown) => {
   try {
@@ -17,18 +28,43 @@ const serializeError = (error: unknown) => {
     return {
       name: error.name,
       message: error.message,
-      stack: error.stack,
+      stack: isDevelopment ? error.stack : undefined,
     }
   }
 
   return error
 }
 
+const emitRemote = (entry: LogContext) => {
+  if (!logEndpoint) return
+
+  const body = safeStringify(entry)
+  const headers = { type: 'application/json' }
+
+  if (navigator.sendBeacon) {
+    const sent = navigator.sendBeacon(logEndpoint, new Blob([body], headers))
+    if (sent) return
+  }
+
+  void fetch(logEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => undefined)
+}
+
 const emit = (level: LogLevel, message: string, context?: LogContext) => {
+  if (enabledLevels[level] < minimumLevel) return null
+
   const entry = {
     timestamp: new Date().toISOString(),
+    app: appName,
+    version: appVersion,
+    environment: import.meta.env.MODE,
     level,
     message,
+    path: window.location.pathname,
     ...(context && Object.keys(context).length > 0 ? { context } : {}),
   }
 
@@ -43,6 +79,8 @@ const emit = (level: LogLevel, message: string, context?: LogContext) => {
   } else {
     console.info(prefix, context ?? '')
   }
+
+  if (!isDevelopment && level !== 'debug') emitRemote(entry)
 
   return entry
 }

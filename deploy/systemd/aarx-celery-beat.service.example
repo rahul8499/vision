@@ -1,0 +1,16 @@
+[Unit]
+Description=AARX Celery Beat scheduler
+After=network.target redis.service aarx-celery.service
+
+[Service]
+Type=simple
+User=<deploy-user>
+Group=<deploy-group>
+WorkingDirectory=<absolute-path-to-repo>/django
+EnvironmentFile=<absolute-path-to-secrets>/.env.production
+ExecStart=<absolute-path-to-venv>/bin/celery -A aarx beat -l info --pidfile=/run/aarx-celery-beat.pid
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

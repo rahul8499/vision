@@ -18,6 +18,20 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(os.path.join(BASE_DIR, '.env'))
+SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+    except ImportError:
+        sentry_sdk = None
+
+    if sentry_sdk:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+            send_default_pii=False,
+        )
 
 
 # Quick-start development settings - unsuitable for production
@@ -107,6 +121,8 @@ CELERY_BEAT_SCHEDULE = {
 
 # Reliability: task acknowledged AFTER completion (not before)
 CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 1 task at a time per worker slot
 
 # Concurrency: 4 workers per CPU core for I/O-heavy notification tasks
@@ -228,6 +244,11 @@ WEBSOCKET_RATE_LIMITS = {
     'chat_messages_per_minute': 60,
 }
 PRODUCTION_SLOW_API_THRESHOLD_MS = int(os.getenv('PRODUCTION_SLOW_API_THRESHOLD_MS', '1500'))
+PRODUCTION_MONITORED_PATH_PREFIXES = tuple(
+    prefix.strip()
+    for prefix in os.getenv('PRODUCTION_MONITORED_PATH_PREFIXES', '/api/,/support-api/').split(',')
+    if prefix.strip()
+)
 
 MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',

@@ -1,0 +1,17 @@
+[Unit]
+Description=AARX Celery worker
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=<deploy-user>
+Group=<deploy-group>
+WorkingDirectory=<absolute-path-to-repo>/django
+EnvironmentFile=<absolute-path-to-secrets>/.env.production
+ExecStart=<absolute-path-to-venv>/bin/celery -A aarx worker -l info -Q notifications,default --concurrency=<worker-concurrency>
+Restart=always
+RestartSec=5
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

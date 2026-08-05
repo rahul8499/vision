@@ -1,0 +1,19 @@
+[Unit]
+Description=AARX AI Service (FastAPI)
+After=network.target redis.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=<deploy-user>
+Group=<deploy-group>
+WorkingDirectory=<absolute-path-to-ai-service>
+EnvironmentFile=<absolute-path-to-secrets>/.env.production
+ExecStart=<absolute-path-to-ai-venv>/bin/uvicorn main:app --host 127.0.0.1 --port 8010 --workers 1
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

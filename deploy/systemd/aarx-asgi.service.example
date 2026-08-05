@@ -1,0 +1,17 @@
+[Unit]
+Description=AARX Django ASGI service
+After=network.target redis.service postgresql.service
+
+[Service]
+Type=simple
+User=<deploy-user>
+Group=<deploy-group>
+WorkingDirectory=<absolute-path-to-repo>/django
+EnvironmentFile=<absolute-path-to-secrets>/.env.production
+ExecStart=<absolute-path-to-venv>/bin/uvicorn aarx.asgi:application --host 127.0.0.1 --port 8000 --workers <worker-count>
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

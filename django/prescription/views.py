@@ -605,7 +605,12 @@ class PrescriptionSendToStoresView(APIView):
         serializer = PrescriptionSerializer(prescription, context={'request': request})
         
         # 🚀 O(1) Database Query: Get all selected stores instantly
-        stores = list(Store.objects.filter(id__in=store_ids))
+        stores = list(Store.objects.filter(
+            id__in=store_ids,
+            is_active=True,
+            is_verified=True,
+            is_deleted=False,
+        ))
         
         # Count auto-accepting stores
         reviewing_count = sum(1 for store in stores if getattr(store, 'auto_accept_prescription', False))

@@ -382,12 +382,21 @@ export default function HomeScreen() {
     setUploadProgress(5);
     setUploadStage('Preparing your request');
 
+    const currentToken = token || (await SecureStore.getItemAsync('authToken'));
+    if (!currentToken) {
+      setSubmitting(false);
+      setUploadProgress(0);
+      setSubmitError('Your session expired. Please log in again and try the upload.');
+      return;
+    }
+    setToken(currentToken);
+
     let emergencyChargeId: string | null = null;
     if (emergency) {
       try {
         setUploadProgress(12);
         setUploadStage('Checking emergency access');
-        const authHeaders = { Authorization: `Bearer ${token}` };
+        const authHeaders = { Authorization: `Bearer ${currentToken}` };
         const eligibility = await axios.get(`${BASE_URL}/api/emergency-service/eligibility/`, { headers: authHeaders });
         const free = eligibility.data.free_broadcasts_remaining > 0;
         const razorpayAvailable = !!RazorpayCheckout && typeof (RazorpayCheckout as any).open === 'function';
@@ -449,6 +458,8 @@ export default function HomeScreen() {
     }
 
     const formData = new FormData();
+    let usedFallbackUpload = false;
+
     try {
       // Check the file and upload it inside a guarded block. Previously an S3
       // failure escaped before the final cleanup and left the progress modal stuck.
@@ -461,14 +472,28 @@ export default function HomeScreen() {
         const uploadFile = getUploadFileMeta(image);
         setUploadProgress(35);
         setUploadStage('Uploading prescription securely');
-        const imageKey = await uploadFileToS3(
-          { uri: image.uri, name: uploadFile.name, type: uploadFile.type },
-          'prescriptions',
-          token || '',
-        );
-        formData.append('image_key', imageKey);
-        setUploadProgress(72);
-        setUploadStage('Prescription uploaded');
+
+        try {
+          const imageKey = await uploadFileToS3(
+            { uri: image.uri, name: uploadFile.name, type: uploadFile.type },
+            'prescriptions',
+            currentToken,
+          );
+          formData.append('image_key', imageKey);
+          setUploadProgress(72);
+          setUploadStage('Prescription uploaded');
+        } catch (s3Error: any) {
+          console.warn('S3 upload unavailable, falling back to server upload:', s3Error);
+          formData.append('image', {
+            uri: image.uri,
+            name: uploadFile.name,
+            type: uploadFile.type,
+          } as any);
+          usedFallbackUpload = true;
+          setUploadProgress(72);
+          setUploadStage('Uploading prescription directly');
+        }
+
         formData.append('upload_type', uploadType);
       } else {
         formData.append('upload_type', 'text_only');
@@ -513,7 +538,7 @@ export default function HomeScreen() {
       const response = await axios.post(`${BASE_URL}/api/upload/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${currentToken}`,
         },
       });
 
