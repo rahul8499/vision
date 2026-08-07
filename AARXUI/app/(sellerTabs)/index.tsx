@@ -415,6 +415,20 @@ const SELLER_SECTION_COPY: Record<SellerEnquirySection, {
   },
 };
 
+const SELLER_CARD_COLORS = {
+  primaryNavy: '#123B5D',
+  secondaryTeal: '#0F8B8D',
+  background: '#F4F8FA',
+  lightTealCard: '#E8F4F5',
+  borderTeal: '#B9DDE0',
+  whiteCard: '#FFFFFF',
+  mainText: '#102A43',
+  secondaryText: '#627D98',
+  successGreen: '#16A34A',
+  warningAmber: '#F59E0B',
+  errorRed: '#DC2626',
+};
+
 const getEnquiryCardTone = (item: ResponseItem) => {
   if (item.status === 'emergency') {
     return {
@@ -422,9 +436,9 @@ const getEnquiryCardTone = (item: ResponseItem) => {
       subtitle: 'Urgent request from patient',
       badge: 'Emergency',
       icon: 'alarm-light-outline',
-      color: '#ef4444',
-      bg: '#fff1f2',
-      border: '#fee2e2',
+      color: SELLER_CARD_COLORS.errorRed,
+      bg: '#FDECEC',
+      border: '#F87171',
       leftBar: true,
     };
   }
@@ -432,17 +446,17 @@ const getEnquiryCardTone = (item: ResponseItem) => {
   const stage = getEnquiryStage(item);
   switch (stage) {
     case 'quoted':
-      return { title: 'Quote Sent', subtitle: 'Response already submitted', badge: 'Quoted', icon: 'check-decagram-outline', color: '#1d8cf8', bg: '#eff6ff', border: '#dbeafe', leftBar: true };
+      return { title: 'Quote Sent', subtitle: 'Response already submitted', badge: 'Quoted', icon: 'check-decagram-outline', color: SELLER_CARD_COLORS.successGreen, bg: SELLER_CARD_COLORS.lightTealCard, border: SELLER_CARD_COLORS.borderTeal, leftBar: true };
     case 'waiting':
-      return { title: 'Verification Needed', subtitle: 'Patient asked for fresh stock check', badge: 'Waiting', icon: 'cached', color: '#2563eb', bg: '#eff6ff', border: '#dbeafe', leftBar: true };
+      return { title: 'Verification Needed', subtitle: 'Patient asked for fresh stock check', badge: 'Waiting', icon: 'cached', color: SELLER_CARD_COLORS.primaryNavy, bg: SELLER_CARD_COLORS.lightTealCard, border: SELLER_CARD_COLORS.borderTeal, leftBar: true };
     case 'rejected':
-      return { title: 'Quote Rejected', subtitle: 'Patient declined this quote', badge: 'Rejected', icon: 'close-circle-outline', color: '#ef4444', bg: '#fff1f2', border: '#fee2e2', leftBar: true };
+      return { title: 'Quote Rejected', subtitle: 'Patient declined this quote', badge: 'Rejected', icon: 'close-circle-outline', color: SELLER_CARD_COLORS.errorRed, bg: '#FDECEC', border: '#F87171', leftBar: true };
     case 'reported':
-      return { title: 'Attention Required', subtitle: 'Only work that needs action now', badge: 'Review', icon: 'flag-triangle', color: '#dc2626', bg: '#fff1f2', border: '#fee2e2', leftBar: true };
+      return { title: 'Attention Required', subtitle: 'Only work that needs action now', badge: 'Review', icon: 'flag-triangle', color: SELLER_CARD_COLORS.warningAmber, bg: '#FFFBEB', border: '#FDE68A', leftBar: true };
     case 'expired':
-      return { title: 'Quote Expired', subtitle: 'Request is no longer active', badge: 'Expired', icon: 'timer-off-outline', color: '#64748b', bg: '#f8fafc', border: '#e2e8f0', leftBar: true };
+      return { title: 'Quote Expired', subtitle: 'Request is no longer active', badge: 'Expired', icon: 'timer-off-outline', color: SELLER_CARD_COLORS.secondaryText, bg: SELLER_CARD_COLORS.background, border: SELLER_CARD_COLORS.borderTeal, leftBar: true };
     default:
-      return { title: 'New Enquiry', subtitle: 'Open request from patient', badge: 'New', icon: 'radar', color: '#059669', bg: '#ecfdf5', border: '#d1fae5', leftBar: false };
+      return { title: 'New Enquiry', subtitle: 'Open request from patient', badge: 'New', icon: 'radar', color: SELLER_CARD_COLORS.secondaryTeal, bg: SELLER_CARD_COLORS.lightTealCard, border: SELLER_CARD_COLORS.borderTeal, leftBar: false };
   }
 };
 
@@ -550,7 +564,7 @@ const DeliveryDestinationModal = ({ item, onClose }: { item: ResponseItem | null
         <View className="absolute bottom-0 left-0 right-0 rounded-t-[2rem] border-t border-slate-200 bg-white px-5 pb-7 pt-5 shadow-2xl">
           <View className="mb-4 flex-row items-start">
             <View className="h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50">
-              <MaterialCommunityIcons name="account-location" size={25} color="#059669" />
+              <MaterialCommunityIcons name="map-marker-account" size={25} color="#059669" />
             </View>
             <View className="ml-3 flex-1">
               <Text className="text-[8px] font-black uppercase tracking-[1.8px] text-emerald-700">Deliver to</Text>
@@ -645,23 +659,47 @@ const PrescriptionCard = React.memo(({
 
   return (
     <View
-      className="bg-white rounded-[1.15rem] mb-3 border border-slate-200/80 shadow-sm shadow-slate-200 overflow-hidden mx-1"
-      style={{ borderLeftWidth: cardTone.leftBar ? 3 : 0, borderLeftColor: cardTone.color }}
+      className="rounded-[1.15rem] mb-3 overflow-hidden mx-1"
+      style={{
+        backgroundColor: SELLER_CARD_COLORS.whiteCard,
+        borderColor: SELLER_CARD_COLORS.borderTeal,
+        borderWidth: 1,
+        shadowColor: SELLER_CARD_COLORS.borderTeal,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 2,
+        position: 'relative',
+      }}
     >
+      {/* 🔴 Clean accent bar on the left without top-left corner bleeding */}
+      {cardTone.leftBar && (
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 4.5,
+            backgroundColor: cardTone.color,
+            zIndex: 10,
+          }}
+        />
+      )}
       <View className="px-4 pt-4 pb-3">
         <View className="flex-row items-start justify-between">
           <View className="flex-row items-center flex-1 pr-2">
             <View
-              className="h-10 w-10 rounded-2xl items-center justify-center border shadow-sm"
+              className="h-10 w-10 rounded-2xl items-center justify-center border shadow-xs"
               style={{ backgroundColor: cardTone.bg, borderColor: cardTone.border }}
             >
               <MaterialCommunityIcons name={cardTone.icon as any} size={20} color={cardTone.color} />
             </View>
             <View className="ml-3 flex-1">
-              <Text className="text-slate-950 font-black uppercase tracking-[1px] text-[12px]" numberOfLines={1}>
+              <Text className="font-black uppercase tracking-[1px] text-[12px]" style={{ color: SELLER_CARD_COLORS.mainText }} numberOfLines={1}>
                 {cardTone.title}
               </Text>
-              <Text className="text-slate-500 font-bold text-[10px] mt-0.5" numberOfLines={1}>
+              <Text className="font-bold text-[10px] mt-0.5" style={{ color: SELLER_CARD_COLORS.secondaryText }} numberOfLines={1}>
                 {cardTone.subtitle}
               </Text>
             </View>
@@ -669,20 +707,21 @@ const PrescriptionCard = React.memo(({
 
           <View className="items-end pt-0.5">
             <View className="flex-row items-center mb-1.5">
-              <MaterialCommunityIcons name="clock-outline" size={10} color="#94a3b8" />
-              <Text className="text-slate-400 font-black text-[8px] uppercase tracking-widest ml-1">{formattedDate}</Text>
+              <MaterialCommunityIcons name="clock-outline" size={10} color={SELLER_CARD_COLORS.secondaryText} />
+              <Text className="font-black text-[8px] uppercase tracking-widest ml-1" style={{ color: SELLER_CARD_COLORS.secondaryText }}>{formattedDate}</Text>
             </View>
             <View className="flex-row items-center flex-wrap justify-end">
               {/* Manual Review badge for text/no-image cards */}
               {shouldUseTextOnlyLayout && (
                 <TouchableOpacity
                   onPress={() => onManualReviewInfo?.()}
-                  className="flex-row items-center bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5 mr-1.5 mb-1 shadow-sm"
+                  className="flex-row items-center rounded-full px-2 py-0.5 mr-1.5 mb-1 border shadow-xs"
+                  style={{ backgroundColor: '#FFF7ED', borderColor: '#FFEDD5' }}
                   activeOpacity={0.75}
                 >
-                  <MaterialCommunityIcons name="eye-check-outline" size={9} color="#c2410c" />
-                  <Text className="text-[7px] font-black text-orange-700 uppercase tracking-widest ml-1">Manual Review</Text>
-                  <MaterialCommunityIcons name="information-outline" size={8} color="#c2410c" style={{ marginLeft: 2 }} />
+                  <MaterialCommunityIcons name="eye-check-outline" size={9} color="#C2410C" />
+                  <Text className="text-[7.5px] font-black uppercase tracking-widest ml-1" style={{ color: '#C2410C' }}>Manual Review</Text>
+                  <MaterialCommunityIcons name="information-outline" size={8} color="#C2410C" style={{ marginLeft: 2 }} />
                 </TouchableOpacity>
               )}
               {/* Compact AI badge for image cards — tappable */}
@@ -693,35 +732,53 @@ const PrescriptionCard = React.memo(({
                     _aiScore ?? undefined
                   )}
                   activeOpacity={0.75}
-                  className={`flex-row items-center rounded-full px-2 py-0.5 mr-1.5 mb-1 border shadow-sm ${_aiMismatch ? 'bg-amber-50 border-amber-200' : _aiIsRx ? 'bg-emerald-50 border-emerald-200' : _aiIsMed ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'
-                    }`}
+                  className="flex-row items-center rounded-full px-2.5 py-0.5 mr-1.5 mb-1 border shadow-xs"
+                  style={{
+                    backgroundColor: _aiMismatch ? '#FFFBEB' : _aiIsRx ? SELLER_CARD_COLORS.lightTealCard : _aiIsMed ? SELLER_CARD_COLORS.lightTealCard : SELLER_CARD_COLORS.background,
+                    borderColor: _aiMismatch ? '#FDE68A' : SELLER_CARD_COLORS.borderTeal,
+                  }}
                 >
                   <MaterialCommunityIcons
                     name={(_aiMismatch ? 'alert-circle-outline' : _aiIsRx ? 'file-check-outline' : _aiIsMed ? 'pill' : 'help-circle-outline') as any}
-                    size={9}
-                    color={_aiMismatch ? '#d97706' : _aiIsRx ? '#059669' : _aiIsMed ? '#2563eb' : '#64748b'}
+                    size={10}
+                    color={_aiMismatch ? SELLER_CARD_COLORS.warningAmber : _aiIsRx ? SELLER_CARD_COLORS.successGreen : _aiIsMed ? SELLER_CARD_COLORS.secondaryTeal : SELLER_CARD_COLORS.secondaryText}
                   />
-                  <Text className={`text-[7px] font-black uppercase tracking-wider ml-1 ${_aiMismatch ? 'text-amber-700' : _aiIsRx ? 'text-emerald-700' : _aiIsMed ? 'text-blue-700' : 'text-slate-600'
-                    }`}>
-                    {_aiMismatch ? 'AI Warning' : _aiIsRx ? 'Rx Verified' : _aiIsMed ? 'Medicine' : 'Unknown'}
+                  <Text
+                    className="text-[7.5px] font-black uppercase tracking-wider ml-1"
+                    style={{
+                      color: _aiMismatch ? SELLER_CARD_COLORS.warningAmber : _aiIsRx ? SELLER_CARD_COLORS.successGreen : _aiIsMed ? SELLER_CARD_COLORS.secondaryTeal : SELLER_CARD_COLORS.secondaryText
+                    }}
+                  >
+                    {_aiMismatch ? 'AI Warning' : _aiIsRx ? 'AI Rx Verified' : _aiIsMed ? 'AI Medicine' : 'AI Analyzed'}
                   </Text>
-                  <MaterialCommunityIcons name="information-outline" size={8} color={_aiMismatch ? '#d97706' : _aiIsRx ? '#059669' : _aiIsMed ? '#2563eb' : '#64748b'} style={{ marginLeft: 2 }} />
+                  <MaterialCommunityIcons
+                    name="information-outline"
+                    size={8}
+                    color={_aiMismatch ? SELLER_CARD_COLORS.warningAmber : _aiIsRx ? SELLER_CARD_COLORS.successGreen : _aiIsMed ? SELLER_CARD_COLORS.secondaryTeal : SELLER_CARD_COLORS.secondaryText}
+                    style={{ marginLeft: 2 }}
+                  />
                 </TouchableOpacity>
               )}
               {item.image && _aiIsChecking && (
-                <View className="flex-row items-center bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5 mr-1.5 mb-1 shadow-sm">
-                  <ActivityIndicator size="small" color="#64748b" />
-                  <Text className="text-[7px] font-black text-slate-500 uppercase tracking-wider ml-1">AI Verifying...</Text>
+                <View
+                  className="flex-row items-center rounded-full px-2 py-0.5 mr-1.5 mb-1 border shadow-xs"
+                  style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                >
+                  <ActivityIndicator size="small" color={SELLER_CARD_COLORS.secondaryText} />
+                  <Text className="text-[7.5px] font-black uppercase tracking-wider ml-1" style={{ color: SELLER_CARD_COLORS.secondaryText }}>AI Verifying...</Text>
                 </View>
               )}
               {(isAccepted || item.is_locked) && item.delivery_option && (
-                <View className="px-1.5 py-0.5 bg-blue-50 rounded-full flex-row items-center border border-blue-100 mr-1.5 mb-1 shadow-sm shadow-blue-100">
-                  <MaterialCommunityIcons name={item.delivery_option === 'walk_in' ? 'walk' : 'truck-delivery'} size={9} color="#2563eb" />
-                  <Text className="text-[7px] font-black text-blue-700 uppercase ml-0.5">{item.delivery_option === 'walk_in' ? 'Walk-in' : 'Online'}</Text>
+                <View
+                  className="px-1.5 py-0.5 rounded-full flex-row items-center border mr-1.5 mb-1 shadow-xs"
+                  style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                >
+                  <MaterialCommunityIcons name={item.delivery_option === 'walk_in' ? 'walk' : 'truck-delivery'} size={9} color={SELLER_CARD_COLORS.primaryNavy} />
+                  <Text className="text-[7.5px] font-black uppercase ml-0.5" style={{ color: SELLER_CARD_COLORS.primaryNavy }}>{item.delivery_option === 'walk_in' ? 'Walk-in' : 'Online'}</Text>
                 </View>
               )}
               <View
-                className="px-2 py-0.5 rounded-full flex-row items-center border shadow-sm mb-1"
+                className="px-2 py-0.5 rounded-full flex-row items-center border shadow-xs mb-1"
                 style={{ backgroundColor: cardTone.bg, borderColor: cardTone.border }}
               >
                 <Text className="text-[9px] font-black uppercase tracking-[0.7px]" style={{ color: cardTone.color }} numberOfLines={1}>
@@ -739,21 +796,27 @@ const PrescriptionCard = React.memo(({
             <View className="mb-3">
               <View className="flex-row items-center justify-between mb-0.5">
                 <View className="flex-row items-center">
-                  <MaterialCommunityIcons name="account-outline" size={11} color="#059669" />
-                  <Text className="text-[9px] font-black text-emerald-700 uppercase tracking-widest ml-1">PATIENT</Text>
+                  <MaterialCommunityIcons name="account-outline" size={11} color={SELLER_CARD_COLORS.secondaryTeal} />
+                  <Text className="text-[9px] font-black uppercase tracking-widest ml-1" style={{ color: SELLER_CARD_COLORS.secondaryTeal }}>PATIENT</Text>
                 </View>
                 {/* Distance moved here for compactness */}
-                <View className="flex-row items-center">
-                  <MaterialCommunityIcons name="map-marker-radius-outline" size={10} color="#64748b" />
-                  <Text className="text-slate-500 text-[8.5px] font-black ml-1 uppercase tracking-wider">{distanceLabel}</Text>
+                <View
+                  className="flex-row items-center px-2 py-0.5 rounded-full border"
+                  style={{ backgroundColor: SELLER_CARD_COLORS.background, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                >
+                  <MaterialCommunityIcons name="map-marker-radius-outline" size={10} color={SELLER_CARD_COLORS.secondaryText} />
+                  <Text className="text-[8.5px] font-black ml-1 uppercase tracking-wider" style={{ color: SELLER_CARD_COLORS.secondaryText }}>{distanceLabel}</Text>
                 </View>
               </View>
               <View className="flex-row items-center flex-wrap">
-                <Text className="text-[18px] font-black text-slate-950 leading-tight mr-2" numberOfLines={1}>{item.user_name || 'Patient'}</Text>
+                <Text className="text-[18px] font-black leading-tight mr-2" style={{ color: SELLER_CARD_COLORS.mainText }} numberOfLines={1}>{item.user_name || 'Patient'}</Text>
                 {isQuoteSent(item) && (
-                  <View className="px-1.5 py-0.5 bg-emerald-50 rounded flex-row items-center border border-emerald-100 mr-1 mb-1 mt-1">
-                    <MaterialCommunityIcons name="check-bold" size={8} color="#059669" />
-                    <Text className="text-[7px] font-black text-emerald-700 uppercase tracking-wider ml-1">Quoted</Text>
+                  <View
+                    className="px-1.5 py-0.5 rounded flex-row items-center border mr-1 mb-1 mt-1"
+                    style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                  >
+                    <MaterialCommunityIcons name="check-bold" size={8} color={SELLER_CARD_COLORS.successGreen} />
+                    <Text className="text-[7px] font-black uppercase tracking-wider ml-1" style={{ color: SELLER_CARD_COLORS.successGreen }}>Quoted</Text>
                   </View>
                 )}
                 {item.quotation_scenario && (
@@ -773,15 +836,21 @@ const PrescriptionCard = React.memo(({
                   </View>
                 )}
                 {item.repeat_customer && (
-                  <View className="flex-row items-center bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 mr-1 mb-1 mt-1">
-                    <MaterialCommunityIcons name="star-circle" size={8} color="#d97706" />
-                    <Text className="text-amber-700 text-[7px] font-black uppercase ml-0.5">
+                  <View
+                    className="flex-row items-center px-1.5 py-0.5 rounded border mr-1 mb-1 mt-1"
+                    style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }}
+                  >
+                    <MaterialCommunityIcons name="star-circle" size={8} color={SELLER_CARD_COLORS.warningAmber} />
+                    <Text className="text-[7px] font-black uppercase ml-0.5" style={{ color: SELLER_CARD_COLORS.warningAmber }}>
                       Repeat {item.repeat_order_count ? `(${item.repeat_order_count})` : ''}
                     </Text>
                   </View>
                 )}
                 {item.is_unresponsive && (
-                  <View className="flex-row items-center bg-red-600 px-1.5 py-0.5 rounded mb-1 mt-1 border border-red-700">
+                  <View
+                    className="flex-row items-center px-1.5 py-0.5 rounded mb-1 mt-1 border"
+                    style={{ backgroundColor: SELLER_CARD_COLORS.errorRed, borderColor: SELLER_CARD_COLORS.errorRed }}
+                  >
                     <MaterialCommunityIcons name="alert-decagram" size={8} color="white" />
                     <Text className="text-white text-[7px] font-black uppercase ml-0.5">Unresponsive</Text>
                   </View>
@@ -793,21 +862,21 @@ const PrescriptionCard = React.memo(({
               <View className="mb-3">
                 <View className="flex-row items-center justify-between mb-1.5">
                   <View className="flex-row items-center">
-                    <MaterialCommunityIcons name="prescription" size={12} color="#059669" />
-                    <Text className="text-[9px] font-black text-emerald-700 uppercase tracking-widest ml-1">
+                    <MaterialCommunityIcons name="prescription" size={12} color={SELLER_CARD_COLORS.secondaryTeal} />
+                    <Text className="text-[9px] font-black uppercase tracking-widest ml-1" style={{ color: SELLER_CARD_COLORS.secondaryTeal }}>
                       MEDICINE REQUEST
                     </Text>
                   </View>
-                  <View className="bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200">
-                    <Text className="text-[8px] font-bold text-slate-700">1 Item</Text>
+                  <View className="rounded px-1.5 py-0.5 border" style={{ backgroundColor: SELLER_CARD_COLORS.background, borderColor: SELLER_CARD_COLORS.borderTeal }}>
+                    <Text className="text-[8px] font-bold" style={{ color: SELLER_CARD_COLORS.secondaryText }}>1 Item</Text>
                   </View>
                 </View>
-                <View className="bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex-row items-center">
-                  <View className="w-5 h-5 rounded-full bg-emerald-700 items-center justify-center mr-2 shadow-sm shadow-emerald-900/20">
+                <View className="border rounded-xl p-2.5 flex-row items-center" style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}>
+                  <View className="w-5 h-5 rounded-full items-center justify-center mr-2 shadow-xs" style={{ backgroundColor: SELLER_CARD_COLORS.secondaryTeal }}>
                     <Text className="text-white text-[9px] font-black">1</Text>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-slate-950 font-black text-[11px] uppercase tracking-wide leading-tight">
+                    <Text className="font-black text-[11px] uppercase tracking-wide leading-tight" style={{ color: SELLER_CARD_COLORS.mainText }}>
                       {requestMedicineName}
                     </Text>
                   </View>
@@ -818,10 +887,10 @@ const PrescriptionCard = React.memo(({
             {requestDescription ? (
               <View className="mb-0">
                 <View className="flex-row items-center mb-1">
-                  <MaterialCommunityIcons name="note-edit-outline" size={11} color="#059669" />
-                  <Text className="text-[9px] font-black text-emerald-700 uppercase tracking-widest ml-1">ADDITIONAL NOTES</Text>
+                  <MaterialCommunityIcons name="note-edit-outline" size={11} color={SELLER_CARD_COLORS.secondaryTeal} />
+                  <Text className="text-[9px] font-black uppercase tracking-widest ml-1" style={{ color: SELLER_CARD_COLORS.secondaryTeal }}>ADDITIONAL NOTES</Text>
                 </View>
-                <Text className="text-slate-800 font-semibold text-[10px] leading-tight">
+                <Text className="font-semibold text-[10px] leading-tight" style={{ color: SELLER_CARD_COLORS.mainText }}>
                   {requestDescription}
                 </Text>
               </View>
@@ -833,36 +902,43 @@ const PrescriptionCard = React.memo(({
             <View className="flex-row items-center mb-3">
               <TouchableOpacity
                 onPress={() => canViewPatient && imageUrl ? onImagePress(item, imageUrl) : undefined}
-                className="w-[70px] h-[70px] rounded-[0.9rem] bg-slate-50 border border-slate-200 items-center justify-center overflow-hidden shadow-sm"
+                className="w-[70px] h-[70px] rounded-[0.9rem] items-center justify-center overflow-hidden border shadow-xs"
+                style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
               >
                 {imageUrl ? (
                   <>
                     <RemoteImageWithStatus uri={imageUrl} />
-                    <View className="absolute bottom-0 left-0 right-0 bg-slate-950/65 py-1 items-center">
+                    <View className="absolute bottom-0 left-0 right-0 py-1 items-center" style={{ backgroundColor: SELLER_CARD_COLORS.primaryNavy }}>
                       <Text className="text-white text-[7px] font-black uppercase tracking-[1.5px]">Inspect</Text>
                     </View>
                   </>
                 ) : (
                   <View className="items-center justify-center opacity-40">
-                    <MaterialCommunityIcons name="image-off-outline" size={24} color="#0f172a" />
-                    <Text className="text-[7px] font-black text-slate-900 mt-1 uppercase tracking-widest text-center leading-[9px]">No{'\n'}Image</Text>
+                    <MaterialCommunityIcons name="image-off-outline" size={24} color={SELLER_CARD_COLORS.secondaryText} />
+                    <Text className="text-[7px] font-black mt-1 uppercase tracking-widest text-center leading-[9px]" style={{ color: SELLER_CARD_COLORS.secondaryText }}>No{'\n'}Image</Text>
                   </View>
                 )}
               </TouchableOpacity>
               <View className="ml-4 flex-1 pr-2">
                 <View className="flex-row items-center">
-                  <Text className="text-[21px] font-black text-slate-950 leading-tight flex-1" numberOfLines={1}>{item.user_name || 'Patient'}</Text>
+                  <Text className="text-[21px] font-black leading-tight flex-1" style={{ color: SELLER_CARD_COLORS.mainText }} numberOfLines={1}>{item.user_name || 'Patient'}</Text>
                   {isQuoteSent(item) && (
-                    <View className="ml-1.5 px-2 py-0.5 bg-emerald-50 rounded-full flex-row items-center border border-emerald-100">
-                      <MaterialCommunityIcons name="check-bold" size={9} color="#059669" />
-                      <Text className="text-[7px] font-black text-emerald-700 uppercase tracking-wider ml-1">Quoted</Text>
+                    <View
+                      className="ml-1.5 px-2 py-0.5 rounded-full flex-row items-center border"
+                      style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                    >
+                      <MaterialCommunityIcons name="check-bold" size={9} color={SELLER_CARD_COLORS.successGreen} />
+                      <Text className="text-[7px] font-black uppercase tracking-wider ml-1" style={{ color: SELLER_CARD_COLORS.successGreen }}>Quoted</Text>
                     </View>
                   )}
                 </View>
                 <View className="flex-row items-center mt-1.5 flex-wrap">
-                  <View className="flex-row items-center bg-slate-100 px-2.5 py-0.5 rounded-full">
-                    <MaterialCommunityIcons name="map-marker-radius-outline" size={10} color="#64748b" />
-                    <Text className="text-slate-600 text-[9px] font-black ml-1 uppercase tracking-wider">{distanceLabel}</Text>
+                  <View
+                    className="flex-row items-center px-2.5 py-0.5 rounded-full border"
+                    style={{ backgroundColor: SELLER_CARD_COLORS.background, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                  >
+                    <MaterialCommunityIcons name="map-marker-radius-outline" size={10} color={SELLER_CARD_COLORS.secondaryText} />
+                    <Text className="text-[9px] font-black ml-1 uppercase tracking-wider" style={{ color: SELLER_CARD_COLORS.secondaryText }}>{distanceLabel}</Text>
                   </View>
                   {item.quotation_scenario && (
                     <View className={`ml-1.5 px-2 py-0.5 rounded-full flex-row items-center border border-white/5 ${getScenarioColor(item.quotation_scenario).bg}`}>
@@ -881,37 +957,49 @@ const PrescriptionCard = React.memo(({
                     </View>
                   )}
                   {item.repeat_customer && (
-                    <View className="ml-1.5 flex-row items-center bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
-                      <MaterialCommunityIcons name="star-circle" size={9} color="#d97706" />
-                      <Text className="text-amber-700 text-[7px] font-black uppercase ml-1">
+                    <View
+                      className="ml-1.5 flex-row items-center px-2 py-0.5 rounded-full border"
+                      style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }}
+                    >
+                      <MaterialCommunityIcons name="star-circle" size={9} color={SELLER_CARD_COLORS.warningAmber} />
+                      <Text className="text-[7px] font-black uppercase ml-1" style={{ color: SELLER_CARD_COLORS.warningAmber }}>
                         Repeat {item.repeat_order_count ? `(${item.repeat_order_count})` : ''}
                       </Text>
                     </View>
                   )}
                   {item.is_unresponsive && (
-                    <View className="ml-1.5 flex-row items-center bg-red-600 px-2 py-0.5 rounded-full">
+                    <View
+                      className="ml-1.5 flex-row items-center px-2 py-0.5 rounded-full border"
+                      style={{ backgroundColor: SELLER_CARD_COLORS.errorRed, borderColor: SELLER_CARD_COLORS.errorRed }}
+                    >
                       <MaterialCommunityIcons name="alert-decagram" size={9} color="white" />
                       <Text className="text-white text-[7px] font-black uppercase ml-1">Unresponsive</Text>
                     </View>
                   )}
                 </View>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={28} color="#0f172a" />
+              <MaterialCommunityIcons name="chevron-right" size={28} color={SELLER_CARD_COLORS.mainText} />
             </View>
 
             {hasRequestText ? (
-              <View className="bg-slate-100/70 border border-slate-200/60 rounded-[1.15rem] p-4 mb-4 flex-row items-center shadow-sm">
-                <View className="w-10 h-10 rounded-2xl bg-white border border-slate-200 items-center justify-center mr-3 shadow-sm shadow-slate-200/50">
-                  <MaterialCommunityIcons name="pill" size={20} color="#0f172a" />
+              <View
+                className="border rounded-[1.15rem] p-4 mb-4 flex-row items-center shadow-xs"
+                style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+              >
+                <View
+                  className="w-10 h-10 rounded-2xl items-center justify-center mr-3 border shadow-xs"
+                  style={{ backgroundColor: SELLER_CARD_COLORS.whiteCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                >
+                  <MaterialCommunityIcons name="pill" size={20} color={SELLER_CARD_COLORS.secondaryTeal} />
                 </View>
                 <View className="flex-1">
                   {requestMedicineName ? (
-                    <Text className="text-slate-900 font-black text-[14px] uppercase tracking-wide leading-tight">
+                    <Text className="font-black text-[14px] uppercase tracking-wide leading-tight" style={{ color: SELLER_CARD_COLORS.mainText }}>
                       {requestMedicineName}
                     </Text>
                   ) : null}
                   {requestDescription ? (
-                    <Text className="text-slate-600 font-bold text-[10px] mt-1 leading-4">
+                    <Text className="font-bold text-[10px] mt-1 leading-4" style={{ color: SELLER_CARD_COLORS.secondaryText }}>
                       {requestDescription}
                     </Text>
                   ) : null}
@@ -922,51 +1010,69 @@ const PrescriptionCard = React.memo(({
         )}
 
 
+
         <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 20 }}>
 
           {item.user_status === 'completed' ? (
-            <View className="bg-emerald-50 border border-emerald-100 rounded-[1.15rem] p-3 mb-4 flex-row items-center">
-              <MaterialCommunityIcons name="lock-check" size={16} color="#059669" />
+            <View className="border rounded-[1.15rem] p-3 mb-4 flex-row items-center" style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}>
+              <MaterialCommunityIcons name="lock-check" size={16} color={SELLER_CARD_COLORS.successGreen} />
               <View className="ml-2 flex-1">
-                <Text className="text-emerald-700 text-[9px] font-black uppercase tracking-[1.5px]">Delivered Successfully</Text>
-                <Text className="text-emerald-600/80 text-[8px] font-bold mt-0.5">Details hidden for privacy</Text>
+                <Text className="text-[9px] font-black uppercase tracking-[1.5px]" style={{ color: SELLER_CARD_COLORS.successGreen }}>Delivered Successfully</Text>
+                <Text className="text-[8px] font-bold mt-0.5" style={{ color: SELLER_CARD_COLORS.secondaryText }}>Details hidden for privacy</Text>
               </View>
             </View>
           ) : (
-            <TouchableOpacity activeOpacity={0.78} onPress={() => onOpenMap(item)} className="bg-emerald-50/60 border border-emerald-100 rounded-[0.95rem] px-4 py-3 mb-4">
+            <TouchableOpacity
+              activeOpacity={0.78}
+              onPress={() => onOpenMap(item)}
+              className="border rounded-[0.95rem] px-4 py-3 mb-4"
+              style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+            >
               <View className="flex-row items-center justify-between mb-1.5">
                 <View className="flex-row items-center">
-                  <MaterialCommunityIcons name="map-marker-outline" size={12} color="#059669" />
-                  <Text className="text-emerald-700 text-[7.5px] font-black uppercase tracking-[1.7px] ml-1.5">Patient Address</Text>
+                  <MaterialCommunityIcons name="map-marker-outline" size={12} color={SELLER_CARD_COLORS.secondaryTeal} />
+                  <Text className="text-[7.5px] font-black uppercase tracking-[1.7px] ml-1.5" style={{ color: SELLER_CARD_COLORS.secondaryTeal }}>Patient Address</Text>
                 </View>
-                <View className="flex-row items-center rounded-full bg-emerald-600 px-2.5 py-1">
+                <View className="flex-row items-center rounded-full px-2.5 py-1" style={{ backgroundColor: SELLER_CARD_COLORS.primaryNavy }}>
                   <Text className="text-[7px] font-black uppercase tracking-[1px] text-white">View map</Text>
                   <MaterialCommunityIcons name="chevron-right" size={11} color="#ffffff" />
                 </View>
               </View>
-              <Text className="text-slate-800 text-[13px] font-semibold leading-5" numberOfLines={2}>{item.user_address || 'Address not available'}</Text>
+              <Text className="text-[13px] font-semibold leading-5" style={{ color: SELLER_CARD_COLORS.mainText }} numberOfLines={2}>{item.user_address || 'Address not available'}</Text>
             </TouchableOpacity>
           )}
 
           {item.user_status === 'cancelled' && item.cancel_reason && (
-            <View className="mb-4 bg-red-50 rounded-[1.25rem] p-3.5 border border-red-100/50 shadow-sm shadow-red-100/20">
+            <View className="mb-4 rounded-[1.25rem] p-3.5 border shadow-xs" style={{ backgroundColor: '#FDECEC', borderColor: '#F87171' }}>
               <View className="flex-row items-center mb-1.5">
-                <MaterialCommunityIcons name="close-octagon-outline" size={13} color="#ef4444" />
-                <Text className="text-red-700 text-[7.5px] font-black uppercase ml-1.5 tracking-[2px]">Cancellation Reason</Text>
+                <MaterialCommunityIcons name="close-octagon-outline" size={13} color={SELLER_CARD_COLORS.errorRed} />
+                <Text className="text-[7.5px] font-black uppercase ml-1.5 tracking-[2px]" style={{ color: SELLER_CARD_COLORS.errorRed }}>Cancellation Reason</Text>
               </View>
-              <Text className="text-red-900 font-bold text-[11px] italic leading-4">{item.cancel_reason}</Text>
+              <Text className="font-bold text-[11px] italic leading-4" style={{ color: SELLER_CARD_COLORS.errorRed }}>{item.cancel_reason}</Text>
             </View>
           )}
 
           {item.last_refresh_requested_at && (
-            <View className={`mb-4 p-3.5 rounded-[1.25rem] border ${item.is_unresponsive ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
+            <View
+              className="mb-4 p-3.5 rounded-[1.25rem] border"
+              style={{
+                backgroundColor: item.is_unresponsive ? '#FDECEC' : SELLER_CARD_COLORS.lightTealCard,
+                borderColor: item.is_unresponsive ? '#F87171' : SELLER_CARD_COLORS.borderTeal
+              }}
+            >
               <View className="flex-row items-center mb-1.5">
-                <MaterialCommunityIcons name="cached" size={13} color={item.is_unresponsive ? "#ef4444" : "#2563eb"} />
-                <Text className={`${item.is_unresponsive ? 'text-red-700' : 'text-blue-700'} text-[7.5px] font-black uppercase ml-1.5 tracking-[2px]`}>
+                <MaterialCommunityIcons name="cached" size={13} color={item.is_unresponsive ? SELLER_CARD_COLORS.errorRed : SELLER_CARD_COLORS.primaryNavy} />
+                <Text
+                  className="text-[7.5px] font-black uppercase ml-1.5 tracking-[2px]"
+                  style={{ color: item.is_unresponsive ? SELLER_CARD_COLORS.errorRed : SELLER_CARD_COLORS.primaryNavy }}
+                >
                   {item.is_unresponsive ? 'Urgent Accountability Warning' : 'Patient requested Verification'}
                 </Text>
               </View>
-              <Text className={`${item.is_unresponsive ? 'text-red-900' : 'text-blue-900'} text-[11px] font-bold leading-4`}>
+              <Text
+                className="text-[11px] font-bold leading-4"
+                style={{ color: item.is_unresponsive ? SELLER_CARD_COLORS.errorRed : SELLER_CARD_COLORS.mainText }}
+              >
                 {item.is_unresponsive
                   ? "User has marked you as UNRESPONSIVE. Update stock immediately to restore trust."
                   : "User is ready to buy but needs fresh stock verification. Please update now."}
@@ -976,35 +1082,19 @@ const PrescriptionCard = React.memo(({
 
         </View>
 
-        {/* ⭐ Customer Feedback — always visible, even after completion */}
-        {/* {item.user_rating && (
-          <View className="mx-0 mb-4 mt-2 bg-emerald-50 rounded-[1.25rem] p-3.5 border border-emerald-100/50 shadow-sm shadow-emerald-100/20">
-            <View className="flex-row items-center justify-between mb-1.5">
-              <View className="flex-row items-center">
-                <MaterialCommunityIcons name="star-circle" size={13} color="#059669" />
-                <Text className="text-emerald-700 text-[7.5px] font-black uppercase ml-1.5 tracking-[2px]">Customer Feedback</Text>
-              </View>
-              <View className="flex-row items-center">
-                <Text className="text-emerald-700 font-black text-[11px] mr-1">{item.user_rating.rating}</Text>
-                <MaterialCommunityIcons name="star" size={11} color="#059669" />
-              </View>
-            </View>
-            <Text className="text-emerald-900 font-bold text-[11px] italic leading-4">{item.user_rating.review || 'No written review'}</Text>
-          </View>
-        )} */}
-
         {/* 🚩 Report — always accessible, outside overlay for completed orders */}
         {item.user_status === 'completed' && (
-          <View className="flex-row justify-between items-center bg-gray-50 p-1.5 rounded-2xl border border-gray-100 mb-3">
+          <View className="flex-row justify-between items-center p-1.5 rounded-2xl border mb-3" style={{ backgroundColor: SELLER_CARD_COLORS.background, borderColor: SELLER_CARD_COLORS.borderTeal }}>
             <TouchableOpacity
-              className="flex-row items-center px-4 py-2 rounded-xl bg-white shadow-sm border border-gray-100"
+              className="flex-row items-center px-4 py-2 rounded-xl bg-white shadow-xs border"
+              style={{ borderColor: SELLER_CARD_COLORS.borderTeal }}
               onPress={() => onOpenStatus(item)}
             >
-              <MaterialCommunityIcons name="flag-outline" size={12} color="#ef4444" />
-              <Text className="ml-2 text-red-500 font-bold text-[8.5px] uppercase tracking-widest">Report Problem</Text>
+              <MaterialCommunityIcons name="flag-outline" size={12} color={SELLER_CARD_COLORS.errorRed} />
+              <Text className="ml-2 font-bold text-[8.5px] uppercase tracking-widest" style={{ color: SELLER_CARD_COLORS.errorRed }}>Report Problem</Text>
               {patientReportCount > 0 && (
-                <View className="ml-2 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-50 border border-red-100 items-center justify-center">
-                  <Text className="text-red-600 font-black text-[8px]">{patientReportCount}</Text>
+                <View className="ml-2 min-w-[18px] h-[18px] px-1.5 rounded-full border items-center justify-center" style={{ backgroundColor: '#FDECEC', borderColor: '#F87171' }}>
+                  <Text className="font-black text-[8px]" style={{ color: SELLER_CARD_COLORS.errorRed }}>{patientReportCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -1014,103 +1104,122 @@ const PrescriptionCard = React.memo(({
         {/* re-open sensitive section for action buttons */}
         <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 20 }}>
 
-          {/* 🔒 COMPLETED OVERLAY — dims upper card body, rating/report block below stays active */}
+          {/* 🔒 COMPLETED OVERLAY — dims upper card body */}
           {item.user_status === 'completed' && (
             <View
               pointerEvents="none"
               style={{
                 position: 'absolute',
                 top: 0, left: 0, right: 0, bottom: 0,
-                backgroundColor: 'rgba(248, 250, 252, 0.82)',
+                backgroundColor: 'rgba(244, 248, 250, 0.85)',
                 borderRadius: 16,
                 zIndex: 10,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <View style={{ alignItems: 'center', opacity: 0.7 }}>
-                <MaterialCommunityIcons name="lock-check" size={32} color="#059669" />
-                <Text style={{ color: '#059669', fontWeight: '900', fontSize: 9, letterSpacing: 3, textTransform: 'uppercase', marginTop: 6 }}>Order Locked</Text>
+              <View style={{ alignItems: 'center', opacity: 0.85 }}>
+                <MaterialCommunityIcons name="lock-check" size={32} color={SELLER_CARD_COLORS.successGreen} />
+                <Text style={{ color: SELLER_CARD_COLORS.successGreen, fontWeight: '900', fontSize: 9, letterSpacing: 3, textTransform: 'uppercase', marginTop: 6 }}>Order Locked</Text>
               </View>
             </View>
           )}
 
           {item.user_status !== 'completed' && (
-            <View className="flex-row gap-2 mb-4">
-
-              {/* ✅ STORE: Reject Enquiry & Add Price (only before quote, and only if not already responded) */}
+            <View
+              className="p-1.5  flex-row items-center gap-2 mb-2"
+              style={{
+                backgroundColor: SELLER_CARD_COLORS.background,
+                borderColor: SELLER_CARD_COLORS.borderTeal,
+              }}
+            >
+              {/* ✅ STORE: Reject Enquiry */}
               {canAddPriceQuote(item) && (
-                <>
-                  <TouchableOpacity
-                    onPress={() => onStoreCancel(item, 'reject_enquiry')}
-                    className="w-[70px] bg-red-50 border border-red-100 py-3 rounded-[0.85rem] flex-row justify-center items-center shadow-sm mr-2 active:bg-red-100"
-                  >
-                    <MaterialCommunityIcons name="close-circle-outline" size={17} color="#ef4444" />
-                    <Text className="text-red-500 font-black text-[9px] ml-1 uppercase tracking-[1px]">Reject</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onStoreCancel(item, 'reject_enquiry')}
+                  className="px-3.5 py-3 rounded-xl flex-row justify-center items-center border active:opacity-80"
+                  style={{ backgroundColor: '#FEF2F2', borderColor: '#FECDD3' }}
+                >
+                  <MaterialCommunityIcons name="close-circle-outline" size={16} color={SELLER_CARD_COLORS.errorRed} />
+                  <Text className="font-black text-[9.5px] ml-1 uppercase tracking-[1px]" style={{ color: SELLER_CARD_COLORS.errorRed }}>
+                    Reject
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-                  <TouchableOpacity
-                    onPress={() => onAddPrice(item)}
-                    className="flex-1 bg-[#007a53] py-3 rounded-[0.85rem] flex-row justify-center items-center shadow-lg shadow-emerald-200 active:bg-emerald-800"
-                  >
-                    <MaterialCommunityIcons name="plus-circle-outline" size={17} color="white" />
-                    <Text className="text-white font-black text-[10px] ml-1.5 uppercase tracking-[1.2px]">
-                      Add Price Quote
-                    </Text>
-                  </TouchableOpacity>
-                </>
+              {/* ✅ STORE: Add Price Quote */}
+              {canAddPriceQuote(item) && (
+                <TouchableOpacity
+                  onPress={() => onAddPrice(item)}
+                  className="flex-1 py-3 rounded-xl flex-row justify-center items-center active:opacity-90 shadow-xs"
+                  style={{ backgroundColor: SELLER_CARD_COLORS.secondaryTeal }}
+                >
+                  <MaterialCommunityIcons name="plus-circle-outline" size={16} color={SELLER_CARD_COLORS.whiteCard} />
+                  <Text className="font-black text-[10px] ml-1.5 uppercase tracking-[1.2px]" style={{ color: SELLER_CARD_COLORS.whiteCard }}>
+                    Add Price Quote
+                  </Text>
+                </TouchableOpacity>
               )}
 
               {/* ✅ STORE: Verify Stock (ONLY when user requested refresh) */}
               {!isAccepted && !isRejected && !item.is_locked && item.last_refresh_requested_at && (
                 <TouchableOpacity
                   onPress={() => onVerifyStock(item.id)}
-                  className="flex-[2] bg-blue-600 py-3 rounded-[1.1rem] flex-row justify-center items-center shadow-lg shadow-blue-200 active:bg-blue-700"
+                  className="flex-[2] py-3 rounded-xl flex-row justify-center items-center active:opacity-90 shadow-xs"
+                  style={{ backgroundColor: SELLER_CARD_COLORS.primaryNavy }}
                 >
-                  <MaterialCommunityIcons name="refresh" size={15} color="white" />
-                  <Text className="text-white font-black text-[10px] ml-1.5 uppercase tracking-[1.2px]">
-                    Verify Stock Available
+                  <MaterialCommunityIcons name="refresh" size={15} color={SELLER_CARD_COLORS.whiteCard} />
+                  <Text className="font-black text-[10px] ml-1.5 uppercase tracking-[1.2px]" style={{ color: SELLER_CARD_COLORS.whiteCard }}>
+                    Verify Stock
                   </Text>
                 </TouchableOpacity>
               )}
 
-              {/* 🚩 Enquiry report stays available without mixing order workflow actions */}
+              {/* 🚩 Enquiry report button */}
               {!isAccepted && !item.is_locked && item.user_status !== 'completed' && (
                 <TouchableOpacity
                   onPress={() => onOpenStatus(item)}
-                  className="w-[54px] py-3 bg-white rounded-[0.85rem] flex-row justify-center items-center border border-red-100 shadow-sm shadow-red-50 active:bg-red-50"
+                  className="w-[42px] h-[42px] rounded-xl flex-row justify-center items-center border active:opacity-80"
+                  style={{ backgroundColor: SELLER_CARD_COLORS.whiteCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
                 >
-                  <MaterialCommunityIcons name={hasStoreSubmittedReport ? "check-circle-outline" : "flag-outline"} size={15} color={hasStoreSubmittedReport ? "#059669" : "#ef4444"} />
+                  <MaterialCommunityIcons
+                    name={hasStoreSubmittedReport ? "check-circle-outline" : "flag-outline"}
+                    size={16}
+                    color={hasStoreSubmittedReport ? SELLER_CARD_COLORS.successGreen : SELLER_CARD_COLORS.errorRed}
+                  />
                 </TouchableOpacity>
               )}
 
               {/* ✅ AFTER ACCEPT → OFFER-STYLE TOOLBAR */}
               {(isAccepted || item.is_locked) && (
-                <View className="flex-1 flex-row items-center justify-between pt-3 border-t border-slate-100/80">
+                <View className="flex-1 flex-row items-center justify-between px-2 py-1">
                   <TouchableOpacity
                     onPress={() => onOpenStatus(item)}
-                    className="px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-full flex-row items-center active:bg-emerald-100"
+                    className="px-3.5 py-2 border rounded-xl flex-row items-center active:opacity-80"
+                    style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
                   >
-                    <MaterialCommunityIcons name={hasStoreSubmittedReport ? "check-circle-outline" : "flag-outline"} size={15} color="#059669" />
-                    <Text className="text-emerald-700 font-black text-[9px] ml-1.5 tracking-widest uppercase" numberOfLines={1}>{reportButtonLabel}</Text>
+                    <MaterialCommunityIcons name={hasStoreSubmittedReport ? "check-circle-outline" : "flag-outline"} size={15} color={SELLER_CARD_COLORS.successGreen} />
+                    <Text className="font-black text-[9px] ml-1.5 tracking-widest uppercase" numberOfLines={1} style={{ color: SELLER_CARD_COLORS.primaryNavy }}>{reportButtonLabel}</Text>
                     {hasStoreSubmittedReport && patientReportCount > 0 && (
-                      <View className="w-1.5 h-1.5 rounded-full bg-emerald-500 ml-1.5" />
+                      <View className="w-1.5 h-1.5 rounded-full ml-1.5" style={{ backgroundColor: SELLER_CARD_COLORS.successGreen }} />
                     )}
                   </TouchableOpacity>
 
-                  <View className="flex-row items-center gap-1.5">
+                  <View className="flex-row items-center gap-2">
                     <TouchableOpacity
                       onPress={() => onStartChat(item)}
-                      className="w-[34px] h-[34px] justify-center items-center bg-slate-50 border border-slate-100 rounded-full shadow-sm active:bg-slate-100"
+                      className="w-[36px] h-[36px] justify-center items-center rounded-xl border active:opacity-80"
+                      style={{ backgroundColor: SELLER_CARD_COLORS.whiteCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
                     >
-                      <MaterialCommunityIcons name="chat-outline" size={16} color="#64748b" />
+                      <MaterialCommunityIcons name="chat-outline" size={16} color={SELLER_CARD_COLORS.secondaryTeal} />
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       onPress={() => canCallPatient && item.user_mobile ? Linking.openURL(`tel:${item.user_mobile}`) : undefined}
-                      className="w-[34px] h-[34px] justify-center items-center bg-slate-50 border border-slate-100 rounded-full shadow-sm active:bg-slate-100"
+                      className="w-[36px] h-[36px] justify-center items-center rounded-xl border active:opacity-80"
+                      style={{ backgroundColor: SELLER_CARD_COLORS.whiteCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
                     >
-                      <MaterialCommunityIcons name="phone-outline" size={16} color="#64748b" />
+                      <MaterialCommunityIcons name="phone-outline" size={16} color={SELLER_CARD_COLORS.secondaryTeal} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1121,15 +1230,21 @@ const PrescriptionCard = React.memo(({
 
           {/* 🚦 Store Progress & Cancel — shown after accepted/processing */}
           {(isAccepted || isProcessing || isLocked) && !isRejected && item.user_status !== 'completed' && item.user_status !== 'cancelled' && (
-            <View className="bg-slate-50 border border-slate-100 rounded-[1.25rem] p-3.5 shadow-sm shadow-slate-100">
+            <View
+              className="border rounded-[1.25rem] p-3.5 mb-2"
+              style={{ backgroundColor: SELLER_CARD_COLORS.background, borderColor: SELLER_CARD_COLORS.borderTeal }}
+            >
               <View className="flex-row items-center justify-between mb-2.5">
                 <View className="flex-row items-center">
-                  <View className="w-7 h-7 rounded-lg bg-white items-center justify-center border border-slate-200">
-                    <MaterialCommunityIcons name="clipboard-check-outline" size={14} color="#0f172a" />
+                  <View
+                    className="w-7 h-7 rounded-lg items-center justify-center border"
+                    style={{ backgroundColor: SELLER_CARD_COLORS.whiteCard, borderColor: SELLER_CARD_COLORS.borderTeal }}
+                  >
+                    <MaterialCommunityIcons name="clipboard-check-outline" size={14} color={SELLER_CARD_COLORS.primaryNavy} />
                   </View>
                   <View className="ml-2.5">
-                    <Text className="text-slate-950 text-[9px] font-black uppercase tracking-[1.6px]">Fulfilment Actions</Text>
-                    <Text className="text-slate-400 text-[7.5px] font-bold uppercase tracking-[1.2px] mt-0.5">Next operational step</Text>
+                    <Text className="text-[9px] font-black uppercase tracking-[1.6px]" style={{ color: SELLER_CARD_COLORS.primaryNavy }}>Fulfilment Actions</Text>
+                    <Text className="text-[7.5px] font-bold uppercase tracking-[1.2px] mt-0.5" style={{ color: SELLER_CARD_COLORS.secondaryText }}>Next operational step</Text>
                   </View>
                 </View>
               </View>
@@ -2202,7 +2317,7 @@ export default function Prescription() {
       if (storeCancelType === 'reject_enquiry') {
         endpoint = `${BASE_URL}/api/prescriptions/${storeCancelTargetId}/store-reject/`;
       }
-      
+
       await axios.post(endpoint,
         { reason: storeCancelReason.trim() },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -3446,21 +3561,21 @@ export default function Prescription() {
                     return (
                       <View key={idx} className={`rounded-[1rem] border overflow-hidden ${med.is_available ? 'border-emerald-100 bg-white' : 'border-red-100 bg-red-50/30'}`}>
                         {/* Row 1: Name + Stock Toggle + Delete */}
-                      <View className="flex-row items-center px-3 pt-3 pb-2 gap-2">
-                        <TouchableOpacity
-                          onPress={() => {
-                            const newMed = [...medicines];
-                            newMed[idx].selected = !newMed[idx].selected;
-                            setMedicines(newMed);
-                          }}
-                          className={`h-[18px] w-[18px] rounded-full items-center justify-center border ${med.selected ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}
-                        >
-                          {med.selected ? <MaterialCommunityIcons name="check" size={10} color="white" /> : null}
-                        </TouchableOpacity>
-                        <View className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-100 items-center justify-center">
-                          <MaterialCommunityIcons name="pill" size={14} color="#059669" />
-                        </View>
-                        <TextInput
+                        <View className="flex-row items-center px-3 pt-3 pb-2 gap-2">
+                          <TouchableOpacity
+                            onPress={() => {
+                              const newMed = [...medicines];
+                              newMed[idx].selected = !newMed[idx].selected;
+                              setMedicines(newMed);
+                            }}
+                            className={`h-[18px] w-[18px] rounded-full items-center justify-center border ${med.selected ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}
+                          >
+                            {med.selected ? <MaterialCommunityIcons name="check" size={10} color="white" /> : null}
+                          </TouchableOpacity>
+                          <View className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-100 items-center justify-center">
+                            <MaterialCommunityIcons name="pill" size={14} color="#059669" />
+                          </View>
+                          <TextInput
                             value={med.medicine_name}
                             onChangeText={(text) => {
                               const newMed = [...medicines];
