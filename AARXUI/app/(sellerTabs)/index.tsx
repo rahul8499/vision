@@ -2991,56 +2991,7 @@ export default function Prescription() {
                 {/* 6. Advanced Details Section */}
                 {showAdvanced && (
                   <View className="bg-white rounded-[1.35rem] p-3.5 border border-slate-100 shadow-sm mb-4">
-                    <View className="mb-3">
-                      <View className="flex-row items-center mb-2">
-                        <View className="w-1 h-3.5 bg-emerald-500 rounded-full mr-2" />
-                        <Text className="text-[8px] font-black text-slate-700 uppercase tracking-[1.5px]">Availability Scenario</Text>
-                      </View>
-                      <View className="flex-row flex-wrap justify-between">
-                        {[
-                          { id: 'exact_brand', label: 'Brands', sub: 'Exact', icon: 'check-decagram' },
-                          { id: 'all_generic', label: 'Generic', sub: 'Low cost', icon: 'flask-outline' },
-                          { id: 'mixed', label: 'Mixed', sub: 'B + G', icon: 'layers-outline' },
-                          { id: 'substitutes', label: 'Subs', sub: 'Alt', icon: 'swap-horizontal' },
-                          { id: 'partial', label: 'Partial', sub: 'Some', icon: 'alert-circle-outline' },
-                        ].map((scenario, scenarioIndex) => {
-                          const isSelected = quotationScenario === scenario.id;
-                          return (
-                            <TouchableOpacity
-                              key={scenario.id}
-                              onPress={() => setQuotationScenario(scenario.id)}
-                              style={{ width: '32%', height: 34, marginBottom: scenarioIndex < 3 ? 8 : 0 }}
-                              className={`px-1.5 rounded-lg border flex-row items-center justify-center ${isSelected
-                                ? 'bg-slate-900 border-slate-900'
-                                : 'bg-slate-50 border-slate-200'
-                                }`}
-                            >
-                              <View className="flex-row items-center justify-center">
-                                <View
-                                  className={`w-[18px] h-[18px] rounded-full items-center justify-center mr-1 ${isSelected ? 'bg-emerald-500/20' : 'bg-slate-200'
-                                    }`}
-                                >
-                                  <MaterialCommunityIcons
-                                    name={scenario.icon as any}
-                                    size={10}
-                                    color={isSelected ? '#34d399' : '#94a3b8'}
-                                  />
-                                </View>
 
-                                <Text
-                                  className={`text-center font-black text-[8.5px] tracking-tight ${isSelected ? 'text-white' : 'text-slate-800'
-                                    }`}
-                                  numberOfLines={1}
-                                >
-                                  {scenario.label}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        })}
-                        <View style={{ width: '32%', height: 34 }} />
-                      </View>
-                    </View>
 
                     <TouchableOpacity
                       onPress={() => setShowItemsModal(true)}
