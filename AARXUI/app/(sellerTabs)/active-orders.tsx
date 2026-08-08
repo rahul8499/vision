@@ -22,6 +22,7 @@ import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 import Toast from 'react-native-toast-message';
 import { useDispatch, useSelector } from 'react-redux';
 import DetailsSheet from '../../orders/components/DetailsSheet';
+import OrderGuideModal from '../../orders/components/OrderGuideModal';
 import OrderCard from '../../orders/components/OrderCard';
 import PipelineTabs from '../../orders/components/PipelineTabs';
 import { isActiveOrder, isCancelledOrder, isCompletedOrder, ORDER_STAGE_CONFIG, PIPELINE_STAGES, resolveOrderStage } from '../../orders/helpers/orderWorkflow';
@@ -179,6 +180,7 @@ export default function ActiveOrdersScreen() {
   const [selectedEndDateKey, setSelectedEndDateKey] = useState<string | null>(null);
   const [orderFilterSheetVisible, setOrderFilterSheetVisible] = useState(false);
   const [orderArchiveMenuVisible, setOrderArchiveMenuVisible] = useState(false);
+  const [guideVisible, setGuideVisible] = useState(false);
   const [deliveryReturns, setDeliveryReturns] = useState<DeliveryReturn[]>([]);
   const [returnsVisible, setReturnsVisible] = useState(false);
   const [returnDecision, setReturnDecision] = useState<DeliveryReturn | null>(null);
@@ -693,6 +695,12 @@ export default function ActiveOrdersScreen() {
             )}
           </View>
           <TouchableOpacity
+            onPress={() => setGuideVisible(true)}
+            className="h-[48px] w-[48px] items-center justify-center rounded-[1rem] border border-teal-200 bg-teal-50 shadow-sm"
+          >
+            <MaterialCommunityIcons name="book-open-page-variant-outline" size={22} color="#0F8B8D" />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => setOrderArchiveMenuVisible(true)}
             className="h-[48px] w-[48px] items-center justify-center rounded-[1rem] border border-slate-200 bg-white shadow-sm shadow-slate-200/40"
           >
@@ -705,8 +713,25 @@ export default function ActiveOrdersScreen() {
             <TouchableOpacity activeOpacity={1} onPress={() => setOrderArchiveMenuVisible(false)} className="absolute inset-0 bg-black/5" />
             <View className="absolute right-4 top-[236px] w-[236px] overflow-hidden rounded-[1.15rem] border border-slate-200 bg-white shadow-xl shadow-slate-300/50">
               <View className="border-b border-slate-100 px-4 py-3">
-                <Text className="text-[10px] font-black uppercase tracking-[1.4px] text-slate-400">Order Status</Text>
+                <Text className="text-[10px] font-black uppercase tracking-[1.4px] text-slate-400">Order Status & Guide</Text>
               </View>
+              <TouchableOpacity
+                activeOpacity={0.86}
+                onPress={() => {
+                  setOrderArchiveMenuVisible(false);
+                  setGuideVisible(true);
+                }}
+                className="flex-row items-center border-b border-teal-100 bg-teal-50/70 px-4 py-3.5"
+              >
+                <View className="h-9 w-9 items-center justify-center rounded-xl bg-white">
+                  <MaterialCommunityIcons name="book-open-page-variant-outline" size={19} color="#0F8B8D" />
+                </View>
+                <View className="ml-3 flex-1">
+                  <Text className="text-[12px] font-black text-slate-950">Order System Guide</Text>
+                  <Text className="mt-0.5 text-[8px] font-black uppercase tracking-[0.8px] text-teal-700">Workflow & Color Strips</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={18} color="#0F8B8D" />
+              </TouchableOpacity>
               <TouchableOpacity
                 activeOpacity={0.86}
                 onPress={() => {
@@ -1190,6 +1215,8 @@ export default function ActiveOrdersScreen() {
           {selectedImage && <Image source={{ uri: selectedImage }} style={{ width: '100%', height: '78%' }} resizeMode="contain" />}
         </View>
       </Modal>
+
+      <OrderGuideModal visible={guideVisible} onClose={() => setGuideVisible(false)} />
     </View>
   );
 }

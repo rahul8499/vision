@@ -1,7 +1,7 @@
-import { LocalizedText as Text } from '@/components/Language/LocalizedPrimitives';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import {
+  Text,
   View
 } from 'react-native';
 import type { PriorityInfo } from '../types';

@@ -14,6 +14,10 @@ function normalize(value: string) {
   return value.trim().replace(/\s+/g, ' ');
 }
 
+export function translateStatic(value: string): string;
+export function translateStatic(value: undefined): undefined;
+export function translateStatic(value: null): undefined;
+export function translateStatic(value: string | undefined | null): string | undefined;
 export function translateStatic(value: string | undefined | null): string | undefined {
   if (value == null || typeof value !== 'string') return value ?? undefined;
   const key = normalize(value);
