@@ -390,8 +390,8 @@ export default function TabLayout() {
         initialRouteName="home"
         screenOptions={({ route }) => ({
           headerShown: false,
-          tabBarActiveTintColor: "#007a53",
-          tabBarInactiveTintColor: "#94a3b8",
+          tabBarActiveTintColor: "#0F8B8D",
+          tabBarInactiveTintColor: "#627D98",
           tabBarStyle: styles.tabBarStyle,
           tabBarItemStyle: styles.tabBarItemStyle,
           tabBarLabelStyle: styles.tabBarLabelStyle,
@@ -472,6 +472,7 @@ export default function TabLayout() {
         <Tabs.Screen name="settings" options={{ title: t('nav.settings'), href: null }} />
         <Tabs.Screen name="profile" options={{ title: t('nav.profile'), href: null }} />
         <Tabs.Screen name="documents" options={{ title: t('nav.documents'), href: null }} />
+        <Tabs.Screen name="billing" options={{ title: "Billing", href: null }} />
         <Tabs.Screen
           name="replacements"
           options={{
@@ -488,13 +489,13 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerContainer: {
     height: Platform.OS === 'ios' ? 100 : 100,
-    backgroundColor: '#10B981',
+    backgroundColor: '#123B5D',
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: Platform.OS === 'ios' ? 40 : 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    shadowColor: '#000',
+    borderBottomColor: '#B9DDE0',
+    shadowColor: '#123B5D',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
@@ -503,13 +504,13 @@ const styles = StyleSheet.create({
   tabBarStyle: {
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#B9DDE0",
     borderRadius: 18,
     marginHorizontal: 10,
     height: Platform.OS === "ios" ? 86 : 80,
     paddingTop: 5,
     paddingBottom: Platform.OS === "ios" ? 14 : 10,
-    shadowColor: "#0f172a",
+    shadowColor: "#123B5D",
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
@@ -547,8 +548,8 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   tabIconShellActive: {
-    backgroundColor: "#007a53",
-    shadowColor: "#007a53",
+    backgroundColor: "#0F8B8D",
+    shadowColor: "#0F8B8D",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22,
     shadowRadius: 7,
@@ -559,10 +560,10 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
     marginTop: 3,
-    backgroundColor: "#007a53",
+    backgroundColor: "#0F8B8D",
   },
   tabBarBadgeStyle: {
-    backgroundColor: '#22c55e',
+    backgroundColor: '#16A34A',
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '900',

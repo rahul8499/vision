@@ -116,6 +116,7 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
 
   const accountMenuItems = [
     { icon: 'storefront-outline', label: 'My Profile', subtitle: 'Store details & identity', color: '#10b981', onPress: () => navigate(isStore ? '/(sellerTabs)/profile' : '/(tabs)/settings') },
+    { icon: 'credit-card-outline', label: 'Billing & Plan', subtitle: 'Subscriptions & invoices', color: '#0F8B8D', onPress: () => navigate(isStore ? '/(sellerTabs)/billing' : '/(tabs)/settings') },
     { icon: 'file-document-multiple-outline', label: 'Store Documents', subtitle: 'Licence & verification proofs', color: '#6366f1', onPress: () => navigate(isStore ? '/(sellerTabs)/documents' : '/(tabs)/settings') },
     { icon: 'cog-outline', label: 'Settings', subtitle: 'Notification & preferences', color: '#64748b', onPress: () => navigate(isStore ? '/(sellerTabs)/settings' : '/(tabs)/settings') },
   ];

@@ -321,10 +321,6 @@ export default function SellerInboxScreen() {
                                 </View>
                             </View>
 
-                            {/* Subtitle */}
-                            <Text className="mt-2 text-[13px] font-bold text-white/85">
-                                {threads.length} Active communication threads
-                            </Text>
 
                             {/* Buttons */}
                             <View className="mt-6 flex-row gap-2">
