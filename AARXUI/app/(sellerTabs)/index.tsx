@@ -3516,22 +3516,33 @@ export default function Prescription() {
           </View>
         </Modal>
 
-        {/* Nested Modal: Add Medicines */}
+        {/* Nested Modal: Add Medicines (Enterprise Clean Theme) */}
         <Modal visible={showItemsModal} transparent animationType="slide">
-          <View className="flex-1 bg-gray-950/60 justify-end">
-            <BlurView intensity={25} tint="dark" className="absolute inset-0" />
+          <View className="flex-1 bg-slate-950/70 justify-end">
+            <BlurView intensity={35} tint="dark" className="absolute inset-0" />
             <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : "height"}
-              className="bg-white rounded-t-[2.25rem] shadow-2xl overflow-hidden"
+              className="bg-white rounded-t-[2.25rem] shadow-2xl overflow-hidden border-t border-x border-slate-200"
               style={{ maxHeight: itemSheetMaxHeight }}
             >
-              <View className="items-center pt-2 pb-1"><View className="w-12 h-1 bg-gray-100 rounded-full" /></View>
-              <View className="px-4 pb-3 flex-row justify-between items-center border-b border-gray-100">
+              {/* Top Grab Handle */}
+              <View className="items-center pt-2 pb-1">
+                <View className="w-10 h-1 bg-slate-200 rounded-full" />
+              </View>
+
+              {/* Clean Minimal Enterprise Header */}
+              <View className="px-4 pb-3 flex-row justify-between items-center border-b border-slate-100">
                 <View>
-                  <Text className="text-[21px] leading-6 font-black text-gray-900 tracking-tighter uppercase">Inventory Build</Text>
-                  <Text className="text-[8px] font-bold text-emerald-600 uppercase tracking-[2px] mt-0.5">Itemized Pricing Table</Text>
+                  <Text className="text-[20px] leading-6 font-black tracking-tight uppercase" style={{ color: '#123B5D' }}>Inventory Build</Text>
+                  <Text className="text-[8px] font-black uppercase tracking-[1.5px] mt-0.5" style={{ color: '#0F8B8D' }}>Itemized Pricing Table</Text>
                 </View>
-                <TouchableOpacity onPress={() => setShowItemsModal(false)} className="h-9 w-9 bg-gray-100 rounded-xl items-center justify-center"><MaterialCommunityIcons name="close" size={18} color="#1e293b" /></TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowItemsModal(false)}
+                  className="h-8 w-8 bg-slate-100 border border-slate-200 rounded-xl items-center justify-center active:bg-slate-200"
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="close" size={16} color="#1E293B" />
+                </TouchableOpacity>
               </View>
 
               <ScrollView
@@ -3549,43 +3560,46 @@ export default function Prescription() {
                       setSelectedImage(currentImageUrl);
                       setSelectedImageItem(null);
                     }}
-                    className="mb-5 w-full h-[140px] bg-slate-200 rounded-3xl border border-slate-200 shadow-sm overflow-hidden relative"
+                    className="mb-4 w-full h-[140px] bg-slate-950 rounded-2xl border border-slate-200 shadow-xs overflow-hidden relative"
+                    activeOpacity={0.9}
                   >
                     <RemoteImageWithStatus uri={currentImageUrl} loadingLabel="Loading prescription" />
-                    <BlurView intensity={30} tint="dark" className="absolute bottom-0 left-0 right-0 py-1.5 items-center">
-                      <Text className="text-white text-[9px] font-bold uppercase tracking-widest">Tap to view full prescription</Text>
+                    <BlurView intensity={40} tint="dark" className="absolute bottom-0 left-0 right-0 py-1.5 items-center">
+                      <Text className="text-white text-[9px] font-black uppercase tracking-widest">Tap to view full prescription</Text>
                     </BlurView>
                   </TouchableOpacity>
                 ) : hasCurrentRequestText ? (
-                  <View className="mb-3 bg-white rounded-[1.35rem] border border-slate-200 p-3 shadow-sm flex-row items-center">
-                    <View className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 items-center justify-center mr-3">
-                      <MaterialCommunityIcons name="pill" size={20} color="#059669" />
+                  <View className="mb-3 bg-slate-50 rounded-2xl border border-slate-200 p-3 shadow-xs flex-row items-center">
+                    <View className="w-9 h-9 rounded-xl bg-white border border-slate-200 items-center justify-center mr-3">
+                      <MaterialCommunityIcons name="pill" size={18} color="#123B5D" />
                     </View>
                     <View className="flex-1">
-                      <Text className="text-[7.5px] font-black text-emerald-600 uppercase tracking-[1.5px] mb-0.5">Medicine Name</Text>
-                      <Text className="text-slate-950 font-black text-[13px] uppercase tracking-wide leading-5" numberOfLines={2}>
+                      <Text className="text-[7.5px] font-black text-slate-500 uppercase tracking-[1.5px] mb-0.5">Medicine Name</Text>
+                      <Text className="text-slate-900 font-black text-[13px] uppercase tracking-wide leading-4" numberOfLines={2}>
                         {currentRequestMedicineName || 'Medicine name not provided'}
                       </Text>
                     </View>
                   </View>
                 ) : (
-                  <View className="mb-3 w-full h-[110px] bg-white rounded-[1.35rem] border border-slate-200 shadow-sm items-center justify-center">
-                    <MaterialCommunityIcons name="image-off-outline" size={30} color="#cbd5e1" />
-                    <Text className="text-slate-400 text-[9px] font-bold mt-2 uppercase tracking-widest">No reference image</Text>
+                  <View className="mb-3 w-full h-[100px] bg-slate-50 rounded-2xl border border-slate-200 shadow-xs items-center justify-center">
+                    <MaterialCommunityIcons name="image-off-outline" size={24} color="#94A3B8" />
+                    <Text className="text-slate-400 text-[8.5px] font-bold mt-1.5 uppercase tracking-wider">No reference image</Text>
                   </View>
                 )}
 
                 {/* Medicine Cards */}
                 {!!currentItem?.extracted_medicines?.length && (
-                  <View className="mb-3 rounded-[1rem] border border-amber-200 bg-amber-50 px-3 py-3">
+                  <View className="mb-3 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2.5">
                     <View className="flex-row items-center">
-                      <MaterialCommunityIcons name="text-recognition" size={17} color="#b45309" />
-                      <Text className="ml-2 text-[9px] font-black uppercase tracking-[1.2px] text-amber-800">AI suggestions — verification required</Text>
+                      <MaterialCommunityIcons name="text-recognition" size={15} color="#B45309" />
+                      <Text className="ml-1.5 text-[8.5px] font-black uppercase tracking-[1px] text-amber-900">AI Suggestions — Verification Required</Text>
                     </View>
-                    <Text className="mt-1.5 text-[9px] font-semibold leading-4 text-amber-700">Prescription handwriting can be misread. Compare every medicine with the original image, edit incorrect names, and mark actual store stock before sending.</Text>
+                    <Text className="mt-1 text-[8.5px] font-medium leading-3.5 text-amber-800">
+                      Verify medicine details with the original image, edit names if needed, and confirm stock status before saving.
+                    </Text>
                   </View>
                 )}
-                <View className="gap-2">
+                <View className="gap-2.5">
                   {medicines.map((med, idx) => {
                     const isExpanded = expandedMedIdx === idx;
                     const aiSuggestion = currentItem?.extracted_medicines?.find(
@@ -3597,8 +3611,8 @@ export default function Prescription() {
                       aiSuggestion?.duration,
                     ].filter(Boolean);
                     return (
-                      <View key={idx} className={`rounded-[1rem] border overflow-hidden ${med.is_available ? 'border-emerald-100 bg-white' : 'border-red-100 bg-red-50/30'}`}>
-                        {/* Row 1: Name + Stock Toggle + Delete */}
+                      <View key={idx} className={`rounded-2xl border overflow-hidden shadow-xs ${med.is_available ? 'border-slate-200 bg-white' : 'border-rose-200 bg-rose-50/30'}`}>
+                        {/* Row 1: Checkbox + Icon + Name + Stock Toggle + Delete */}
                         <View className="flex-row items-center px-3 pt-3 pb-2 gap-2">
                           <TouchableOpacity
                             onPress={() => {
@@ -3606,12 +3620,12 @@ export default function Prescription() {
                               newMed[idx].selected = !newMed[idx].selected;
                               setMedicines(newMed);
                             }}
-                            className={`h-[18px] w-[18px] rounded-full items-center justify-center border ${med.selected ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}
+                            className={`h-4.5 w-4.5 rounded-full items-center justify-center border ${med.selected ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-slate-300'}`}
                           >
                             {med.selected ? <MaterialCommunityIcons name="check" size={10} color="white" /> : null}
                           </TouchableOpacity>
-                          <View className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-100 items-center justify-center">
-                            <MaterialCommunityIcons name="pill" size={14} color="#059669" />
+                          <View className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 items-center justify-center">
+                            <MaterialCommunityIcons name="pill" size={14} color="#123B5D" />
                           </View>
                           <TextInput
                             value={med.medicine_name}
@@ -3621,8 +3635,8 @@ export default function Prescription() {
                               setMedicines(newMed);
                             }}
                             placeholder="Medicine name..."
-                            placeholderTextColor="#94a3b8"
-                            className="flex-1 text-slate-900 font-black text-[13px]"
+                            placeholderTextColor="#94A3B8"
+                            className="flex-1 text-slate-900 font-black text-[12.5px] py-0"
                           />
                           <TouchableOpacity
                             onPress={() => {
@@ -3630,54 +3644,61 @@ export default function Prescription() {
                               newMed[idx].is_available = !newMed[idx].is_available;
                               setMedicines(newMed);
                             }}
-                            className={`px-2.5 py-1 rounded-full ${med.is_available ? 'bg-emerald-500' : 'bg-red-400'}`}
+                            className={`px-2.5 py-1 rounded-full ${med.is_available ? 'bg-emerald-600' : 'bg-rose-600'}`}
+                            activeOpacity={0.8}
                           >
-                            <Text className="text-white text-[8px] font-black uppercase">{med.is_available ? '✓ In Stock' : '✗ Out'}</Text>
+                            <Text className="text-white text-[8px] font-black uppercase">{med.is_available ? '✓ Stock' : '✗ Out'}</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => { setMedicines(medicines.filter((_, i) => i !== idx)); }}
                             className="p-1"
                           >
-                            <MaterialCommunityIcons name="trash-can-outline" size={15} color="#94a3b8" />
+                            <MaterialCommunityIcons name="trash-can-outline" size={16} color="#94A3B8" />
                           </TouchableOpacity>
                         </View>
 
                         {!!aiSuggestion && (
-                          <View className="mx-3 mb-2 flex-row items-center justify-between rounded-lg bg-amber-50 px-2.5 py-2">
-                            <Text className="mr-2 flex-1 text-[9px] font-semibold text-amber-800">
-                              {instructionParts.length ? instructionParts.join(' • ') : 'Instructions unclear — verify original'}
+                          <View className="mx-3 mb-2 flex-row items-center justify-between rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5">
+                            <Text className="mr-2 flex-1 text-[8.5px] font-semibold text-amber-900">
+                              {instructionParts.length ? instructionParts.join(' • ') : 'Verify against original image'}
                             </Text>
-                            <Text className="text-[8px] font-black uppercase text-amber-700">
-                              AI {Math.round(Math.max(0, Math.min(1, aiSuggestion.confidence || 0)) * 100)}%
+                            <Text className="text-[7.5px] font-black uppercase text-amber-800">
+                              AI Match {Math.round(Math.max(0, Math.min(1, aiSuggestion.confidence || 0)) * 100)}%
                             </Text>
                           </View>
                         )}
 
                         {/* Row 2: Type Selector */}
-                        <View className="flex-row mx-3 mb-2 rounded-lg overflow-hidden border border-slate-100">
-                          {['brand', 'generic', 'substitute'].map((type) => (
-                            <TouchableOpacity
-                              key={type}
-                              onPress={() => {
-                                const newMed = [...medicines];
-                                newMed[idx].medicine_type = type;
-                                setMedicines(newMed);
-                              }}
-                              className={`flex-1 py-1.5 items-center ${med.medicine_type === type ? 'bg-slate-900' : 'bg-slate-50'}`}
-                            >
-                              <Text className={`font-black text-[8px] uppercase tracking-wider ${med.medicine_type === type ? 'text-emerald-400' : 'text-slate-400'}`}>{type}</Text>
-                            </TouchableOpacity>
-                          ))}
+                        <View className="flex-row mx-3 mb-2 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 p-0.5">
+                          {['brand', 'generic', 'substitute'].map((type) => {
+                            const isTypeActive = med.medicine_type === type;
+                            return (
+                              <TouchableOpacity
+                                key={type}
+                                onPress={() => {
+                                  const newMed = [...medicines];
+                                  newMed[idx].medicine_type = type;
+                                  setMedicines(newMed);
+                                }}
+                                style={{ backgroundColor: isTypeActive ? '#123B5D' : 'transparent' }}
+                                className="flex-1 py-1.5 items-center rounded-lg"
+                                activeOpacity={0.8}
+                              >
+                                <Text className={`font-black text-[8px] uppercase tracking-wider ${isTypeActive ? 'text-white' : 'text-slate-600'}`}>{type}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
                         </View>
 
                         {/* Row 3: Expand Toggle (Optional Details) */}
                         <TouchableOpacity
                           onPress={() => setExpandedMedIdx(isExpanded ? null : idx)}
-                          className="flex-row items-center justify-center py-1.5 mx-3 mb-2.5 bg-slate-50 rounded-lg border border-slate-100"
+                          className="flex-row items-center justify-center py-1.5 mx-3 mb-2 bg-slate-50 rounded-lg border border-slate-200"
+                          activeOpacity={0.75}
                         >
-                          <MaterialCommunityIcons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={13} color="#94a3b8" />
-                          <Text className="text-slate-400 text-[8px] font-bold uppercase tracking-wider ml-1">
-                            {isExpanded ? 'Hide optional details' : 'Add company & price (optional)'}
+                          <MaterialCommunityIcons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#64748B" />
+                          <Text className="text-slate-600 text-[8px] font-bold uppercase tracking-wider ml-1">
+                            {isExpanded ? 'Hide optional details' : 'Add brand & unit price (optional)'}
                           </Text>
                         </TouchableOpacity>
 
@@ -3685,7 +3706,7 @@ export default function Prescription() {
                         {isExpanded && (
                           <View className="px-3 pb-3 gap-2">
                             <View>
-                              <Text className="text-[7.5px] font-bold text-slate-400 uppercase tracking-wider mb-1">Company / Brand</Text>
+                              <Text className="text-[7.5px] font-black text-slate-500 uppercase tracking-wider mb-1">Company / Brand</Text>
                               <TextInput
                                 value={med.medicine_brand}
                                 onChangeText={(text) => {
@@ -3694,12 +3715,12 @@ export default function Prescription() {
                                   setMedicines(newMed);
                                 }}
                                 placeholder="e.g. Sun Pharma, GSK..."
-                                placeholderTextColor="#cbd5e1"
-                                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-slate-900 font-bold text-[13px]"
+                                placeholderTextColor="#94A3B8"
+                                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold text-[12px]"
                               />
                             </View>
                             <View>
-                              <Text className="text-[7.5px] font-bold text-slate-400 uppercase tracking-wider mb-1">Price per strip (₹)</Text>
+                              <Text className="text-[7.5px] font-black text-slate-500 uppercase tracking-wider mb-1">Price per strip (₹)</Text>
                               <TextInput
                                 value={med.price}
                                 onChangeText={(text) => {
@@ -3708,9 +3729,9 @@ export default function Prescription() {
                                   setMedicines(newMed);
                                 }}
                                 placeholder="0.00"
-                                placeholderTextColor="#cbd5e1"
+                                placeholderTextColor="#94A3B8"
                                 keyboardType="numeric"
-                                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-slate-900 font-black text-[13px]"
+                                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-black text-[12px]"
                               />
                             </View>
                           </View>
@@ -3722,24 +3743,33 @@ export default function Prescription() {
 
                 <TouchableOpacity
                   onPress={() => setMedicines([...medicines, { medicine_name: '', price: '', is_available: true, selected: true, medicine_brand: '', medicine_type: 'brand' }])}
-                  className="mt-3 py-3 border-2 border-dashed border-emerald-500/30 rounded-[1rem] items-center justify-center bg-emerald-50/30 active:bg-emerald-50"
+                  className="mt-3 py-2.5 border-2 border-dashed border-slate-300 rounded-2xl items-center justify-center bg-slate-50 active:bg-slate-100"
+                  activeOpacity={0.8}
                 >
                   <View className="flex-row items-center">
-                    <MaterialCommunityIcons name="plus-circle" size={18} color="#059669" />
-                    <Text className="text-emerald-700 font-black text-[10px] ml-2 uppercase tracking-[1.5px]">Append New Line Item</Text>
+                    <MaterialCommunityIcons name="plus-circle" size={16} color="#0F8B8D" />
+                    <Text className="font-black text-[9.5px] ml-1.5 uppercase tracking-[1.2px]" style={{ color: '#0F8B8D' }}>Append New Line Item</Text>
                   </View>
                 </TouchableOpacity>
               </ScrollView>
 
-              <View className="absolute bottom-0 left-0 right-0 px-4 pt-3 pb-4 bg-white/95 border-t border-gray-100 flex-row gap-3">
-                <TouchableOpacity onPress={() => setShowItemsModal(false)} className="flex-1 h-12 bg-gray-50 rounded-[1rem] items-center justify-center">
-                  <Text className="text-gray-500 font-bold text-[10px] uppercase tracking-wider">Back</Text>
+              {/* Bottom Sticky Bar */}
+              <View className="absolute bottom-0 left-0 right-0 px-4 pt-2.5 pb-3.5 bg-white border-t border-slate-200 flex-row gap-2.5 shadow-2xl">
+                <TouchableOpacity
+                  onPress={() => setShowItemsModal(false)}
+                  className="w-[80px] h-11 bg-slate-100 border border-slate-200 rounded-xl items-center justify-center active:bg-slate-200"
+                  activeOpacity={0.7}
+                >
+                  <Text className="font-black text-[9px] text-slate-700 uppercase tracking-wider">Back</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setShowItemsModal(false)}
-                  className="flex-[2.5] h-12 bg-slate-900 rounded-[1rem] items-center justify-center shadow-xl shadow-slate-300"
+                  className="flex-1 h-11 rounded-xl items-center justify-center shadow-md flex-row"
+                  style={{ backgroundColor: '#123B5D' }}
+                  activeOpacity={0.85}
                 >
-                  <Text className="text-emerald-500 font-bold text-[12px] uppercase tracking-[1.5px]">Save Inventory</Text>
+                  <MaterialCommunityIcons name="check-all" size={16} color="#FFFFFF" />
+                  <Text className="text-white font-black text-[10px] uppercase tracking-[1.4px] ml-1.5">Save Inventory</Text>
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
