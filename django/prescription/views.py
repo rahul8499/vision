@@ -5496,6 +5496,8 @@ class ChatThreadMessagesView(APIView):
         
         # Add thread status
         thread_serializer = ChatThreadSerializer(thread, context={'request': request})
+        response.data['user_name'] = thread_serializer.data.get('user_name')
+        response.data['store_name'] = thread_serializer.data.get('store_name')
         response.data['other_online'] = thread_serializer.data.get('other_online')
         response.data['other_last_seen'] = thread_serializer.data.get('other_last_seen')
         response.data['prescription_id'] = thread_serializer.data.get('prescription_id')

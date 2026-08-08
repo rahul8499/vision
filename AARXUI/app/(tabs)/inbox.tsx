@@ -274,7 +274,7 @@ export default function InboxScreen() {
                     initialNumToRender={10}
                     maxToRenderPerBatch={10}
                     windowSize={10}
-                    removeClippedSubviews={true}
+                    removeClippedSubviews={false}
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" />
                     }

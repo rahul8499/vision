@@ -45,6 +45,21 @@ const getImageUri = (BASE_URL: string, image?: string | null) => {
     return image.startsWith('http') ? image : `${BASE_URL}${image}`;
 };
 
+// 🎨 DESIGN SYSTEM COLOR PALETTE
+const CHAT_THEME = {
+  primaryNavy: '#123B5D',
+  secondaryTeal: '#0F8B8D',
+  background: '#F4F8FA',
+  lightTealCard: '#E8F4F5',
+  borderTeal: '#B9DDE0',
+  whiteCard: '#FFFFFF',
+  mainText: '#102A43',
+  secondaryText: '#627D98',
+  successGreen: '#16A34A',
+  warningAmber: '#F59E0B',
+  errorRed: '#DC2626',
+};
+
 const ChatThreadCard = React.memo(({ item, BASE_URL, onPress }: { item: ChatThread; BASE_URL: string; onPress: () => void }) => {
     const imageUri = getImageUri(BASE_URL, item.prescription_image);
     const unreadCount = item.unread_count || 0;
@@ -64,10 +79,22 @@ const ChatThreadCard = React.memo(({ item, BASE_URL, onPress }: { item: ChatThre
     return (
         <TouchableOpacity
             onPress={onPress}
-            className={`bg-white rounded-[1.5rem] mb-4 border border-slate-200/70 shadow-xl shadow-slate-200/40 overflow-hidden active:bg-slate-50 ${isLocked ? 'opacity-80' : ''}`}
+            style={{
+                backgroundColor: CHAT_THEME.whiteCard,
+                borderColor: CHAT_THEME.borderTeal,
+                borderWidth: 1,
+            }}
+            className={`rounded-[1.5rem] mb-4 shadow-xl shadow-slate-200/40 overflow-hidden active:opacity-90 ${isLocked ? 'opacity-80' : ''}`}
         >
             <View className="px-4 py-3 flex-row items-center">
-                <View className="w-14 h-14 rounded-[1.15rem] bg-emerald-50 border border-emerald-100 items-center justify-center relative shadow-sm overflow-hidden">
+                <View
+                    style={{
+                        backgroundColor: CHAT_THEME.lightTealCard,
+                        borderColor: CHAT_THEME.borderTeal,
+                        borderWidth: 1,
+                    }}
+                    className="w-14 h-14 rounded-[1.15rem] items-center justify-center relative shadow-sm overflow-hidden"
+                >
                     {imageUri ? (
                         <ExpoImage
                             source={{ uri: imageUri }}
@@ -75,43 +102,43 @@ const ChatThreadCard = React.memo(({ item, BASE_URL, onPress }: { item: ChatThre
                             contentFit="cover"
                         />
                     ) : (
-                        <MaterialCommunityIcons name="account-outline" size={23} color={isLocked ? "#94a3b8" : "#059669"} />
+                        <MaterialCommunityIcons name="account-outline" size={24} color={isLocked ? CHAT_THEME.secondaryText : CHAT_THEME.secondaryTeal} />
                     )}
                 </View>
 
                 <View className="ml-4 flex-1">
                     <View className="flex-row justify-between items-center mb-1">
-                        <Text className="text-lg font-black text-slate-950 tracking-tight uppercase flex-1 pr-3" numberOfLines={1}>
+                        <Text style={{ color: CHAT_THEME.mainText }} className="text-lg font-black tracking-tight uppercase flex-1 pr-3" numberOfLines={1}>
                             {item.user_name || 'Patient'}
                         </Text>
                         {isLocked ? (
-                            <View className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 flex-row items-center">
-                                <MaterialCommunityIcons name="lock" size={10} color="#64748b" style={{ marginRight: 2 }} />
-                                <Text className="text-slate-500 text-[9px] font-black uppercase tracking-wider">
+                            <View style={{ backgroundColor: CHAT_THEME.background, borderColor: CHAT_THEME.borderTeal, borderWidth: 1 }} className="px-2 py-0.5 rounded-full flex-row items-center">
+                                <MaterialCommunityIcons name="lock" size={10} color={CHAT_THEME.secondaryText} style={{ marginRight: 2 }} />
+                                <Text style={{ color: CHAT_THEME.secondaryText }} className="text-[9px] font-black uppercase tracking-wider">
                                     {item.order_status === 'completed' ? 'Done' : 'Closed'}
                                 </Text>
                             </View>
                         ) : hasUnread ? (
-                            <View className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-500 items-center justify-center">
+                            <View style={{ backgroundColor: CHAT_THEME.secondaryTeal }} className="min-w-[22px] h-[22px] px-1.5 rounded-full items-center justify-center">
                                 <Text className="text-white text-[10px] font-black">
                                     {unreadLabel}
                                 </Text>
                             </View>
                         ) : (
-                            <MaterialCommunityIcons name="chevron-right" size={18} color="#cbd5e1" />
+                            <MaterialCommunityIcons name="chevron-right" size={18} color={CHAT_THEME.borderTeal} />
                         )}
                     </View>
 
-                    <Text className={hasUnread ? "text-slate-950 font-black text-[11px] leading-4" : "text-slate-500 font-semibold text-[11px] leading-4"} numberOfLines={1}>
+                    <Text style={{ color: hasUnread ? CHAT_THEME.mainText : CHAT_THEME.secondaryText, fontWeight: hasUnread ? '900' : '600' }} className="text-[11px] leading-4" numberOfLines={1}>
                         {item.latest_message?.text ?? 'Patient connection established.'}
                     </Text>
 
                     <View className="flex-row items-center mt-2">
-                        <View className="bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full flex-row items-center">
-                            <MaterialCommunityIcons name="message-text-outline" size={9} color="#059669" />
-                            <Text className="text-emerald-700 text-[7.5px] font-black uppercase tracking-wider ml-1">Chat</Text>
+                        <View style={{ backgroundColor: CHAT_THEME.lightTealCard, borderColor: CHAT_THEME.borderTeal, borderWidth: 1 }} className="px-2.5 py-0.5 rounded-full flex-row items-center">
+                            <MaterialCommunityIcons name="message-text-outline" size={9} color={CHAT_THEME.secondaryTeal} />
+                            <Text style={{ color: CHAT_THEME.secondaryTeal }} className="text-[7.5px] font-black uppercase tracking-wider ml-1">Chat</Text>
                         </View>
-                        <Text className="text-slate-400 text-[7.5px] font-black uppercase tracking-widest ml-2" numberOfLines={1}>
+                        <Text style={{ color: CHAT_THEME.secondaryText }} className="text-[7.5px] font-black uppercase tracking-widest ml-2" numberOfLines={1}>
                             {formattedTime}
                         </Text>
                     </View>
@@ -224,32 +251,32 @@ export default function SellerInboxScreen() {
     }, [BASE_URL, token, user, fetchInbox]);
 
     const renderItem = React.useCallback(({ item }: { item: ChatThread }) => {
-        return <ChatThreadCard item={item} BASE_URL={BASE_URL} onPress={() => router.push({ pathname: "/chat/[id]", params: { id: String(item.id), sellerUnreadCount: String(item.unread_count || 0) } })} />;
+        return <ChatThreadCard item={item} BASE_URL={BASE_URL} onPress={() => router.push({ pathname: "/chat/[id]", params: { id: String(item.id), sellerUnreadCount: String(item.unread_count || 0), userName: item.user_name } })} />;
     }, [BASE_URL, router]);
 
     const renderChatSkeleton = () => (
         <View className="px-4 pt-8">
             {[1, 2, 3, 4].map((item) => (
-                <View key={item} className="bg-white rounded-[1.5rem] mb-4 border border-slate-200/60 shadow-xl shadow-slate-200/40 p-4 flex-row items-center">
-                    <View className="w-14 h-14 rounded-[1.15rem] bg-emerald-50 border border-emerald-100" />
+                <View key={item} style={{ backgroundColor: CHAT_THEME.whiteCard, borderColor: CHAT_THEME.borderTeal, borderWidth: 1 }} className="rounded-[1.5rem] mb-4 shadow-xl shadow-slate-200/40 p-4 flex-row items-center">
+                    <View style={{ backgroundColor: CHAT_THEME.lightTealCard, borderColor: CHAT_THEME.borderTeal, borderWidth: 1 }} className="w-14 h-14 rounded-[1.15rem]" />
                     <View className="ml-4 flex-1">
-                        <View className="h-5 w-40 bg-slate-200 rounded-full mb-2.5" />
-                        <View className="h-3 w-full bg-slate-100 rounded-full mb-3" />
-                        <View className="h-3 w-24 bg-emerald-50 rounded-full" />
+                        <View style={{ backgroundColor: CHAT_THEME.borderTeal }} className="h-5 w-40 rounded-full mb-2.5 opacity-60" />
+                        <View style={{ backgroundColor: CHAT_THEME.lightTealCard }} className="h-3 w-full rounded-full mb-3" />
+                        <View style={{ backgroundColor: CHAT_THEME.lightTealCard }} className="h-3 w-24 rounded-full" />
                     </View>
-                    <View className="w-7 h-7 rounded-full bg-slate-50 border border-slate-100" />
+                    <View style={{ backgroundColor: CHAT_THEME.background, borderColor: CHAT_THEME.borderTeal, borderWidth: 1 }} className="w-7 h-7 rounded-full" />
                 </View>
             ))}
         </View>
     );
 
     return (
-        <View className="flex-1 bg-slate-100">
+        <View style={{ flex: 1, backgroundColor: CHAT_THEME.background }}>
             <View className="overflow-hidden rounded-[1.45rem] shadow-sm shadow-slate-300">
                 <View className="px-4 pt-2">
 
                     <LinearGradient
-                        colors={['#123b59', '#0d8a63']}
+                        colors={[CHAT_THEME.primaryNavy, CHAT_THEME.secondaryTeal]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         className="relative min-h-[150px] overflow-hidden rounded-[1.45rem] px-4 py-4"
@@ -282,10 +309,10 @@ export default function SellerInboxScreen() {
                                     CHAT
                                 </Text>
 
-                                <View className="mx-2.5 h-9 w-[1.5px] bg-emerald-300/60" />
+                                <View style={{ backgroundColor: CHAT_THEME.borderTeal }} className="mx-2.5 h-9 w-[1.5px] opacity-70" />
 
                                 <View>
-                                    <Text className="text-[11px] font-black uppercase tracking-[1.5px] text-emerald-300">
+                                    <Text style={{ color: CHAT_THEME.lightTealCard }} className="text-[11px] font-black uppercase tracking-[1.5px]">
                                         Patient
                                     </Text>
                                     <Text className="text-[15px] font-black uppercase tracking-[1px] text-white">
@@ -301,43 +328,23 @@ export default function SellerInboxScreen() {
 
                             {/* Buttons */}
                             <View className="mt-6 flex-row gap-2">
-                                <View className="flex-row items-center rounded-2xl bg-white px-3 py-2.5 shadow-sm shadow-black/10">
+                                <View style={{ backgroundColor: CHAT_THEME.whiteCard }} className="flex-row items-center rounded-2xl px-3 py-2.5 shadow-sm shadow-black/10">
                                     <MaterialCommunityIcons
                                         name="chat-processing-outline"
                                         size={17}
-                                        color="#007a5c"
+                                        color={CHAT_THEME.secondaryTeal}
                                     />
-                                    <Text className="ml-1.5 text-[10px] font-black text-[#007a5c]">
+                                    <Text style={{ color: CHAT_THEME.secondaryTeal }} className="ml-1.5 text-[10px] font-black">
                                         {threads.length} Chats
                                     </Text>
                                 </View>
-
-
                             </View>
                         </View>
                     </LinearGradient>
                 </View>
             </View>
 
-            {false ? (
-                <View className="flex-1 items-center justify-center px-10 pt-20">
-                    <View style={{
-                        width: 72, height: 72, borderRadius: 20,
-                        backgroundColor: '#f1f5f9',
-                        alignItems: 'center', justifyContent: 'center',
-                        marginBottom: 16,
-                        borderWidth: 1, borderColor: '#e2e8f0'
-                    }}>
-                        <MaterialCommunityIcons name="lock" size={36} color="#10b981" />
-                    </View>
-                    <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16, letterSpacing: 1.5, textTransform: 'uppercase', textAlign: 'center' }}>
-                        Verification Required
-                    </Text>
-                    <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '600', textAlign: 'center', marginTop: 8, marginBottom: 20, lineHeight: 18 }}>
-                        Verify your store to access patient conversations and chat history.
-                    </Text>
-                </View>
-            ) : loading && threads.length === 0 ? (
+            {loading && threads.length === 0 ? (
                 renderChatSkeleton()
             ) : (
                 <FlatList
@@ -349,27 +356,27 @@ export default function SellerInboxScreen() {
                     initialNumToRender={10}
                     maxToRenderPerBatch={10}
                     windowSize={21}
-                    removeClippedSubviews={Platform.OS === 'android'}
+                    removeClippedSubviews={false}
                     ListEmptyComponent={() => (
                         <View className="mt-40 items-center px-10">
                             {error ? (
                                 <>
-                                    <View className="w-24 h-24 bg-red-50 rounded-[3rem] items-center justify-center mb-6 border border-red-100">
-                                        <MaterialCommunityIcons name="alert-circle-outline" size={40} color="#ef4444" />
+                                    <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }} className="w-24 h-24 rounded-[3rem] items-center justify-center mb-6 border">
+                                        <MaterialCommunityIcons name="alert-circle-outline" size={40} color={CHAT_THEME.errorRed} />
                                     </View>
-                                    <Text className="text-slate-900 font-black text-xl tracking-tighter mb-2 uppercase">Sync Failed</Text>
-                                    <Text className="text-red-500 font-bold text-xs text-center leading-5 px-6 mb-4">{error}</Text>
-                                    <TouchableOpacity onPress={() => fetchInbox()} className="bg-slate-950 px-6 py-3 rounded-2xl shadow-lg active:bg-slate-800">
-                                        <Text className="text-emerald-400 font-black text-xs uppercase tracking-widest">Retry Connection</Text>
+                                    <Text style={{ color: CHAT_THEME.mainText }} className="font-black text-xl tracking-tighter mb-2 uppercase">Sync Failed</Text>
+                                    <Text style={{ color: CHAT_THEME.errorRed }} className="font-bold text-xs text-center leading-5 px-6 mb-4">{error}</Text>
+                                    <TouchableOpacity onPress={() => fetchInbox()} style={{ backgroundColor: CHAT_THEME.primaryNavy }} className="px-6 py-3 rounded-2xl shadow-lg active:opacity-90">
+                                        <Text style={{ color: CHAT_THEME.lightTealCard }} className="font-black text-xs uppercase tracking-widest">Retry Connection</Text>
                                     </TouchableOpacity>
                                 </>
                             ) : (
                                 <>
-                                    <View className="w-24 h-24 bg-emerald-50 rounded-[3rem] items-center justify-center mb-6 border border-emerald-100">
-                                        <MaterialCommunityIcons name="forum-outline" size={40} color="#a7f3d0" />
+                                    <View style={{ backgroundColor: CHAT_THEME.lightTealCard, borderColor: CHAT_THEME.borderTeal }} className="w-24 h-24 rounded-[3rem] items-center justify-center mb-6 border">
+                                        <MaterialCommunityIcons name="forum-outline" size={40} color={CHAT_THEME.secondaryTeal} />
                                     </View>
-                                    <Text className="text-slate-900 font-black text-xl tracking-tight mb-2 uppercase">No Chats</Text>
-                                    <Text className="text-slate-400 font-bold text-xs text-center leading-5 px-6">Patient conversations will appear here after a chat starts.</Text>
+                                    <Text style={{ color: CHAT_THEME.mainText }} className="font-black text-xl tracking-tight mb-2 uppercase">No Chats</Text>
+                                    <Text style={{ color: CHAT_THEME.secondaryText }} className="font-bold text-xs text-center leading-5 px-6">Patient conversations will appear here after a chat starts.</Text>
                                 </>
                             )}
                         </View>
