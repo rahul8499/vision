@@ -2685,23 +2685,23 @@ export default function Prescription() {
             <BlurView intensity={35} tint="dark" className="absolute inset-0" />
             <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : "height"}
-              className="rounded-t-[2.25rem] shadow-2xl overflow-hidden border-t border-x"
-              style={{ maxHeight: quoteSheetMaxHeight, backgroundColor: '#F4F8FA', borderColor: '#B9DDE0' }}
+              className="bg-white rounded-t-[2.25rem] shadow-2xl overflow-hidden border-t border-x border-slate-200"
+              style={{ maxHeight: quoteSheetMaxHeight }}
             >
               {/* Top Grab Handle */}
               <View className="items-center pt-2 pb-1">
-                <View className="w-10 h-1 rounded-full" style={{ backgroundColor: '#B9DDE0' }} />
+                <View className="w-10 h-1 bg-slate-200 rounded-full" />
               </View>
 
-              {/* Enterprise Brand Header */}
-              <View className="px-4 py-2.5 border-b flex-row items-center justify-between" style={{ borderColor: '#B9DDE0' }}>
+              {/* Clean Minimal Enterprise Header */}
+              <View className="px-4 py-2.5 border-b border-slate-100 flex-row items-center justify-between">
                 <View className="flex-1 pr-2">
                   <Text className="text-[18px] font-black uppercase tracking-tight" style={{ color: '#123B5D' }} numberOfLines={1}>
                     Send Price Quote
                   </Text>
                   <View className="mt-0.5 flex-row items-center">
                     <MaterialCommunityIcons name="map-marker-distance" size={11} color="#0F8B8D" />
-                    <Text className="ml-1 text-[8px] font-black uppercase tracking-[1px]" style={{ color: '#627D98' }} numberOfLines={1}>
+                    <Text className="ml-1 text-[8px] font-black uppercase tracking-[1px] text-slate-500" numberOfLines={1}>
                       {currentDistanceLabel}
                     </Text>
                   </View>
@@ -2709,43 +2709,41 @@ export default function Prescription() {
 
                 <TouchableOpacity
                   onPress={() => setShowPriceModal(false)}
-                  className="h-8 w-8 border items-center justify-center rounded-xl active:opacity-80"
-                  style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}
+                  className="h-8 w-8 bg-slate-100 border border-slate-200 items-center justify-center rounded-xl active:bg-slate-200"
                   activeOpacity={0.7}
                 >
-                  <MaterialCommunityIcons name="close" size={16} color="#123B5D" />
+                  <MaterialCommunityIcons name="close" size={16} color="#1E293B" />
                 </TouchableOpacity>
               </View>
 
-              {/* Patient Profile & Address Summary Card */}
-              <View className="px-4 py-2 border-b" style={{ backgroundColor: '#F4F8FA', borderColor: '#B9DDE0' }}>
-                <View className="rounded-xl border p-2.5 shadow-xs" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
+              {/* Patient Profile & Address Summary Card (Ultra Clean Minimal) */}
+              <View className="px-4 py-2 border-b border-slate-100 bg-slate-50/50">
+                <View className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs">
                   <View className="flex-row items-center justify-between mb-1">
                     <View className="flex-row items-center">
-                      <MaterialCommunityIcons name="account-outline" size={14} color="#0F8B8D" />
-                      <Text className="ml-1 text-[8.5px] font-black uppercase tracking-[1.2px]" style={{ color: '#102A43' }}>
+                      <MaterialCommunityIcons name="account-outline" size={14} color="#334155" />
+                      <Text className="ml-1 text-[8.5px] font-black uppercase tracking-[1.2px] text-slate-800">
                         {currentItem?.user_name || 'Patient'}
                       </Text>
                     </View>
-                    <View className="flex-row items-center rounded-md px-2 py-0.5 border" style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}>
-                      <MaterialCommunityIcons name="navigation-variant-outline" size={9} color="#0F8B8D" />
-                      <Text className="ml-1 text-[7.5px] font-black uppercase tracking-[0.8px]" style={{ color: '#123B5D' }}>{currentDistanceLabel}</Text>
+                    <View className="flex-row items-center rounded-md bg-slate-100 px-2 py-0.5 border border-slate-200">
+                      <MaterialCommunityIcons name="navigation-variant-outline" size={9} color="#64748B" />
+                      <Text className="ml-1 text-[7.5px] font-black uppercase tracking-[0.8px] text-slate-600">{currentDistanceLabel}</Text>
                     </View>
                   </View>
 
                   <TouchableOpacity
                     onPress={() => currentItem && setDeliveryMapItem(currentItem)}
                     activeOpacity={0.75}
-                    className="mt-1 flex-row items-center rounded-lg border px-2 py-1.5"
-                    style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}
+                    className="mt-1 flex-row items-center rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5"
                   >
-                    <MaterialCommunityIcons name="map-marker-outline" size={12} color="#0F8B8D" />
-                    <Text className="ml-1.5 flex-1 text-[8.5px] leading-3.5 font-bold" style={{ color: '#627D98' }} numberOfLines={2}>
+                    <MaterialCommunityIcons name="map-marker-outline" size={12} color="#475569" />
+                    <Text className="ml-1.5 flex-1 text-[8.5px] leading-3.5 font-bold text-slate-700" numberOfLines={2}>
                       {currentAddressLabel}
                     </Text>
-                    <View className="ml-1.5 flex-row items-center px-1.5 py-0.5 rounded border shadow-xs" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
-                      <Text className="text-[7.5px] font-black uppercase tracking-[0.8px]" style={{ color: '#0F8B8D' }}>Map</Text>
-                      <MaterialCommunityIcons name="chevron-right" size={11} color="#0F8B8D" />
+                    <View className="ml-1.5 flex-row items-center bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-xs">
+                      <Text className="text-[7.5px] font-black uppercase tracking-[0.8px] text-slate-700">Map</Text>
+                      <MaterialCommunityIcons name="chevron-right" size={11} color="#475569" />
                     </View>
                   </TouchableOpacity>
                 </View>
@@ -2761,11 +2759,11 @@ export default function Prescription() {
                 contentContainerStyle={{ paddingBottom: 110 }}
               >
                 {/* 1. High-Clarity Prescription Reference */}
-                <View className="mb-3 p-2.5 rounded-2xl border shadow-xs" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
+                <View className="mb-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs">
                   <View className="flex-row items-center mb-2 justify-between">
                     <View className="flex-row items-center">
-                      <MaterialCommunityIcons name={currentImageUrl ? "file-document-outline" : "pill"} size={14} color="#0F8B8D" />
-                      <Text className="text-[8.5px] font-black uppercase tracking-[1.5px] ml-1.5" style={{ color: '#123B5D' }}>
+                      <MaterialCommunityIcons name={currentImageUrl ? "file-document-outline" : "pill"} size={14} color="#334155" />
+                      <Text className="text-[8.5px] font-black text-slate-800 uppercase tracking-[1.5px] ml-1.5">
                         {currentImageUrl ? 'Prescription Reference' : 'Medicine Reference'}
                       </Text>
                     </View>
@@ -2775,17 +2773,16 @@ export default function Prescription() {
                           setSelectedImage(currentImageUrl);
                           setSelectedImageItem(null);
                         }}
-                        className="px-2.5 py-0.5 rounded-md flex-row items-center border"
-                        style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}
+                        className="bg-slate-100 px-2.5 py-0.5 rounded-md flex-row items-center border border-slate-200"
                         activeOpacity={0.8}
                       >
-                        <MaterialCommunityIcons name="magnify-plus-outline" size={11} color="#0F8B8D" />
-                        <Text className="text-[7.5px] font-black uppercase tracking-wider ml-1" style={{ color: '#0F8B8D' }}>Full Zoom</Text>
+                        <MaterialCommunityIcons name="magnify-plus-outline" size={11} color="#334155" />
+                        <Text className="text-[7.5px] font-black text-slate-700 uppercase tracking-wider ml-1">Full Zoom</Text>
                       </TouchableOpacity>
                     ) : (
-                      <View className="px-2 py-0.5 rounded-md flex-row items-center border" style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}>
-                        <MaterialCommunityIcons name="text-box-check-outline" size={10} color="#627D98" />
-                        <Text className="text-[7.5px] font-black uppercase tracking-wider ml-1" style={{ color: '#627D98' }}>Text Request</Text>
+                      <View className="bg-slate-50 px-2 py-0.5 rounded-md flex-row items-center border border-slate-200">
+                        <MaterialCommunityIcons name="text-box-check-outline" size={10} color="#64748B" />
+                        <Text className="text-[7.5px] font-black text-slate-500 uppercase tracking-wider ml-1">Text Request</Text>
                       </View>
                     )}
                   </View>
@@ -2796,12 +2793,11 @@ export default function Prescription() {
                         setSelectedImage(currentImageUrl);
                         setSelectedImageItem(null);
                       }}
-                      className="w-full h-[260px] rounded-xl border shadow-xs overflow-hidden relative"
-                      style={{ backgroundColor: '#102A43', borderColor: '#B9DDE0' }}
+                      className="w-full h-[260px] bg-slate-950 rounded-xl border border-slate-200 shadow-xs overflow-hidden relative"
                       activeOpacity={0.9}
                     >
                       <RemoteImageWithStatus uri={currentImageUrl} loadingLabel="Loading prescription" />
-                      <BlurView intensity={45} tint="dark" className="absolute bottom-0 left-0 right-0 py-2 items-center">
+                      <BlurView intensity={40} tint="dark" className="absolute bottom-0 left-0 right-0 py-2 items-center">
                         <View className="flex-row items-center">
                           <MaterialCommunityIcons name="arrow-expand-all" size={12} color="#FFFFFF" />
                           <Text className="text-white text-[9.5px] font-black uppercase tracking-widest ml-1.5">Tap to expand high-res image</Text>
@@ -2809,36 +2805,36 @@ export default function Prescription() {
                       </BlurView>
                     </TouchableOpacity>
                   ) : hasCurrentRequestText ? (
-                    <View className="rounded-xl border p-3 shadow-xs" style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}>
+                    <View className="bg-slate-50 rounded-xl border border-slate-200 p-3 shadow-xs">
                       <View className="flex-row items-center">
-                        <View className="w-8 h-8 rounded-lg border items-center justify-center mr-2.5" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
-                          <MaterialCommunityIcons name="pill" size={16} color="#123B5D" />
+                        <View className="w-8 h-8 rounded-lg bg-white border border-slate-200 items-center justify-center mr-2.5">
+                          <MaterialCommunityIcons name="pill" size={16} color="#0F172A" />
                         </View>
                         <View className="flex-1">
-                          <Text className="text-[7.5px] font-black uppercase tracking-[1.2px] mb-0.5" style={{ color: '#627D98' }}>Requested Medicine</Text>
-                          <Text className="font-black text-[13px] uppercase tracking-wide leading-4" style={{ color: '#102A43' }} numberOfLines={2}>
+                          <Text className="text-[7.5px] font-black text-slate-500 uppercase tracking-[1.2px] mb-0.5">Requested Medicine</Text>
+                          <Text className="text-slate-900 font-black text-[13px] uppercase tracking-wide leading-4" numberOfLines={2}>
                             {currentRequestMedicineName || 'Medicine name not provided'}
                           </Text>
                         </View>
                       </View>
                       {currentRequestDescription ? (
-                        <View className="mt-2 pt-2 border-t" style={{ borderColor: '#B9DDE0' }}>
-                          <Text className="text-[7.5px] font-black uppercase tracking-[1.2px] mb-0.5" style={{ color: '#627D98' }}>Patient Note</Text>
-                          <Text className="font-bold text-[10px] leading-3.5" style={{ color: '#102A43' }}>
+                        <View className="mt-2 pt-2 border-t border-slate-200">
+                          <Text className="text-[7.5px] font-black text-slate-400 uppercase tracking-[1.2px] mb-0.5">Patient Note</Text>
+                          <Text className="text-slate-700 font-bold text-[10px] leading-3.5">
                             {currentRequestDescription}
                           </Text>
                         </View>
                       ) : null}
                     </View>
                   ) : (
-                    <View className="h-[100px] items-center justify-center rounded-xl border" style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}>
-                      <MaterialCommunityIcons name="image-off-outline" size={24} color="#627D98" />
-                      <Text className="text-[8.5px] font-bold mt-1.5 uppercase tracking-wider" style={{ color: '#627D98' }}>No prescription image provided</Text>
+                    <View className="h-[100px] items-center justify-center bg-slate-50 rounded-xl border border-slate-200">
+                      <MaterialCommunityIcons name="image-off-outline" size={24} color="#94A3B8" />
+                      <Text className="text-slate-400 text-[8.5px] font-bold mt-1.5 uppercase tracking-wider">No prescription image provided</Text>
                     </View>
                   )}
                 </View>
 
-                {/* 2. Total Quote Amount Hero Card (Primary Navy Theme) */}
+                {/* 2. Total Quote Amount Hero Card (Primary Navy Brand Focus) */}
                 <View className="px-3.5 py-3 rounded-2xl mb-3 border shadow-sm" style={{ backgroundColor: '#123B5D', borderColor: '#0F8B8D' }}>
                   <View className="flex-row items-center justify-between mb-1">
                     <Text className="text-[8px] font-black uppercase tracking-[1.6px]" style={{ color: '#B9DDE0' }}>
@@ -2863,20 +2859,20 @@ export default function Prescription() {
                   </View>
                 </View>
 
-                {/* 3. Itemized Inventory Summary Section (Light Teal Card) */}
-                <View className="mb-3 rounded-2xl border p-3 shadow-xs" style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}>
+                {/* 3. Itemized Inventory Summary Section (Collapsible Ultra-Clean White Card) */}
+                <View className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xs">
                   <View className="flex-row items-center justify-between">
                     <TouchableOpacity
                       onPress={() => setShowInventorySection(!showInventorySection)}
                       className="flex-row items-center flex-1 pr-2"
                       activeOpacity={0.75}
                     >
-                      <View className="h-6 w-6 rounded-lg border items-center justify-center mr-2" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
-                        <MaterialCommunityIcons name="format-list-bulleted" size={13} color="#0F8B8D" />
+                      <View className="h-6 w-6 rounded-lg bg-slate-100 border border-slate-200 items-center justify-center mr-2">
+                        <MaterialCommunityIcons name="format-list-bulleted" size={13} color="#334155" />
                       </View>
                       <View className="flex-1">
-                        <Text className="text-[8px] font-black uppercase tracking-[1.4px]" style={{ color: '#123B5D' }}>Itemized Inventory Details</Text>
-                        <Text className="text-[8.5px] font-bold" style={{ color: '#627D98' }} numberOfLines={1}>
+                        <Text className="text-[8px] font-black uppercase tracking-[1.4px] text-slate-800">Itemized Inventory Details</Text>
+                        <Text className="text-[8.5px] font-bold text-slate-500" numberOfLines={1}>
                           {medicines.length > 0 ? `${medicines.length} line item${medicines.length > 1 ? 's' : ''} configured` : 'No medicines added yet'}
                         </Text>
                       </View>
@@ -2885,41 +2881,38 @@ export default function Prescription() {
                     <View className="flex-row items-center gap-1.5">
                       <TouchableOpacity
                         onPress={() => setUseItemizedInventory(value => !value)}
-                        className="flex-row items-center rounded-md border px-2 py-1"
-                        style={{ backgroundColor: useItemizedInventory ? '#123B5D' : '#FFFFFF', borderColor: useItemizedInventory ? '#123B5D' : '#B9DDE0' }}
+                        className={`flex-row items-center rounded-md border px-2 py-1 ${useItemizedInventory ? 'bg-slate-900 border-slate-900' : 'bg-slate-100 border-slate-300'}`}
                         activeOpacity={0.8}
                       >
-                        <View className="h-3 w-3 rounded-full items-center justify-center mr-1" style={{ backgroundColor: useItemizedInventory ? '#16A34A' : '#B9DDE0' }}>
+                        <View className={`h-3 w-3 rounded-full items-center justify-center mr-1 ${useItemizedInventory ? 'bg-emerald-500' : 'bg-slate-300'}`}>
                           {useItemizedInventory ? <MaterialCommunityIcons name="check" size={9} color="#FFFFFF" /> : null}
                         </View>
-                        <Text className="text-[7.5px] font-black uppercase tracking-[1px]" style={{ color: useItemizedInventory ? '#FFFFFF' : '#627D98' }}>
+                        <Text className={`text-[7.5px] font-black uppercase tracking-[1px] ${useItemizedInventory ? 'text-white' : 'text-slate-600'}`}>
                           {useItemizedInventory ? 'ON' : 'OFF'}
                         </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         onPress={() => setShowItemsModal(true)}
-                        className="rounded-md border px-2.5 py-1 active:opacity-80"
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}
+                        className="rounded-md bg-slate-100 border border-slate-200 px-2.5 py-1 active:bg-slate-200"
                         activeOpacity={0.8}
                       >
-                        <Text className="text-[7.5px] font-black uppercase tracking-[1px]" style={{ color: '#123B5D' }}>Edit</Text>
+                        <Text className="text-slate-800 text-[7.5px] font-black uppercase tracking-[1px]">Edit</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         onPress={() => setShowInventorySection(!showInventorySection)}
-                        className="h-6 w-6 rounded-full border items-center justify-center ml-0.5"
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}
+                        className="h-6 w-6 rounded-full bg-slate-100 border border-slate-200 items-center justify-center ml-0.5"
                         activeOpacity={0.75}
                       >
-                        <MaterialCommunityIcons name={showInventorySection ? "chevron-up" : "chevron-down"} size={15} color="#123B5D" />
+                        <MaterialCommunityIcons name={showInventorySection ? "chevron-up" : "chevron-down"} size={15} color="#475569" />
                       </TouchableOpacity>
                     </View>
                   </View>
 
                   {showInventorySection && (
                     <>
-                      <Text className="mt-2 mb-1.5 text-[7.5px] font-bold uppercase tracking-[1px]" style={{ color: '#627D98' }}>
+                      <Text className="mt-2 mb-1.5 text-[7.5px] font-bold uppercase tracking-[1px] text-slate-400">
                         {useItemizedInventory ? 'Tap medicines below to toggle inclusion' : 'Inventory payload disabled'}
                       </Text>
 
@@ -2940,18 +2933,17 @@ export default function Prescription() {
                                   setMedicines(nextMedicines);
                                 }}
                                 activeOpacity={matchedIndex >= 0 ? 0.75 : 1}
-                                className="rounded-xl border px-2.5 py-2 flex-row items-center justify-between shadow-xs"
-                                style={{ backgroundColor: isSelected ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)', borderColor: isSelected ? '#0F8B8D' : '#B9DDE0' }}
+                                className={`rounded-xl border px-2.5 py-2 flex-row items-center justify-between ${isSelected ? 'bg-slate-50 border-slate-300 shadow-xs' : 'bg-white border-slate-200'}`}
                               >
                                 <View className="flex-1 pr-2">
-                                  <Text className="text-[10px] font-black uppercase" style={{ color: '#102A43' }} numberOfLines={1}>
+                                  <Text className="text-[10px] font-black text-slate-900 uppercase" numberOfLines={1}>
                                     {suggestion.suggested_name}
                                   </Text>
-                                  <Text className="text-[7.5px] font-black uppercase tracking-[0.8px]" style={{ color: '#627D98' }}>
+                                  <Text className="text-[7.5px] font-black uppercase tracking-[0.8px] text-slate-500">
                                     AI Match {Math.round(Math.max(0, Math.min(1, suggestion.confidence || 0)) * 100)}%
                                   </Text>
                                 </View>
-                                <View className="h-5 w-5 rounded-full items-center justify-center border" style={{ backgroundColor: isSelected ? '#16A34A' : '#FFFFFF', borderColor: isSelected ? '#16A34A' : '#B9DDE0' }}>
+                                <View className={`h-5 w-5 rounded-full items-center justify-center border ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'}`}>
                                   {isSelected ? <MaterialCommunityIcons name="check" size={11} color="white" /> : null}
                                 </View>
                               </TouchableOpacity>
@@ -2964,46 +2956,44 @@ export default function Prescription() {
                 </View>
 
                 {/* 4. High-Density 2-Column Availability Scenario Grid */}
-                <View className="mb-3 rounded-2xl border p-3 shadow-xs" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
+                <View className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xs">
                   <View className="flex-row items-center justify-between">
                     <TouchableOpacity
                       onPress={() => setShowScenarioSection(!showScenarioSection)}
                       className="flex-row items-center flex-1 pr-2"
                       activeOpacity={0.75}
                     >
-                      <View className="w-1.5 h-3.5 rounded-full mr-1.5" style={{ backgroundColor: '#0F8B8D' }} />
-                      <Text className="text-[8px] font-black uppercase tracking-[1.4px]" style={{ color: '#123B5D' }}>Availability Scenario</Text>
+                      <View className="w-1.5 h-3.5 bg-slate-900 rounded-full mr-1.5" />
+                      <Text className="text-[8px] font-black text-slate-800 uppercase tracking-[1.4px]">Availability Scenario</Text>
                     </TouchableOpacity>
 
                     <View className="flex-row items-center gap-1.5">
                       <TouchableOpacity
                         onPress={() => setUseAvailabilityScenario(value => !value)}
-                        className="flex-row items-center rounded-md border px-2 py-1"
-                        style={{ backgroundColor: useAvailabilityScenario ? '#123B5D' : '#F4F8FA', borderColor: useAvailabilityScenario ? '#123B5D' : '#B9DDE0' }}
+                        className={`flex-row items-center rounded-md border px-2 py-1 ${useAvailabilityScenario ? 'bg-slate-900 border-slate-900' : 'bg-slate-100 border-slate-300'}`}
                         activeOpacity={0.8}
                       >
-                        <View className="h-3 w-3 rounded-full items-center justify-center mr-1" style={{ backgroundColor: useAvailabilityScenario ? '#16A34A' : '#B9DDE0' }}>
+                        <View className={`h-3 w-3 rounded-full items-center justify-center mr-1 ${useAvailabilityScenario ? 'bg-emerald-500' : 'bg-slate-300'}`}>
                           {useAvailabilityScenario ? <MaterialCommunityIcons name="check" size={9} color="#FFFFFF" /> : null}
                         </View>
-                        <Text className="text-[7.5px] font-black uppercase tracking-[1px]" style={{ color: useAvailabilityScenario ? '#FFFFFF' : '#627D98' }}>
+                        <Text className={`text-[7.5px] font-black uppercase tracking-[1px] ${useAvailabilityScenario ? 'text-white' : 'text-slate-600'}`}>
                           {useAvailabilityScenario ? 'ON' : 'OFF'}
                         </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         onPress={() => setShowScenarioSection(!showScenarioSection)}
-                        className="h-6 w-6 rounded-full border items-center justify-center"
-                        style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}
+                        className="h-6 w-6 rounded-full bg-slate-100 border border-slate-200 items-center justify-center"
                         activeOpacity={0.75}
                       >
-                        <MaterialCommunityIcons name={showScenarioSection ? "chevron-up" : "chevron-down"} size={15} color="#123B5D" />
+                        <MaterialCommunityIcons name={showScenarioSection ? "chevron-up" : "chevron-down"} size={15} color="#475569" />
                       </TouchableOpacity>
                     </View>
                   </View>
 
                   {showScenarioSection && (
                     <>
-                      <Text className="mt-2 mb-2 text-[7.5px] font-bold uppercase tracking-[1px]" style={{ color: '#627D98' }}>
+                      <Text className="mt-2 mb-2 text-[7.5px] font-bold uppercase tracking-[1px] text-slate-400">
                         {useAvailabilityScenario ? 'Select brand availability option for payload' : 'Scenario payload disabled'}
                       </Text>
 
@@ -3022,28 +3012,24 @@ export default function Prescription() {
                               key={scenario.id}
                               disabled={!useAvailabilityScenario}
                               onPress={() => setQuotationScenario(scenario.id)}
-                              style={{
-                                width: scenario.fullWidth ? '100%' : '48.5%',
-                                backgroundColor: isSelected ? '#123B5D' : '#F4F8FA',
-                                borderColor: isSelected ? '#123B5D' : '#B9DDE0',
-                              }}
-                              className="rounded-xl border p-2 flex-row items-center justify-between shadow-xs"
+                              style={{ width: scenario.fullWidth ? '100%' : '48.5%' }}
+                              className={`rounded-xl border p-2 flex-row items-center justify-between ${isSelected ? 'bg-slate-900 border-slate-900 shadow-xs' : 'bg-slate-50 border-slate-200'}`}
                               activeOpacity={0.8}
                             >
                               <View className="flex-row items-center flex-1 pr-1">
-                                <View className="w-6 h-6 rounded-lg items-center justify-center mr-1.5 border" style={{ backgroundColor: isSelected ? 'rgba(15, 139, 141, 0.25)' : '#FFFFFF', borderColor: isSelected ? '#0F8B8D' : '#B9DDE0' }}>
-                                  <MaterialCommunityIcons name={scenario.icon as any} size={12} color={isSelected ? '#B9DDE0' : '#0F8B8D'} />
+                                <View className={`w-6 h-6 rounded-lg items-center justify-center mr-1.5 ${isSelected ? 'bg-slate-800 border border-slate-700' : 'bg-white border border-slate-200'}`}>
+                                  <MaterialCommunityIcons name={scenario.icon as any} size={12} color={isSelected ? '#38BDF8' : '#64748B'} />
                                 </View>
                                 <View className="flex-1">
-                                  <Text className="font-black text-[9.5px] uppercase tracking-tight" style={{ color: isSelected ? '#FFFFFF' : '#102A43' }} numberOfLines={1}>
+                                  <Text className={`font-black text-[9.5px] uppercase tracking-tight ${isSelected ? 'text-white' : 'text-slate-800'}`} numberOfLines={1}>
                                     {scenario.label}
                                   </Text>
-                                  <Text className="text-[7px] font-bold uppercase tracking-[0.8px]" style={{ color: isSelected ? '#B9DDE0' : '#627D98' }} numberOfLines={1}>
+                                  <Text className={`text-[7px] font-bold uppercase tracking-[0.8px] ${isSelected ? 'text-slate-400' : 'text-slate-400'}`} numberOfLines={1}>
                                     {scenario.sub}
                                   </Text>
                                 </View>
                               </View>
-                              <View className="h-4.5 w-4.5 rounded-full items-center justify-center border" style={{ backgroundColor: isSelected ? '#16A34A' : '#FFFFFF', borderColor: isSelected ? '#16A34A' : '#B9DDE0' }}>
+                              <View className={`h-4.5 w-4.5 rounded-full items-center justify-center border ${isSelected ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'}`}>
                                 {isSelected ? <MaterialCommunityIcons name="check" size={10} color="white" /> : null}
                               </View>
                             </TouchableOpacity>
@@ -3057,42 +3043,40 @@ export default function Prescription() {
                 {/* 5. Advanced Logistics Accordion Header */}
                 <TouchableOpacity
                   onPress={() => setShowAdvanced(!showAdvanced)}
-                  className="mb-3 flex-row justify-center items-center py-2.5 px-3 rounded-xl border active:opacity-80"
-                  style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}
+                  className="mb-3 flex-row justify-center items-center py-2.5 px-3 bg-slate-100 rounded-xl border border-slate-200 active:bg-slate-200"
                   activeOpacity={0.75}
                 >
-                  <MaterialCommunityIcons name={showAdvanced ? "chevron-up" : "chevron-down"} size={16} color="#123B5D" />
-                  <Text className="font-black text-[9px] ml-1.5 tracking-[1.2px] uppercase" style={{ color: '#123B5D' }}>
+                  <MaterialCommunityIcons name={showAdvanced ? "chevron-up" : "chevron-down"} size={16} color="#1E293B" />
+                  <Text className="text-slate-900 font-black text-[9px] ml-1.5 tracking-[1.2px] uppercase">
                     {showAdvanced ? "Hide Advanced Details" : "Show Advanced Details (Logistics & Notes)"}
                   </Text>
                 </TouchableOpacity>
 
                 {/* 6. Advanced Expanded Section */}
                 {showAdvanced && (
-                  <View className="rounded-2xl p-3 border shadow-xs mb-3" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
+                  <View className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs mb-3">
                     {/* Itemized Inventory Modal Launcher Button */}
                     <TouchableOpacity
                       onPress={() => setShowItemsModal(true)}
-                      className="mb-3 border py-2.5 px-3 rounded-xl flex-row justify-between items-center active:opacity-80"
-                      style={{ backgroundColor: '#F4F8FA', borderColor: '#B9DDE0' }}
+                      className="mb-3 bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-xl flex-row justify-between items-center active:bg-slate-100"
                       activeOpacity={0.8}
                     >
                       <View className="flex-row items-center">
-                        <MaterialCommunityIcons name="format-list-bulleted" size={15} color="#0F8B8D" />
-                        <Text className="font-black text-[9px] ml-2 tracking-[1.2px] uppercase" style={{ color: '#123B5D' }}>Full Inventory List</Text>
+                        <MaterialCommunityIcons name="format-list-bulleted" size={15} color="#334155" />
+                        <Text className="text-slate-800 font-black text-[9px] ml-2 tracking-[1.2px] uppercase">Full Inventory List</Text>
                       </View>
-                      <View className="flex-row items-center border px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}>
-                        <Text className="text-[8.5px] font-black" style={{ color: '#123B5D' }}>{medicines.length} Items</Text>
-                        <MaterialCommunityIcons name="chevron-right" size={13} color="#0F8B8D" />
+                      <View className="flex-row items-center bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                        <Text className="text-slate-700 text-[8.5px] font-black">{medicines.length} Items</Text>
+                        <MaterialCommunityIcons name="chevron-right" size={13} color="#475569" />
                       </View>
                     </TouchableOpacity>
 
                     {/* Fulfillment Offer Container */}
-                    <View className="mb-3 rounded-xl border p-3" style={{ backgroundColor: '#E8F4F5', borderColor: '#B9DDE0' }}>
+                    <View className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <View className="mb-2 flex-row items-center justify-between">
                         <View className="flex-1 pr-2">
-                          <Text className="text-[8px] font-black uppercase tracking-[1.2px]" style={{ color: '#123B5D' }}>Fulfillment Offer</Text>
-                          <Text className="text-[8.5px] font-bold" style={{ color: '#627D98' }}>
+                          <Text className="text-[8px] font-black uppercase tracking-[1.2px] text-slate-800">Fulfillment Offer</Text>
+                          <Text className="text-[8.5px] font-bold text-slate-500">
                             {deliveryPreviewLoading
                               ? 'Calculating distance...'
                               : deliveryPreview?.distance_km
@@ -3102,13 +3086,12 @@ export default function Prescription() {
                         </View>
 
                         {deliveryPreviewLoading ? (
-                          <ActivityIndicator size="small" color="#0F8B8D" />
+                          <ActivityIndicator size="small" color="#475569" />
                         ) : (
                           <TouchableOpacity
                             disabled={!deliveryPreview?.home_delivery_available}
                             onPress={() => setQuoteHomeDelivery(value => !value)}
-                            className="rounded-full px-2.5 py-1 shadow-xs"
-                            style={{ backgroundColor: quoteHomeDelivery ? '#123B5D' : '#627D98' }}
+                            className={`rounded-full px-2.5 py-1 shadow-xs ${quoteHomeDelivery ? 'bg-slate-900' : 'bg-slate-300'}`}
                             activeOpacity={0.8}
                           >
                             <Text className="text-[7.5px] font-black uppercase tracking-wider text-white">
@@ -3121,24 +3104,22 @@ export default function Prescription() {
                       {quoteHomeDelivery ? (
                         <>
                           <View className="mb-2 flex-row gap-2">
-                            <View className="flex-1 rounded-xl border px-2.5 py-1.5" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
-                              <Text className="text-[7px] font-black uppercase tracking-wider" style={{ color: '#627D98' }}>Fee (₹)</Text>
+                            <View className="flex-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+                              <Text className="text-[7px] font-black uppercase text-slate-400 tracking-wider">Fee (₹)</Text>
                               <TextInput
                                 value={quoteDeliveryCharge}
                                 onChangeText={setQuoteDeliveryCharge}
                                 keyboardType="decimal-pad"
-                                className="font-black text-xs p-0"
-                                style={{ color: '#102A43' }}
+                                className="font-black text-slate-900 text-xs p-0"
                               />
                             </View>
-                            <View className="flex-1 rounded-xl border px-2.5 py-1.5" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
-                              <Text className="text-[7px] font-black uppercase tracking-wider" style={{ color: '#627D98' }}>ETA (Min)</Text>
+                            <View className="flex-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+                              <Text className="text-[7px] font-black uppercase text-slate-400 tracking-wider">ETA (Min)</Text>
                               <TextInput
                                 value={quoteDeliveryEta}
                                 onChangeText={setQuoteDeliveryEta}
                                 keyboardType="number-pad"
-                                className="font-black text-xs p-0"
-                                style={{ color: '#102A43' }}
+                                className="font-black text-slate-900 text-xs p-0"
                               />
                             </View>
                           </View>
@@ -3146,10 +3127,9 @@ export default function Prescription() {
                             value={quoteDeliveryMessage}
                             onChangeText={setQuoteDeliveryMessage}
                             placeholder="Delivery instruction for patient..."
-                            placeholderTextColor="#627D98"
+                            placeholderTextColor="#94A3B8"
                             multiline
-                            className="min-h-[44px] rounded-xl border p-2 text-[10px] font-bold"
-                            style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0', color: '#102A43' }}
+                            className="min-h-[44px] rounded-xl border border-slate-200 bg-white p-2 text-[10px] font-bold text-slate-800"
                           />
                         </>
                       ) : (
@@ -3157,29 +3137,27 @@ export default function Prescription() {
                           value={quoteDeliveryReason}
                           onChangeText={setQuoteDeliveryReason}
                           placeholder="Reason for pickup only (e.g. rider unavailable)..."
-                          placeholderTextColor="#627D98"
+                          placeholderTextColor="#94A3B8"
                           multiline
-                          className="min-h-[44px] rounded-xl border p-2 text-[10px] font-bold"
-                          style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0', color: '#102A43' }}
+                          className="min-h-[44px] rounded-xl border border-slate-200 bg-white p-2 text-[10px] font-bold text-slate-800"
                         />
                       )}
                     </View>
 
                     {/* Internal Store Note */}
-                    <View className="p-2.5 rounded-xl border" style={{ backgroundColor: '#F4F8FA', borderColor: '#B9DDE0' }}>
+                    <View className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                       <View className="flex-row items-center mb-1.5">
-                        <MaterialCommunityIcons name="chat-outline" size={13} color="#0F8B8D" />
-                        <Text className="text-[8px] font-black uppercase tracking-[1.2px] ml-1.5" style={{ color: '#123B5D' }}>Internal Store Note</Text>
+                        <MaterialCommunityIcons name="chat-outline" size={13} color="#475569" />
+                        <Text className="text-[8px] font-black text-slate-700 uppercase tracking-[1.2px] ml-1.5">Internal Store Note</Text>
                       </View>
                       <TextInput
                         value={note}
                         onChangeText={setNote}
                         placeholder="Add note for customer (e.g. valid for 2 hrs)..."
-                        placeholderTextColor="#627D98"
+                        placeholderTextColor="#94A3B8"
                         multiline
                         numberOfLines={2}
-                        className="font-bold text-[10.5px] leading-4 min-h-[40px] p-0"
-                        style={{ color: '#102A43' }}
+                        className="text-slate-900 font-bold text-[10.5px] leading-4 min-h-[40px] p-0"
                         textAlignVertical="top"
                       />
                     </View>
@@ -3188,14 +3166,13 @@ export default function Prescription() {
               </ScrollView>
 
               {/* Bottom Sticky Action Bar */}
-              <View className="absolute bottom-0 left-0 right-0 px-4 pt-2.5 pb-3.5 border-t flex-row gap-2.5 shadow-2xl" style={{ backgroundColor: '#FFFFFF', borderColor: '#B9DDE0' }}>
+              <View className="absolute bottom-0 left-0 right-0 px-4 pt-2.5 pb-3.5 bg-white border-t border-slate-200 flex-row gap-2.5 shadow-2xl">
                 <TouchableOpacity
                   onPress={() => setShowPriceModal(false)}
-                  className="w-[80px] h-11 border rounded-xl items-center justify-center active:opacity-80"
-                  style={{ backgroundColor: '#F4F8FA', borderColor: '#B9DDE0' }}
+                  className="w-[80px] h-11 bg-slate-100 border border-slate-200 rounded-xl items-center justify-center active:bg-slate-200"
                   activeOpacity={0.7}
                 >
-                  <Text className="font-black text-[9px] uppercase tracking-wider" style={{ color: '#DC2626' }}>Cancel</Text>
+                  <Text className="font-black text-[9px] text-slate-700 uppercase tracking-wider">Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
