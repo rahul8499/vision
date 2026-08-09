@@ -3,7 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -107,6 +107,60 @@ export default function SellerHomeScreen() {
 
   const [storeToggleLoading, setStoreToggleLoading] = useState(false);
   const [isStoreActive, setIsStoreActive] = useState(true);
+
+  // Live Counts for Quick Access Services
+  const [serviceCounts, setServiceCounts] = useState({
+    reports: 0,
+    complaints: 0,
+    consultations: 0,
+    support: 0,
+  });
+
+  const fetchServiceCounts = useCallback(async () => {
+    if (!BASE_URL || !token) return;
+    try {
+      const [reportsRes, complaintsRes, consultsRes, supportRes] = await Promise.allSettled([
+        axios.get(`${BASE_URL}/api/safety-reports/`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/complaints/counts/`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/pharmacist/store/inbox/`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/complaints/platform-support/`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+
+      let reports = 0;
+      if (reportsRes.status === 'fulfilled') {
+        const data = reportsRes.value.data;
+        reports = Array.isArray(data) ? data.filter((r: any) => r.status !== 'RESOLVED' && r.status !== 'DISMISSED').length : 0;
+      }
+
+      let complaints = 0;
+      if (complaintsRes.status === 'fulfilled') {
+        const data = complaintsRes.value.data;
+        complaints = Number(data.open_against || data.open_filed || 0);
+      }
+
+      let consultations = 0;
+      if (consultsRes.status === 'fulfilled') {
+        const data = consultsRes.value.data;
+        consultations = Array.isArray(data) ? data.filter((c: any) => c.status !== 'closed' && c.status !== 'RESOLVED').length : 0;
+      }
+
+      let support = 0;
+      if (supportRes.status === 'fulfilled') {
+        const data = supportRes.value.data;
+        support = Array.isArray(data) ? data.filter((s: any) => s.status !== 'CLOSED' && s.status !== 'RESOLVED').length : 0;
+      }
+
+      setServiceCounts({ reports, complaints, consultations, support });
+    } catch (err) {
+      console.log('Error fetching service counts:', err);
+    }
+  }, [BASE_URL, token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchServiceCounts();
+    }, [fetchServiceCounts])
+  );
 
   useEffect(() => {
     if (summary?.store?.is_active != null) setIsStoreActive(summary.store.is_active);
@@ -372,6 +426,118 @@ export default function SellerHomeScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity activeOpacity={0.82} onPress={() => router.push('/(sellerTabs)/emergency-rewards' as any)} className="mt-3 flex-row items-center justify-between rounded-[1rem] border border-rose-100 bg-rose-50 p-4"><View className="flex-row items-center"><View className="h-10 w-10 items-center justify-center rounded-full bg-white"><MaterialCommunityIcons name="medal-outline" size={21} color="#e11d48" /></View><View className="ml-3"><Text className="text-sm font-black text-slate-900">Emergency Rewards</Text><Text className="mt-0.5 text-xs font-medium text-slate-500">Points, Fast Responder and Gold status</Text></View></View><MaterialCommunityIcons name="chevron-right" size={24} color="#e11d48" /></TouchableOpacity>
+
+            {/* Quick Access & Services Grid */}
+            <View className="mt-6">
+              <View className="flex-row items-center justify-between mb-3 px-1">
+                <View className="flex-row items-center">
+                  <View className="w-1.5 h-1.5 rounded-full bg-[#0F8B8D] mr-2" />
+                  <Text className="text-[11px] font-black uppercase tracking-[2.2px] text-slate-600">Quick Access & Services</Text>
+                </View>
+                <View className="flex-row items-center rounded-full bg-[#E8F4F5] border border-[#B9DDE0] px-2.5 py-1">
+                  <MaterialCommunityIcons name="lightning-bolt" size={12} color="#0F8B8D" />
+                  <Text className="ml-1 text-[8px] font-black uppercase tracking-[0.7px] text-[#0F8B8D]">Live Sync</Text>
+                </View>
+              </View>
+
+              <View className="flex-row flex-wrap justify-between gap-y-3">
+                {/* Reports & Safety */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => router.push('/(sellerTabs)/reports')}
+                  className="w-[48.5%] bg-white rounded-[1.25rem] border border-[#B9DDE0] p-3.5 shadow-sm shadow-slate-200"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <View className="w-10 h-10 rounded-xl bg-[#FFF1F1] border border-[#FECDD3] items-center justify-center">
+                      <MaterialCommunityIcons name="shield-alert-outline" size={20} color="#DC2626" />
+                    </View>
+                    {serviceCounts.reports > 0 ? (
+                      <View className="bg-[#DC2626] rounded-full px-2 py-0.5 min-w-[20px] items-center">
+                        <Text className="text-white text-[10px] font-black">{serviceCounts.reports}</Text>
+                      </View>
+                    ) : (
+                      <View className="bg-[#EDF8F0] border border-[#BBF7D0] rounded-full px-2 py-0.5">
+                        <Text className="text-[#16A34A] text-[9px] font-black">Active</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-[13px] font-black text-[#102A43] mt-3" numberOfLines={1}>Reports & Safety</Text>
+                  <Text className="text-[10px] font-bold text-[#627D98] mt-0.5" numberOfLines={1}>Moderation & Flags</Text>
+                </TouchableOpacity>
+
+                {/* Help & Complaints */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => router.push('/(sellerTabs)/support')}
+                  className="w-[48.5%] bg-white rounded-[1.25rem] border border-[#B9DDE0] p-3.5 shadow-sm shadow-slate-200"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <View className="w-10 h-10 rounded-xl bg-[#FFF7E6] border border-[#F6D99A] items-center justify-center">
+                      <MaterialCommunityIcons name="hand-heart-outline" size={20} color="#F59E0B" />
+                    </View>
+                    {serviceCounts.complaints > 0 ? (
+                      <View className="bg-[#F59E0B] rounded-full px-2 py-0.5 min-w-[20px] items-center">
+                        <Text className="text-white text-[10px] font-black">{serviceCounts.complaints}</Text>
+                      </View>
+                    ) : (
+                      <View className="bg-[#EDF8F0] border border-[#BBF7D0] rounded-full px-2 py-0.5">
+                        <Text className="text-[#16A34A] text-[9px] font-black">0 Open</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-[13px] font-black text-[#102A43] mt-3" numberOfLines={1}>Help & Complaints</Text>
+                  <Text className="text-[10px] font-bold text-[#627D98] mt-0.5" numberOfLines={1}>Disputes & Cases</Text>
+                </TouchableOpacity>
+
+                {/* Pharmacist Consultations */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => router.push('/(sellerTabs)/pharmacist')}
+                  className="w-[48.5%] bg-white rounded-[1.25rem] border border-[#B9DDE0] p-3.5 shadow-sm shadow-slate-200"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <View className="w-10 h-10 rounded-xl bg-[#E8F4F5] border border-[#B9DDE0] items-center justify-center">
+                      <MaterialCommunityIcons name="account-question-outline" size={20} color="#0F8B8D" />
+                    </View>
+                    {serviceCounts.consultations > 0 ? (
+                      <View className="bg-[#0F8B8D] rounded-full px-2 py-0.5 min-w-[20px] items-center">
+                        <Text className="text-white text-[10px] font-black">{serviceCounts.consultations}</Text>
+                      </View>
+                    ) : (
+                      <View className="bg-[#EDF8F0] border border-[#BBF7D0] rounded-full px-2 py-0.5">
+                        <Text className="text-[#16A34A] text-[9px] font-black">Active</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-[13px] font-black text-[#102A43] mt-3" numberOfLines={1}>Pharmacist Consult</Text>
+                  <Text className="text-[10px] font-bold text-[#627D98] mt-0.5" numberOfLines={1}>Q&A & Callbacks</Text>
+                </TouchableOpacity>
+
+                {/* Seller Help & Support */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => router.push('/(sellerTabs)/help-center')}
+                  className="w-[48.5%] bg-white rounded-[1.25rem] border border-[#B9DDE0] p-3.5 shadow-sm shadow-slate-200"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <View className="w-10 h-10 rounded-xl bg-[#EEF3F7] border border-[#D5E1E9] items-center justify-center">
+                      <MaterialCommunityIcons name="headphones" size={20} color="#123B5D" />
+                    </View>
+                    {serviceCounts.support > 0 ? (
+                      <View className="bg-[#123B5D] rounded-full px-2 py-0.5 min-w-[20px] items-center">
+                        <Text className="text-white text-[10px] font-black">{serviceCounts.support}</Text>
+                      </View>
+                    ) : (
+                      <View className="bg-[#EDF8F0] border border-[#BBF7D0] rounded-full px-2 py-0.5">
+                        <Text className="text-[#16A34A] text-[9px] font-black">24/7</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-[13px] font-black text-[#102A43] mt-3" numberOfLines={1}>Seller Support</Text>
+                  <Text className="text-[10px] font-bold text-[#627D98] mt-0.5" numberOfLines={1}>AARX Help & Tickets</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             <View className="mt-6 rounded-[1rem] border border-slate-100 bg-white p-4 shadow-sm shadow-slate-200">
               <TouchableOpacity activeOpacity={0.85} disabled={!attentionCount} onPress={openAttention} className="flex-row items-center">

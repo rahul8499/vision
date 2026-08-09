@@ -432,13 +432,13 @@ export default function TabLayout() {
           };
         }}
       >
-        <Tabs.Screen name="home" options={{ title: t('nav.home') }} />
-        <Tabs.Screen name="index" options={{ title: t('nav.enquiry') }} />
-        <Tabs.Screen name="active-orders" options={{ title: t('nav.orders') }} />
+        <Tabs.Screen name="home" options={{ title: t('Home') }} />
+        <Tabs.Screen name="index" options={{ title: t('Enquiry') }} />
+        <Tabs.Screen name="active-orders" options={{ title: t('Orders') }} />
         <Tabs.Screen
           name="inbox"
           options={{
-            title: t('nav.chat'),
+            title: t('Chat'),
             tabBarBadge: chatUnreadCount > 0 ? (chatUnreadCount > 99 ? '99+' : chatUnreadCount) : undefined,
             tabBarBadgeStyle: styles.tabBarBadgeStyle,
           }}
@@ -446,7 +446,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="support"
           options={{
-            title: t('nav.support'),
+            title: t('Support'),
             href: null,
           }}
         />
@@ -468,26 +468,26 @@ export default function TabLayout() {
         <Tabs.Screen
           name="reports"
           options={{
-            title: t('nav.reports'),
+            title: t('Reports'),
             href: null,
           }}
         />
         <Tabs.Screen
           name="history"
           options={{
-            title: t('nav.history'),
+            title: t('History'),
             href: null,
           }}
         />
         <Tabs.Screen name="emergency-rewards" options={{ title: "Emergency Rewards", href: null }} />
-        <Tabs.Screen name="settings" options={{ title: t('nav.settings'), href: null }} />
-        <Tabs.Screen name="profile" options={{ title: t('nav.profile'), href: null }} />
-        <Tabs.Screen name="documents" options={{ title: t('nav.documents'), href: null }} />
+        <Tabs.Screen name="settings" options={{ title: t('Settings'), href: null }} />
+        <Tabs.Screen name="profile" options={{ title: t('Profile'), href: null }} />
+        <Tabs.Screen name="documents" options={{ title: t('Documents'), href: null }} />
         <Tabs.Screen name="billing" options={{ title: "Billing", href: null }} />
         <Tabs.Screen
           name="replacements"
           options={{
-            title: t('nav.replacements'),
+            title: t('Replacements'),
             href: null,
           }}
         />

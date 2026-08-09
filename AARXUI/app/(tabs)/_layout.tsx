@@ -7,10 +7,10 @@ import { LocalizedText as Text } from '@/components/Language/LocalizedPrimitives
 // import { Ionicons } from '@expo/vector-icons';
 // import { Tabs } from 'expo-router';
 // import {
-  // Platform,
-  // SafeAreaView,
-  // StyleSheet,
-  // View
+// Platform,
+// SafeAreaView,
+// StyleSheet,
+// View
 // } from 'react-native';
 
 // export default function TabLayout() {
@@ -423,37 +423,39 @@ export default function TabLayout() {
             tabBarLabelStyle: styles.tabBarLabelStyle,
             tabBarIconStyle: styles.tabBarIconStyle,
             animationEnabled: false,
-            tabBarIcon: ({ color, size }) => {
+            tabBarIcon: ({ color, size, focused }) => {
               let iconName: keyof typeof Ionicons.glyphMap = 'home-outline';
 
-              if (route.name === 'index') iconName = 'cloud-upload-outline';
-              else if (route.name === 'prescription') iconName = 'document-text-outline';
-              else if (route.name === 'history') iconName = 'cart-outline';
-              else if (route.name === 'orders') iconName = 'receipt-outline';
-              else if (route.name === 'inbox') iconName = 'chatbubble-ellipses-outline';
-              else if (route.name === 'support') iconName = 'help-circle-outline';
-              else if (route.name === 'settings') iconName = 'settings-outline';
+              if (route.name === 'index') iconName = focused ? 'cloud-upload' : 'cloud-upload-outline';
+              else if (route.name === 'prescription') iconName = focused ? 'pricetag' : 'pricetag-outline';
+              else if (route.name === 'inbox') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+              else if (route.name === 'orders') iconName = focused ? 'receipt' : 'receipt-outline';
+              else if (route.name === 'settings') iconName = focused ? 'settings' : 'settings-outline';
 
-              return <Ionicons name={iconName} size={size} color={color} />;
+              return <Ionicons name={iconName} size={size || 22} color={color} />;
             },
           };
         }}
       >
-        <Tabs.Screen name="index" options={{ title: t('nav.upload') }} />
-        <Tabs.Screen name="prescription" options={{ title: t('nav.offers') }} />
-        <Tabs.Screen name="history" />
+        <Tabs.Screen name="index" options={{ title: t('Upload') }} />
+        <Tabs.Screen name="prescription" options={{ title: t('Offer') }} />
         <Tabs.Screen
           name="inbox"
           options={{
-            title: t('nav.chat'),
+            title: t('Chat'),
             tabBarBadge: chatUnreadCount > 0 ? (chatUnreadCount > 99 ? '99+' : chatUnreadCount) : undefined,
             tabBarBadgeStyle: styles.tabBarBadgeStyle,
           }}
         />
+        <Tabs.Screen name="orders" options={{ title: t('Order') }} />
+        <Tabs.Screen name="settings" options={{ title: t('Settings') }} />
+
+        {/* Hidden routes */}
+        <Tabs.Screen name="history" options={{ title: t('History'), href: null }} />
         <Tabs.Screen
           name="support"
           options={{
-            title: t('nav.support'),
+            title: t('Support'),
             href: null,
           }}
         />
@@ -476,12 +478,10 @@ export default function TabLayout() {
         <Tabs.Screen
           name="reports"
           options={{
-            title: t('nav.reports'),
+            title: t('Reports'),
             href: null,
           }}
         />
-        <Tabs.Screen name="orders" options={{ title: t('nav.orders') }} />
-        <Tabs.Screen name="settings" />
       </Tabs>
     </SafeAreaView>
   );
