@@ -34,7 +34,7 @@ export const useSellerOrders = ({ baseUrl, token, onOtpRequired }: UseSellerOrde
   const seenEventIds = useRef<Set<string>>(new Set());
   const lastSeqMap = useRef<Map<number, number>>(new Map());
 
-  const fetchOrders = useCallback(async (showLoading = true) => {
+  const fetchOrders = useCallback(async (showLoading = true, isManual = false) => {
     if (!token || !baseUrl) {
       setLoading(false);
       return;
@@ -49,7 +49,10 @@ export const useSellerOrders = ({ baseUrl, token, onOtpRequired }: UseSellerOrde
       const raw = Array.isArray(res.data) ? res.data : res.data.results || [];
       setOrders(raw);
     } catch (error: any) {
-      Toast.show({ type: 'error', text1: 'Orders sync failed', text2: error.response?.data?.error || 'Could not load active orders.', position: 'bottom' });
+      console.warn('Seller orders sync error:', error?.response?.status, error?.message);
+      if (isManual) {
+        Toast.show({ type: 'error', text1: 'Orders sync failed', text2: error.response?.data?.error || 'Could not load active orders.', position: 'bottom' });
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -58,12 +61,12 @@ export const useSellerOrders = ({ baseUrl, token, onOtpRequired }: UseSellerOrde
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    fetchOrders(false);
+    fetchOrders(false, true);
   }, [fetchOrders]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchOrders(false);
+      fetchOrders(false, false);
     }, [fetchOrders])
   );
 

@@ -17,7 +17,7 @@ export const useSellerDashboardSummary = ({ baseUrl, token, startDate, endDate }
   const [refreshing, setRefreshing] = useState(false);
   const seenEventIds = useRef<Set<string>>(new Set());
 
-  const fetchSummary = useCallback(async (showLoading = true) => {
+  const fetchSummary = useCallback(async (showLoading = true, isManual = false) => {
     if (!baseUrl || !token) {
       setLoading(false);
       return;
@@ -34,12 +34,15 @@ export const useSellerDashboardSummary = ({ baseUrl, token, startDate, endDate }
       });
       setSummary(res.data);
     } catch (error: any) {
-      Toast.show({
-        type: 'error',
-        text1: 'Dashboard sync failed',
-        text2: error.response?.data?.error || 'Could not load store summary.',
-        position: 'bottom',
-      });
+      console.warn('Dashboard summary sync error:', error?.response?.status, error?.message);
+      if (isManual) {
+        Toast.show({
+          type: 'error',
+          text1: 'Dashboard sync failed',
+          text2: error.response?.data?.error || 'Could not load store summary.',
+          position: 'bottom',
+        });
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -48,12 +51,12 @@ export const useSellerDashboardSummary = ({ baseUrl, token, startDate, endDate }
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    fetchSummary(false);
+    fetchSummary(false, true);
   }, [fetchSummary]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchSummary(false);
+      fetchSummary(false, false);
     }, [fetchSummary])
   );
 

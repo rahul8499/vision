@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 10,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 14,
+    paddingBottom: Platform.OS === 'ios' ? 78 : 68,
     backgroundColor: '#f8fafc',
     borderTopWidth: 1,
     borderColor: '#e2e8f0',

@@ -13,11 +13,13 @@ const PALETTE = {
 export function SupportHeader({
   title,
   subtitle,
+  description,
   onBack,
   right,
 }: {
   title: string;
   subtitle?: string;
+  description?: string;
   onBack?: () => void;
   right?: React.ReactNode;
 }) {
@@ -78,6 +80,12 @@ export function SupportHeader({
             </View>
             {right ? <View style={{ flexDirection: 'row', alignItems: 'center' }}>{right}</View> : null}
           </View>
+
+          {description ? (
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: 'rgba(255, 255, 255, 0.9)', lineHeight: 17, marginTop: 8 }}>
+              {description}
+            </Text>
+          ) : null}
         </LinearGradient>
       </View>
     </View>

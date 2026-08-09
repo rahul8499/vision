@@ -1153,7 +1153,7 @@ export default function ChatRoomScreen() {
                                 alignItems: 'flex-end',
                                 paddingHorizontal: 8,
                                 paddingVertical: 8,
-                                paddingBottom: Platform.OS === 'ios' ? 20 : 35,
+                                paddingBottom: Platform.OS === 'ios' ? 78 : 68,
                                 backgroundColor: CHAT_THEME.background
                             }}>
                                 {isRecording ? (
