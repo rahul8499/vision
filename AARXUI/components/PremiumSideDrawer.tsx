@@ -6,10 +6,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
   Easing,
+  Image,
   Linking,
   Modal,
   Platform,
@@ -19,8 +21,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View,
-  ActivityIndicator
+  View
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout as logoutAction } from '../redux/userSlice';
@@ -30,6 +31,20 @@ import { useAppLanguage } from '@/context/LanguageContext';
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(width * 0.88, 390);
 const BASE_URL = Constants.expoConfig?.extra?.BASE_URL;
+
+const DRAWER_THEME = {
+  primaryNavy: '#123B5D',
+  secondaryTeal: '#0F8B8D',
+  background: '#F4F8FA',
+  lightTealCard: '#E8F4F5',
+  borderTeal: '#B9DDE0',
+  whiteCard: '#FFFFFF',
+  mainText: '#102A43',
+  secondaryText: '#627D98',
+  successGreen: '#16A34A',
+  warningAmber: '#F59E0B',
+  errorRed: '#DC2626',
+};
 
 type PremiumSideDrawerProps = {
   visible: boolean;
@@ -106,19 +121,19 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
   };
 
   const mainMenuItems = [
-    { icon: 'grid-large', label: 'Dashboard', subtitle: 'Live overview & stats', color: '#10b981', onPress: () => navigate(isStore ? '/(sellerTabs)/home' : '/(tabs)') },
-    { icon: 'alarm-light-outline', label: 'Emergency', subtitle: 'Urgent medicine requests', color: '#e11d48', onPress: () => navigate(isStore ? '/(sellerTabs)?section=emergency' : '/(tabs)/emergency-requests') },
-    { icon: 'clipboard-list-outline', label: 'Orders', subtitle: 'Open new orders first', color: '#0f766e', onPress: () => navigate(isStore ? '/(sellerTabs)/active-orders?stage=new' : '/(tabs)/orders') },
-    { icon: 'arrow-down-bold-circle-outline', label: 'Enquiry Board', subtitle: 'Manage request quotes', color: '#3b82f6', onPress: () => navigate(isStore ? '/(sellerTabs)' : '/(tabs)') },
-    { icon: 'truck-delivery-outline', label: 'Active Orders', subtitle: 'Ongoing order deliveries', color: '#8b5cf6', onPress: () => navigate(isStore ? '/(sellerTabs)/active-orders' : '/(tabs)/history') },
-    { icon: 'chat-processing-outline', label: 'Chat Inbox', subtitle: 'Connect with patients', color: '#f59e0b', onPress: () => navigate(isStore ? '/(sellerTabs)/inbox' : '/(tabs)/inbox') },
+    { icon: 'grid-large', label: 'Dashboard', subtitle: 'Live overview & stats', color: DRAWER_THEME.secondaryTeal, onPress: () => navigate(isStore ? '/(sellerTabs)/home' : '/(tabs)') },
+    { icon: 'alarm-light-outline', label: 'Emergency', subtitle: 'Urgent medicine requests', color: DRAWER_THEME.errorRed, onPress: () => navigate(isStore ? '/(sellerTabs)?section=emergency' : '/(tabs)/emergency-requests') },
+    { icon: 'clipboard-list-outline', label: 'Orders', subtitle: 'Open new orders first', color: DRAWER_THEME.primaryNavy, onPress: () => navigate(isStore ? '/(sellerTabs)/active-orders?stage=new' : '/(tabs)/orders') },
+    { icon: 'arrow-down-bold-circle-outline', label: 'Enquiry Board', subtitle: 'Manage request quotes', color: DRAWER_THEME.secondaryTeal, onPress: () => navigate(isStore ? '/(sellerTabs)' : '/(tabs)') },
+    { icon: 'truck-delivery-outline', label: 'Active Orders', subtitle: 'Ongoing order deliveries', color: DRAWER_THEME.primaryNavy, onPress: () => navigate(isStore ? '/(sellerTabs)/active-orders' : '/(tabs)/history') },
+    { icon: 'chat-processing-outline', label: 'Chat Inbox', subtitle: 'Connect with patients', color: DRAWER_THEME.warningAmber, onPress: () => navigate(isStore ? '/(sellerTabs)/inbox' : '/(tabs)/inbox') },
   ];
 
   const accountMenuItems = [
-    { icon: 'storefront-outline', label: 'My Profile', subtitle: 'Store details & identity', color: '#10b981', onPress: () => navigate(isStore ? '/(sellerTabs)/profile' : '/(tabs)/settings') },
-    { icon: 'credit-card-outline', label: 'Billing & Plan', subtitle: 'Subscriptions & invoices', color: '#0F8B8D', onPress: () => navigate(isStore ? '/(sellerTabs)/billing' : '/(tabs)/settings') },
-    { icon: 'file-document-multiple-outline', label: 'Store Documents', subtitle: 'Licence & verification proofs', color: '#6366f1', onPress: () => navigate(isStore ? '/(sellerTabs)/documents' : '/(tabs)/settings') },
-    { icon: 'cog-outline', label: 'Settings', subtitle: 'Notification & preferences', color: '#64748b', onPress: () => navigate(isStore ? '/(sellerTabs)/settings' : '/(tabs)/settings') },
+    { icon: 'storefront-outline', label: 'My Profile', subtitle: 'Store details & identity', color: DRAWER_THEME.primaryNavy, onPress: () => navigate(isStore ? '/(sellerTabs)/profile' : '/(tabs)/settings') },
+    { icon: 'credit-card-outline', label: 'Billing & Plan', subtitle: 'Subscriptions & invoices', color: DRAWER_THEME.secondaryTeal, onPress: () => navigate(isStore ? '/(sellerTabs)/billing' : '/(tabs)/settings') },
+    { icon: 'file-document-multiple-outline', label: 'Store Documents', subtitle: 'Licence & verification proofs', color: DRAWER_THEME.primaryNavy, onPress: () => navigate(isStore ? '/(sellerTabs)/documents' : '/(tabs)/settings') },
+    { icon: 'cog-outline', label: 'Settings', subtitle: 'Notification & preferences', color: DRAWER_THEME.secondaryText, onPress: () => navigate(isStore ? '/(sellerTabs)/settings' : '/(tabs)/settings') },
   ];
 
   const renderMenuItem = (
@@ -163,7 +178,7 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
 
             {/* ── Premium Gradient Header ── */}
             <LinearGradient
-              colors={['#0f172a', '#1e293b', '#064e3b']}
+              colors={[DRAWER_THEME.primaryNavy, '#184C75', DRAWER_THEME.secondaryTeal]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.hero}
@@ -172,9 +187,12 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
               <View pointerEvents="none" style={[styles.orb, styles.orbBottom]} />
 
               <View style={styles.heroTopRow}>
-                <View>
-                  <Text style={styles.eyebrow}>AARX SELLER</Text>
-                  <Text style={styles.consoleLabel}>Business Console</Text>
+                <View style={styles.logoWrapper}>
+                  <Image
+                    source={require('../assets/images/aarxwhitelogo.png')}
+                    style={styles.brandLogoImage}
+                    resizeMode="contain"
+                  />
                 </View>
                 <TouchableOpacity onPress={handleClose} activeOpacity={0.72} style={styles.closeButton}>
                   <MaterialCommunityIcons name="close" size={20} color="#ffffff" />
@@ -184,20 +202,22 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
               {/* Profile Overview */}
               <View style={styles.profileRow}>
                 <View style={styles.avatarOuter}>
-                  <LinearGradient colors={['#34d399', '#059669']} style={styles.avatar}>
-                    <MaterialCommunityIcons name={isStore ? 'storefront-outline' : 'account-outline'} size={32} color="#ffffff" />
+                  <LinearGradient colors={[DRAWER_THEME.secondaryTeal, DRAWER_THEME.primaryNavy]} style={styles.avatar}>
+                    <MaterialCommunityIcons name={isStore ? 'storefront-outline' : 'account-outline'} size={24} color="#ffffff" />
                   </LinearGradient>
                 </View>
 
                 <View style={styles.profileCopy}>
                   <Text style={styles.profileName} numberOfLines={1}>
-                    {user?.name || (isStore ? 'My Pharmacy' : 'My Account')}
+                    {user?.name || (user as any)?.store_name || (isStore ? 'My Pharmacy' : 'My Account')}
                   </Text>
-                  <Text style={styles.profilePhone} numberOfLines={1}>{user?.mobile || 'No Mobile'}</Text>
+                  <Text style={styles.profilePhone} numberOfLines={1}>
+                    {(user as any)?.owner_name ? `Owner: ${(user as any)?.owner_name}` : (user?.mobile || 'No Mobile Registered')}
+                  </Text>
                   <View style={[styles.verificationBadge, isVerified ? styles.verifiedBadge : styles.pendingBadge]}>
-                    <MaterialCommunityIcons name={isVerified ? 'check-decagram' : 'clock-outline'} size={12} color={isVerified ? '#6ee7b7' : '#fde68a'} />
-                    <Text style={[styles.verificationText, { color: isVerified ? '#a7f3d0' : '#fef3c7' }]}>
-                      {isVerified ? 'Verified business' : 'Verification pending'}
+                    <MaterialCommunityIcons name={isVerified ? 'check-decagram' : 'clock-outline'} size={12} color={isVerified ? '#4ADE80' : '#FBBF24'} />
+                    <Text style={[styles.verificationText, { color: isVerified ? '#DCFCE7' : '#FEF3C7' }]}>
+                      {isVerified ? 'Verified Business' : 'Verification Pending'}
                     </Text>
                   </View>
                 </View>
@@ -207,14 +227,14 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
               <View style={styles.progressCard}>
                 <View style={styles.progressHeader}>
                   <View style={styles.progressTitleRow}>
-                    <MaterialCommunityIcons name="shield-check-outline" size={15} color="#a7f3d0" />
+                    <MaterialCommunityIcons name="shield-check-outline" size={13} color={DRAWER_THEME.borderTeal} />
                     <Text style={styles.progressLabel}>Store setup</Text>
                   </View>
                   <Text style={styles.progressValue}>{completionPercent}%</Text>
                 </View>
                 <View style={styles.progressTrack}>
                   <LinearGradient
-                    colors={['#34d399', '#10b981']}
+                    colors={[DRAWER_THEME.secondaryTeal, '#22B0B3']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={[styles.progressFill, { width: `${completionPercent}%` as any }]}
@@ -292,10 +312,10 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
         </Animated.View>
 
         {logoutVisible && (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, zIndex: 100 }]}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(16,42,67,0.68)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, zIndex: 100 }]}>
             <View className="bg-white rounded-[2.25rem] w-full max-w-sm overflow-hidden shadow-2xl border border-slate-200">
               <LinearGradient
-                colors={['#0f172a', '#1e293b', '#064e3b']}
+                colors={[DRAWER_THEME.primaryNavy, DRAWER_THEME.secondaryTeal]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 className="h-2"
@@ -378,15 +398,15 @@ const styles = StyleSheet.create({
   },
   drawerPanel: {
     flex: 1,
-    backgroundColor: '#f6f8fb',
+    backgroundColor: DRAWER_THEME.background,
     borderTopRightRadius: 28,
     borderBottomRightRadius: 28,
     overflow: 'hidden',
   },
   hero: {
-    paddingTop: Platform.OS === 'android' ? 46 : 16,
-    paddingHorizontal: 22,
-    paddingBottom: 20,
+    paddingTop: Platform.OS === 'android' ? 28 : 12,
+    paddingHorizontal: 18,
+    paddingBottom: 12,
     overflow: 'hidden',
   },
   orb: {
@@ -394,7 +414,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
-    backgroundColor: 'rgba(52,211,153,0.08)',
+    backgroundColor: 'rgba(15,139,141,0.10)',
   },
   orbTop: { width: 180, height: 180, right: -76, top: -82 },
   orbBottom: { width: 110, height: 110, left: -54, bottom: -40 },
@@ -402,80 +422,89 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 22,
+    marginBottom: 30,
+    marginTop: 26,
   },
-  eyebrow: { color: '#6ee7b7', fontSize: 10, fontWeight: '900', letterSpacing: 2.2 },
-  consoleLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600', marginTop: 3 },
+  logoWrapper: {
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  brandLogoImage: {
+    width: 210,
+    height: 72,
+    marginLeft: -4,
+  },
   closeButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.09)',
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileRow: { flexDirection: 'row', alignItems: 'center' },
   avatarOuter: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    padding: 3,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    padding: 2.5,
     backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
   },
   avatar: {
     flex: 1,
-    borderRadius: 18,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#020617',
-    shadowOffset: { width: 0, height: 5 },
+    shadowColor: '#123B5D',
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.22,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  profileCopy: { flex: 1, marginLeft: 15 },
-  profileName: { color: '#ffffff', fontSize: 19, lineHeight: 24, fontWeight: '900', letterSpacing: 0.1 },
-  profilePhone: { color: 'rgba(255,255,255,0.56)', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  profileCopy: { flex: 1, marginLeft: 12 },
+  profileName: { color: '#ffffff', fontSize: 16, lineHeight: 20, fontWeight: '900', letterSpacing: 0.1 },
+  profilePhone: { color: 'rgba(255,255,255,0.75)', fontSize: 10.5, fontWeight: '600', marginTop: 1 },
   verificationBadge: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 99,
     borderWidth: 1,
   },
-  verifiedBadge: { backgroundColor: 'rgba(16,185,129,0.17)', borderColor: 'rgba(110,231,183,0.2)' },
-  pendingBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderColor: 'rgba(253,230,138,0.18)' },
-  verificationText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.35, textTransform: 'uppercase' },
+  verifiedBadge: { backgroundColor: 'rgba(22, 163, 74, 0.25)', borderColor: 'rgba(74, 222, 128, 0.4)' },
+  pendingBadge: { backgroundColor: 'rgba(245, 158, 11, 0.25)', borderColor: 'rgba(251, 191, 36, 0.4)' },
+  verificationText: { fontSize: 8.5, fontWeight: '900', letterSpacing: 0.4, textTransform: 'uppercase' },
   progressCard: {
-    marginTop: 18,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.15)',
   },
-  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 },
-  progressTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  progressLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 11, fontWeight: '700' },
-  progressValue: { color: '#6ee7b7', fontSize: 11, fontWeight: '900' },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 },
+  progressTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  progressLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '700' },
+  progressValue: { color: DRAWER_THEME.borderTeal, fontSize: 10, fontWeight: '900' },
   progressTrack: {
-    height: 5,
+    height: 4,
     borderRadius: 99,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   progressFill: { height: '100%', borderRadius: 99 },
-  scrollContent: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 24 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 20 },
   sectionLabel: {
-    color: '#94a3b8',
+    color: DRAWER_THEME.secondaryText,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.8,
@@ -485,12 +514,12 @@ const styles = StyleSheet.create({
   },
   sectionSpacing: { marginTop: 21 },
   menuGroup: {
-    backgroundColor: '#ffffff',
+    backgroundColor: DRAWER_THEME.whiteCard,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#e9eef5',
+    borderColor: DRAWER_THEME.borderTeal,
     paddingHorizontal: 12,
-    shadowColor: '#0f172a',
+    shadowColor: DRAWER_THEME.primaryNavy,
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.045,
     shadowRadius: 12,
@@ -504,7 +533,7 @@ const styles = StyleSheet.create({
   },
   menuItemDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e8edf3',
+    borderBottomColor: DRAWER_THEME.borderTeal,
   },
   menuIcon: {
     width: 41,
@@ -515,13 +544,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   menuCopy: { flex: 1, marginLeft: 12 },
-  menuLabel: { color: '#172033', fontSize: 13.5, fontWeight: '800' },
-  menuSubtitle: { color: '#8a97aa', fontSize: 10.5, fontWeight: '500', marginTop: 2 },
+  menuLabel: { color: DRAWER_THEME.mainText, fontSize: 13.5, fontWeight: '800' },
+  menuSubtitle: { color: DRAWER_THEME.secondaryText, fontSize: 10.5, fontWeight: '500', marginTop: 2 },
   chevronShell: {
     width: 27,
     height: 27,
     borderRadius: 9,
-    backgroundColor: '#f6f8fb',
+    backgroundColor: DRAWER_THEME.lightTealCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -531,30 +560,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 13,
     borderRadius: 19,
-    backgroundColor: '#ecfdf5',
+    backgroundColor: DRAWER_THEME.lightTealCard,
     borderWidth: 1,
-    borderColor: '#c9f3df',
+    borderColor: DRAWER_THEME.borderTeal,
   },
   supportIcon: {
     width: 43,
     height: 43,
     borderRadius: 14,
-    backgroundColor: '#d1fae5',
+    backgroundColor: DRAWER_THEME.whiteCard,
     borderWidth: 1,
-    borderColor: '#a7f3d0',
+    borderColor: DRAWER_THEME.borderTeal,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  supportTitle: { color: '#065f46', fontSize: 13.5, fontWeight: '900' },
-  supportSubtitle: { color: '#47927a', fontSize: 10.5, fontWeight: '600', marginTop: 2 },
+  supportTitle: { color: DRAWER_THEME.primaryNavy, fontSize: 13.5, fontWeight: '900' },
+  supportSubtitle: { color: DRAWER_THEME.secondaryTeal, fontSize: 10.5, fontWeight: '600', marginTop: 2 },
   supportAction: {
     width: 30,
     height: 30,
     borderRadius: 10,
-    backgroundColor: '#059669',
+    backgroundColor: DRAWER_THEME.secondaryTeal,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#059669',
+    shadowColor: DRAWER_THEME.secondaryTeal,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -564,9 +593,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 13,
     paddingBottom: 15,
-    backgroundColor: '#ffffff',
+    backgroundColor: DRAWER_THEME.whiteCard,
     borderTopWidth: 1,
-    borderTopColor: '#edf1f5',
+    borderTopColor: DRAWER_THEME.borderTeal,
   },
   logoutButton: {
     minHeight: 50,
@@ -574,22 +603,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 11,
     borderRadius: 15,
-    backgroundColor: '#fff7f8',
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#ffe1e6',
+    borderColor: '#FCA5A5',
   },
   logoutIcon: {
     width: 31,
     height: 31,
     borderRadius: 10,
-    backgroundColor: '#ffe4e8',
+    backgroundColor: '#FEE2E2',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoutText: { flex: 1, color: '#be123c', fontSize: 13, fontWeight: '800', marginLeft: 10 },
+  logoutText: { flex: 1, color: DRAWER_THEME.errorRed, fontSize: 13, fontWeight: '800', marginLeft: 10 },
   versionText: {
     textAlign: 'center',
-    color: '#a3adbc',
+    color: DRAWER_THEME.secondaryText,
     fontSize: 9,
     fontWeight: '800',
     marginTop: 11,

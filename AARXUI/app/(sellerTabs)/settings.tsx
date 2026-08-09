@@ -17,6 +17,7 @@ import {
   Platform,
   ScrollView,
   Share,
+  StatusBar,
   TouchableOpacity,
   View,
   Switch
@@ -89,6 +90,7 @@ export default function SellerSettingsScreen() {
   const [deliverySettings, setDeliverySettings] = useState<any>(null);
   const [deliveryPeople, setDeliveryPeople] = useState<any[]>([]);
   const [deliveryBusy, setDeliveryBusy] = useState(false);
+  const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
   const [deliveryPersonOpen, setDeliveryPersonOpen] = useState(false);
   const [deliveryPersonName, setDeliveryPersonName] = useState('');
   const [deliveryPersonMobile, setDeliveryPersonMobile] = useState('');
@@ -97,6 +99,108 @@ export default function SellerSettingsScreen() {
   const [partnerPinTarget, setPartnerPinTarget] = useState<any>(null);
   const [partnerNewPin, setPartnerNewPin] = useState('');
   const [googleLinkBusy, setGoogleLinkBusy] = useState(false);
+  const [docsModalOpen, setDocsModalOpen] = useState(false);
+
+  /* ── Password Reset & Security State ── */
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordStep, setPasswordStep] = useState<'request' | 'verify' | 'newPassword'>('request');
+  const [passwordOtp, setPasswordOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPasswordText, setShowPasswordText] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccessMsg, setPasswordSuccessMsg] = useState('');
+
+  const resetPasswordModalState = () => {
+    setPasswordStep('request');
+    setPasswordOtp('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccessMsg('');
+    setShowPasswordText(false);
+  };
+
+  const handleRequestPasswordOtp = async () => {
+    const targetEmail = storeData?.email;
+    if (!targetEmail) {
+      Alert.alert("Email Required", "Store email address is missing. Please update your profile first.");
+      return;
+    }
+    try {
+      setPasswordBusy(true);
+      setPasswordError('');
+      setPasswordSuccessMsg('');
+      await axios.post(`${BASE_URL}/api/password-reset/request-otp/`, {
+        email: targetEmail,
+        userType: 'store',
+      });
+      setPasswordStep('verify');
+      setPasswordSuccessMsg(`OTP sent to ${targetEmail} & WhatsApp!`);
+    } catch (err: any) {
+      setPasswordError(err?.response?.data?.error || "Failed to send OTP. Please verify your email.");
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
+  const handleVerifyPasswordOtp = async () => {
+    const targetEmail = storeData?.email;
+    if (!passwordOtp || passwordOtp.trim().length < 4) {
+      setPasswordError("Please enter a valid 6-digit OTP code.");
+      return;
+    }
+    try {
+      setPasswordBusy(true);
+      setPasswordError('');
+      setPasswordSuccessMsg('');
+      await axios.post(`${BASE_URL}/api/password-reset/verify-otp/`, {
+        email: targetEmail,
+        otp: passwordOtp.trim(),
+        userType: 'store',
+      });
+      setPasswordStep('newPassword');
+      setPasswordSuccessMsg("OTP verified successfully! Please enter your new password.");
+    } catch (err: any) {
+      setPasswordError(err?.response?.data?.error || "Invalid OTP code. Please check and try again.");
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
+  const handleConfirmPasswordReset = async () => {
+    const targetEmail = storeData?.email;
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirm password do not match.");
+      return;
+    }
+    try {
+      setPasswordBusy(true);
+      setPasswordError('');
+      setPasswordSuccessMsg('');
+      await axios.post(`${BASE_URL}/api/password-reset/confirm/`, {
+        email: targetEmail,
+        password: newPassword,
+        userType: 'store',
+      });
+      Toast.show({
+        type: 'success',
+        text1: 'Password Updated',
+        text2: 'Your store password has been updated successfully.',
+      });
+      setPasswordModalOpen(false);
+      resetPasswordModalState();
+    } catch (err: any) {
+      setPasswordError(err?.response?.data?.error || "Failed to update password. Please try again.");
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
 
   const handleGoogleLink = async () => {
     if (!token || googleLinkBusy) return;
@@ -131,6 +235,21 @@ export default function SellerSettingsScreen() {
     }
   };
 
+  const DEFAULT_DELIVERY_SETTINGS = {
+    pickup_enabled: true,
+    home_delivery_enabled: true,
+    maximum_delivery_radius_km: 10,
+    free_delivery_distance_km: 2,
+    base_delivery_charge: 30,
+    per_km_charge: 10,
+    minimum_delivery_charge: 30,
+    maximum_delivery_charge: 150,
+    default_estimated_delivery_minutes: 30,
+    delivery_time_per_km_minutes: 5,
+    delivery_message_template: "We deliver orders up to 10 km within 30-45 minutes.",
+    delivery_unavailable_message: "Home delivery currently unavailable for this location."
+  };
+
   const fetchDeliveryConfiguration = async () => {
     if (!token) return;
     try {
@@ -138,7 +257,23 @@ export default function SellerSettingsScreen() {
         axios.get(`${BASE_URL}/api/store/delivery-settings/`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`${BASE_URL}/api/store/delivery-persons/`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      setDeliverySettings(settingsResponse.data);
+      const fetched = settingsResponse.data || {};
+      const numOr = (val: any, def: number) => {
+        const n = Number(val);
+        return (!isNaN(n) && n > 0) ? n : def;
+      };
+      setDeliverySettings({
+        ...DEFAULT_DELIVERY_SETTINGS,
+        ...fetched,
+        maximum_delivery_radius_km: numOr(fetched.maximum_delivery_radius_km, 10),
+        free_delivery_distance_km: numOr(fetched.free_delivery_distance_km, 2),
+        base_delivery_charge: numOr(fetched.base_delivery_charge, 30),
+        per_km_charge: numOr(fetched.per_km_charge, 10),
+        minimum_delivery_charge: numOr(fetched.minimum_delivery_charge, 30),
+        maximum_delivery_charge: numOr(fetched.maximum_delivery_charge, 150),
+        default_estimated_delivery_minutes: numOr(fetched.default_estimated_delivery_minutes, 30),
+        delivery_time_per_km_minutes: numOr(fetched.delivery_time_per_km_minutes, 5),
+      });
       setDeliveryPeople(peopleResponse.data || []);
     } catch (error: any) {
       console.error('Delivery configuration fetch failed:', error?.response?.data || error.message);
@@ -666,33 +801,57 @@ export default function SellerSettingsScreen() {
   const isFormValid = name && ownerName && mobile && email && address && pincode && gstNumber && drugLicense;
 
   return (
-    <View className="flex-1 bg-slate-100">
-      <View className="px-4 pt-2 pb-1">
-        <View className="overflow-hidden rounded-[1.45rem] shadow-sm shadow-slate-300">
+    <View style={{ flex: 1, backgroundColor: '#F4F8FA' }}>
+      {/* ── Enterprise 3D Header Section ── */}
+      <View style={{ marginHorizontal: 16, marginTop: 0, marginBottom: 12 }}>
+        <View style={{ borderRadius: 22, overflow: 'hidden', elevation: 8, shadowColor: '#123B5D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 18 }}>
           <LinearGradient
-            colors={["#123b59", "#0d8a63"]}
+            colors={["#123B5D", "#184C75", "#0F8B8D"]}
             start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            className="relative min-h-[150px] overflow-hidden px-4 py-4"
+            end={{ x: 1, y: 1 }}
+            style={{ position: 'relative', minHeight: 155, overflow: 'hidden', paddingHorizontal: 20, paddingVertical: 18 }}
           >
-            <View className="absolute -right-9 -bottom-10 h-[210px] w-[210px] items-center justify-center">
+            {/* 3D Depth Glow Spheres */}
+            <View style={{ position: 'absolute', top: -35, left: -35, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255, 255, 255, 0.09)' }} />
+            <View style={{ position: 'absolute', bottom: -45, right: 90, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(15, 139, 141, 0.28)' }} />
+
+            {/* 3D Floating Seller Settings Image Asset */}
+            <View style={{ position: 'absolute', right: -25, bottom: -24, height: 200, width: 200, alignItems: 'center', justifyContent: 'center' }}>
               <Image
                 source={require("../../assets/images/sellersettings.png")}
-                className="h-full w-full"
+                style={{ height: '100%', width: '100%' }}
                 resizeMode="contain"
               />
             </View>
 
-            <View className="min-h-[118px] justify-center">
-              <View className="z-10 w-[62%] min-w-0">
-                <View className="flex-row items-center">
-                  <Text className="text-[28px] font-black text-white tracking-[2px] leading-9" numberOfLines={1}>SETTINGS</Text>
-                  <View className="mx-3 h-9 w-px rounded-full bg-emerald-300/80" />
+            <View style={{ minHeight: 120, justifyContent: 'center' }}>
+              <View style={{ zIndex: 10, maxWidth: '56%' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 24, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1.5, lineHeight: 30 }} numberOfLines={1}>
+                    SETTINGS
+                  </Text>
+                  <View style={{ marginHorizontal: 10, height: 28, width: 2, borderRadius: 1, backgroundColor: 'rgba(74, 222, 128, 0.7)' }} />
                 </View>
-                <Text className="mt-1.5 text-[8px] font-black uppercase tracking-[0.7px] text-white/45" numberOfLines={1}>
-                  Account, Documents & Preferences
-                </Text>
 
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.14)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255, 255, 255, 0.24)',
+                  borderRadius: 99,
+                  paddingHorizontal: 9,
+                  paddingVertical: 4,
+                  marginTop: 8,
+                  alignSelf: 'flex-start',
+                  gap: 4,
+                  maxWidth: '100%'
+                }}>
+                  <MaterialCommunityIcons name="shield-crown-outline" size={12} color="#4ADE80" />
+                  <Text style={{ fontSize: 8.5, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.7, color: '#FFFFFF' }} numberOfLines={1} ellipsizeMode="tail">
+                    STORE CONTROL & GOVERNANCE
+                  </Text>
+                </View>
               </View>
             </View>
           </LinearGradient>
@@ -701,133 +860,98 @@ export default function SellerSettingsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 160 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 160 }}
       >
 
-        {/* ── profile card ──────────────── */}
+        {/* ── Enterprise Store Identity Trigger Card ── */}
         {storeData ? (
-          <View className="bg-white rounded-[2rem] shadow-2xl shadow-slate-300/40 border border-slate-200/70 mb-5 overflow-hidden">
-            <LinearGradient
-              colors={["#0f172a", "#164e63", "#047857"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              className="px-5 pt-5 pb-6"
-            >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                  <MaterialCommunityIcons name="storefront-outline" size={15} color="#6ee7b7" />
-                  <Text className="ml-2 text-[9px] font-black uppercase tracking-[2.4px] text-emerald-300">Store Identity</Text>
-                </View>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => setEditOpen(true)}
-                  disabled={profileLoading}
-                  className="h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10"
-                  style={{ opacity: profileLoading ? 0.4 : 1 }}
-                >
-                  <Feather name="edit-2" size={17} color="white" />
-                </TouchableOpacity>
-              </View>
-
-              <View className="mt-4 flex-row items-center">
-                <View className="relative h-[88px] w-[88px] items-center justify-center">
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => setEditOpen(true)}
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#B9DDE0',
+              marginBottom: 16,
+              padding: 16,
+              elevation: 4,
+              shadowColor: '#123B5D',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.08,
+              shadowRadius: 10
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <View style={{ position: 'relative', width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
                   <Progress.Circle
-                    size={88}
+                    size={44}
                     progress={(storeData?.profile_completion_percent || 0) / 100}
                     showsText={false}
-                    color="#6ee7b7"
-                    thickness={4}
-                    unfilledColor="rgba(255,255,255,0.18)"
+                    color="#0F8B8D"
+                    thickness={3}
+                    unfilledColor="#E8F4F5"
                     borderWidth={0}
                   />
-                  <View className="absolute inset-0 items-center justify-center">
-                    <View className="h-[74px] w-[74px] items-center justify-center rounded-[1.35rem] border border-white/20 bg-white/10">
-                      <MaterialCommunityIcons name="storefront-outline" size={33} color="white" />
+                  <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#E8F4F5', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center' }}>
+                      <MaterialCommunityIcons name="storefront-outline" size={20} color="#123B5D" />
                     </View>
                   </View>
                 </View>
-
-                <View className="ml-4 min-w-0 flex-1">
-                  <Text className="text-[10px] font-black uppercase tracking-[1.5px] text-white/50" numberOfLines={1}>Official Store Profile</Text>
-                  <Text className="mt-1 text-[22px] font-black leading-7 text-white" numberOfLines={1}>{storeData.name}</Text>
-                  <Text className="mt-0.5 text-[11px] font-bold text-slate-300" numberOfLines={1}>{storeData.owner_name || "Owner details pending"}</Text>
-
-                  <View className="mt-3 flex-row flex-wrap items-center gap-2">
-                    <View className="flex-row items-center rounded-full border border-white/15 bg-white/10 px-2.5 py-1">
-                      <MaterialCommunityIcons
-                        name={storeData.is_verified ? "check-decagram" : "shield-alert-outline"}
-                        size={11}
-                        color={storeData.is_verified ? "#6ee7b7" : "#fbbf24"}
-                      />
-                      <Text className="ml-1 text-[8px] font-black uppercase tracking-[0.8px] text-white">
-                        {storeData.is_verified ? "Verified" : "Unverified"}
-                      </Text>
-                    </View>
-                    <View className="flex-row items-center rounded-full bg-emerald-300 px-2.5 py-1">
-                      <MaterialCommunityIcons name="progress-check" size={11} color="#064e3b" />
-                      <Text className="ml-1 text-[8px] font-black uppercase tracking-[0.8px] text-emerald-950">
-                        {storeData?.profile_completion_percent || 0}% Complete
-                      </Text>
-                    </View>
+                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: '#102A43' }} numberOfLines={1}>{storeData.name}</Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: storeData.is_verified ? '#16A34A' : '#F59E0B', marginLeft: 6 }} />
                   </View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#627D98', marginTop: 2 }} numberOfLines={1}>
+                    {storeData.owner_name || "Owner pending"} • {storeData?.address || "Address pending"}
+                  </Text>
                 </View>
               </View>
-            </LinearGradient>
 
-            <View className="px-5 pb-5">
-              <View className="pt-4">
-                <View className="flex-row items-start mb-3">
-                  <View className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 items-center justify-center">
-                    <MaterialCommunityIcons name="map-marker-outline" size={17} color="#059669" />
-                  </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-[8px] text-slate-400 font-black uppercase tracking-[2px] mb-0.5">Store Address</Text>
-                    <Text className="text-sm text-slate-700 font-bold leading-5" numberOfLines={2}>
-                      {storeData?.address || 'Address not added'}{storeData?.pincode ? `, ${storeData.pincode}` : ''}
-                    </Text>
-                  </View>
-                </View>
-
-                <View className="flex-row gap-3 mb-3">
-                  <View className="flex-1 bg-slate-50 rounded-[1.15rem] border border-slate-100 p-3">
-                    <View className="flex-row items-center mb-1">
-                      <MaterialCommunityIcons name="phone-outline" size={14} color="#059669" />
-                      <Text className="text-[8px] text-slate-400 font-black uppercase tracking-[1.5px] ml-1.5">Mobile</Text>
-                    </View>
-                    <Text className="text-slate-800 text-xs font-black" numberOfLines={1}>{storeData.mobile || 'Not added'}</Text>
-                  </View>
-
-                  <View className="flex-1 bg-slate-50 rounded-[1.15rem] border border-slate-100 p-3">
-                    <View className="flex-row items-center mb-1">
-                      <MaterialCommunityIcons name="email-outline" size={14} color="#059669" />
-                      <Text className="text-[8px] text-slate-400 font-black uppercase tracking-[1.5px] ml-1.5">Email</Text>
-                    </View>
-                    <Text className="text-slate-800 text-xs font-black" numberOfLines={1}>{storeData?.email || 'Not added'}</Text>
-                  </View>
-                </View>
-
-                <View className="bg-slate-50 rounded-[1.15rem] border border-slate-100 p-3">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-1 pr-2">
-                      <View className="flex-row items-center mb-1">
-                        <MaterialCommunityIcons name="file-document-outline" size={14} color="#059669" />
-                        <Text className="text-[8px] text-slate-400 font-black uppercase tracking-[1.5px] ml-1.5">GST</Text>
-                      </View>
-                      <Text className="text-slate-800 text-[11px] font-black" numberOfLines={1}>{storeData?.gst_number || 'Not added'}</Text>
-                    </View>
-                    <View className="w-px h-10 bg-slate-200" />
-                    <View className="flex-1 pl-3">
-                      <View className="flex-row items-center mb-1">
-                        <MaterialCommunityIcons name="clipboard-text-outline" size={14} color="#059669" />
-                        <Text className="text-[8px] text-slate-400 font-black uppercase tracking-[1.5px] ml-1.5">Drug License</Text>
-                      </View>
-                      <Text className="text-slate-800 text-[11px] font-black" numberOfLines={1}>{storeData?.drug_license_number || 'Not added'}</Text>
-                    </View>
-                  </View>
-                </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#123B5D', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8 }}>Edit Profile</Text>
+                <Feather name="chevron-right" size={14} color="#4ADE80" style={{ marginLeft: 4 }} />
               </View>
             </View>
-          </View>
+
+            {/* Quick Status Pills */}
+            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E8F4F5' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons
+                  name={storeData.is_verified ? "check-decagram" : "shield-alert-outline"}
+                  size={11}
+                  color={storeData.is_verified ? "#16A34A" : "#F59E0B"}
+                />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  {storeData.is_verified ? "Verified Store" : "Unverified Store"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="progress-check" size={11} color="#0F8B8D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  {storeData?.profile_completion_percent || 0}% Complete
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="phone-outline" size={11} color="#123B5D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  {storeData.mobile || "No Mobile"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="file-document-outline" size={11} color="#0F8B8D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  GST: {storeData?.gst_number ? "Added" : "Pending"}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
         ) : (
           <View className="mb-6">
             {profileError && !profileLoading ? (
@@ -886,234 +1010,215 @@ export default function SellerSettingsScreen() {
           </View>
         )}
 
+        {/* ── Enterprise Delivery & Pickup Settings Trigger Card ── */}
         {storeData && deliverySettings && (
-          <View className="mb-5 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/40">
-            <LinearGradient colors={['#0f172a', '#075985', '#047857']} className="p-5">
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                  <MaterialCommunityIcons name="truck-delivery-outline" size={22} color="#6ee7b7" />
-                  <View className="ml-3">
-                    <Text className="text-base font-black text-white">Delivery & Pickup</Text>
-                    <Text className="text-[8px] font-black uppercase tracking-[1.5px] text-emerald-200">Customer fulfillment configuration</Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={saveDeliveryConfiguration} disabled={deliveryBusy} className="rounded-xl bg-white/15 px-3 py-2">
-                  {deliveryBusy ? <ActivityIndicator size="small" color="white" /> : <Text className="text-[9px] font-black uppercase text-white">Save</Text>}
-                </TouchableOpacity>
-              </View>
-            </LinearGradient>
-
-            <View className="p-5">
-              {[
-                ['pickup_enabled', 'Store pickup', 'Customers can collect medicines at your store'],
-                ['home_delivery_enabled', 'Home delivery', 'Offer delivery inside your configured radius'],
-              ].map(([field, title, subtitle]) => (
-                <View key={field} className="mb-3 flex-row items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                  <View className="flex-1 pr-4">
-                    <Text className="font-black text-slate-900">{title}</Text>
-                    <Text className="mt-1 text-[10px] font-semibold text-slate-500">{subtitle}</Text>
-                  </View>
-                  <Switch
-                    value={Boolean(deliverySettings[field])}
-                    onValueChange={(value) => updateDeliveryField(field, value)}
-                    trackColor={{ false: '#cbd5e1', true: '#10b981' }}
-                    thumbColor="#fff"
-                  />
-                </View>
-              ))}
-
-              <View className="flex-row flex-wrap justify-between">
-                {[
-                  ['maximum_delivery_radius_km', 'Maximum radius (km)'],
-                  ['free_delivery_distance_km', 'Free distance (km)'],
-                  ['base_delivery_charge', 'Base charge (₹)'],
-                  ['per_km_charge', 'Per km charge (₹)'],
-                  ['minimum_delivery_charge', 'Minimum charge (₹)'],
-                  ['maximum_delivery_charge', 'Maximum charge (₹)'],
-                  ['default_estimated_delivery_minutes', 'Base ETA (minutes)'],
-                  ['delivery_time_per_km_minutes', 'Minutes per km'],
-                ].map(([field, label]) => (
-                  <View key={field} style={{ width: '48%' }} className="mb-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                    <Text className="text-[7px] font-black uppercase tracking-[1px] text-slate-400">{label}</Text>
-                    <TextInput
-                      value={String(deliverySettings[field] ?? '')}
-                      onChangeText={(value) => updateDeliveryField(field, field === 'maximum_delivery_charge' && value.trim() === '' ? null : value)}
-                      keyboardType="decimal-pad"
-                      className="mt-1 text-sm font-black text-slate-900"
-                    />
-                  </View>
-                ))}
-              </View>
-
-              <Text className="mb-2 mt-1 text-[8px] font-black uppercase tracking-[1.5px] text-slate-400">Customer delivery message</Text>
-              <TextInput
-                value={deliverySettings.delivery_message_template || ''}
-                onChangeText={(value) => updateDeliveryField('delivery_message_template', value)}
-                multiline
-                className="mb-4 min-h-[64px] rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-800"
-              />
-              <Text className="mb-2 text-[8px] font-black uppercase tracking-[1.5px] text-slate-400">Default unavailable message</Text>
-              <TextInput
-                value={deliverySettings.delivery_unavailable_message || ''}
-                onChangeText={(value) => updateDeliveryField('delivery_unavailable_message', value)}
-                multiline
-                className="mb-4 min-h-[64px] rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-800"
-              />
-
-              <View className="mb-3 flex-row items-center justify-between">
-                <Text className="text-[9px] font-black uppercase tracking-[1.5px] text-slate-500">Delivery team</Text>
-                <TouchableOpacity onPress={() => setDeliveryPersonOpen(true)} className="rounded-xl bg-emerald-600 px-3 py-2">
-                  <Text className="text-[8px] font-black uppercase text-white">Add person</Text>
-                </TouchableOpacity>
-              </View>
-              {deliveryPeople.length === 0 ? (
-                <Text className="rounded-2xl bg-amber-50 p-3 text-[10px] font-bold text-amber-700">No delivery person added. Delivery can still be quoted, but assign staff before dispatch when available.</Text>
-              ) : deliveryPeople.map(person => (
-                <View key={person.id} className="mb-2 flex-row items-center rounded-2xl border border-slate-100 p-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
-                    <MaterialCommunityIcons name="moped" size={20} color="#2563eb" />
-                  </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="font-black text-slate-900">{person.name}</Text>
-                    <Text className="text-[9px] font-bold uppercase text-slate-400">{person.vehicle_type} • {person.current_order_count}/{person.max_concurrent_orders} orders</Text>
-                    <Text selectable className="mt-1 text-[8px] font-black text-blue-600">PARTNER ID: {person.login_id}</Text>
-                  </View>
-                  <View className="ml-2 items-end">
-                    <Switch value={Boolean(person.is_available)} onValueChange={() => toggleDeliveryPerson(person)} disabled={!person.is_active} />
-                    <View className="mt-1 rounded-full bg-slate-100 px-2 py-0.5">
-                      <Text className={`text-[7px] font-black uppercase ${person.is_active ? 'text-emerald-700' : 'text-slate-500'}`}>
-                        {person.is_active ? 'Active' : 'Inactive'}
-                      </Text>
-                    </View>
-                    <TouchableOpacity onPress={() => sharePartnerId(person)} className="mt-1 flex-row items-center rounded-lg bg-blue-50 px-2 py-1">
-                      <MaterialCommunityIcons name="share-variant-outline" size={11} color="#2563eb" />
-                      <Text className="ml-1 text-[7px] font-black uppercase text-blue-700">Share ID</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { setPartnerPinTarget(person); setPartnerNewPin(''); }} className="mt-1 flex-row items-center rounded-lg bg-orange-50 px-2 py-1">
-                      <MaterialCommunityIcons name="key-variant" size={11} color="#ea580c" />
-                      <Text className="ml-1 text-[7px] font-black uppercase text-orange-700">Set / Share PIN</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deactivateDeliveryPerson(person)} className="mt-1 flex-row items-center rounded-lg bg-amber-50 px-2 py-1">
-                      <MaterialCommunityIcons name="pause-circle-outline" size={11} color="#d97706" />
-                      <Text className="ml-1 text-[7px] font-black uppercase text-amber-700">Deactivate</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteDeliveryPerson(person)} className="mt-1 flex-row items-center rounded-lg bg-rose-50 px-2 py-1">
-                      <MaterialCommunityIcons name="delete-outline" size={11} color="#e11d48" />
-                      <Text className="ml-1 text-[7px] font-black uppercase text-rose-700">Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* ── documents accordion ───────── */}
-        {storeData && (
-
           <TouchableOpacity
-            onPress={() => setDocsOpen(!docsOpen)}
-            disabled={docUploadBusy || loading}
-            className="bg-white rounded-[1.5rem] border border-slate-200/70 shadow-xl shadow-slate-200/40 px-5 py-4 flex-row items-center justify-between"
+            activeOpacity={0.88}
+            onPress={() => setDeliveryModalOpen(true)}
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#B9DDE0',
+              marginBottom: 16,
+              padding: 16,
+              elevation: 4,
+              shadowColor: '#123B5D',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.08,
+              shadowRadius: 10
+            }}
           >
-            <View className="flex-row items-center">
-              <View className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 items-center justify-center mr-3">
-                <MaterialCommunityIcons name="file-document-multiple-outline" size={19} color="#059669" />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#E8F4F5', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center' }}>
+                  <MaterialCommunityIcons name="truck-delivery-outline" size={24} color="#0F8B8D" />
+                </View>
+                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: '#102A43' }}>Delivery & Pickup Settings</Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A', marginLeft: 8 }} />
+                  </View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#627D98', marginTop: 2 }} numberOfLines={1}>
+                    Configure rates, delivery radius, ETA & riders
+                  </Text>
+                </View>
               </View>
-              <Text className="text-base font-black text-slate-950 uppercase tracking-wide">
-                Documents
-              </Text>
-            </View>
-            {docUploadBusy && <ActivityIndicator size="small" color="#059669" />}
 
-            <AntDesign
-              name={docsOpen ? 'up' : 'down'}
-              size={18}
-              color="#4B5563"
-            />
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#123B5D', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8 }}>Configure</Text>
+                <Feather name="chevron-right" size={14} color="#4ADE80" style={{ marginLeft: 4 }} />
+              </View>
+            </View>
+
+            {/* Quick Status Pills */}
+            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E8F4F5' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name={deliverySettings.home_delivery_enabled ? "check-circle-outline" : "close-circle-outline"} size={11} color={deliverySettings.home_delivery_enabled ? "#16A34A" : "#627D98"} />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  {deliverySettings.home_delivery_enabled ? "Home Delivery Active" : "Home Delivery Off"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="storefront-outline" size={11} color="#0F8B8D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  {deliverySettings.pickup_enabled ? "Store Pickup Active" : "Pickup Off"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="map-marker-distance" size={11} color="#123B5D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  {deliverySettings.maximum_delivery_radius_km || 10} km Radius
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="moped" size={11} color="#0F8B8D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  {deliveryPeople.length} Riders
+                </Text>
+              </View>
+            </View>
           </TouchableOpacity>
         )}
 
+        {/* ── Enterprise Account Security & Password Trigger Card ── */}
         {storeData && (
-          <View className="bg-white rounded-[1.5rem] shadow-xl shadow-slate-200/40 border border-slate-200/70 mb-8 mt-3 overflow-hidden">
-            {/* header */}
-
-
-            {docsOpen && (
-              <View className="border-t border-gray-100">
-                {[
-                  { label: 'Store Licence', field: 'store_license_document' },
-                  { label: 'Owner ID Proof', field: 'owner_id_proof' },
-                  { label: 'Store Photo', field: 'store_image' },
-                ].map(({ label, field }, i) => {
-                  const url = (storeData as any)?.[field];
-                  const newFile = docUpdates[field];          // ⬅️ newly selected
-                  const isImage = (url || newFile?.uri) ? /\.(png|jpe?g|jpg)$/i.test(url || newFile?.name) : false;
-
-                  const rowPress = () => {
-                    if (url) setPreviewUrl(url);              // view existing
-                    else pickFileForField(field);             // upload new
-                  };
-
-                  const rowLongPress = () => {
-                    /* allow replace even if url present */
-                    pickFileForField(field);
-                  };
-
-                  return (
-                    <TouchableOpacity
-                      key={field}
-                      onPress={rowPress}
-                      onLongPress={rowLongPress}
-                      disabled={docUploadBusy || loading}
-                      className={`px-5 py-4 flex-row items-center justify-between ${i !== 2 ? 'border-b border-gray-100' : ''
-                        }`}
-                    >
-                      {/* left icon + label */}
-                      <View className="flex-row items-center flex-1">
-                        {/* icon */}
-                        {newFile ? (
-                          <Ionicons name="cloud-upload-outline" size={22} color="#059669" />
-                        ) : (
-                          <MaterialCommunityIcons
-                            name={isImage ? 'file-image' : 'file-document'}
-                            size={22}
-                            color={url ? '#059669' : '#9CA3AF'}
-                          />
-                        )}
-
-                        {/* label */}
-                        <Text
-                          className={`ml-3 flex-1 ${url || newFile ? 'text-gray-800' : 'text-gray-400 italic'
-                            }`}
-                        >
-                          {newFile ? `Selected: ${newFile.name}` : label}
-                        </Text>
-                      </View>
-
-                      {/* delete button if url exists */}
-                      {url && !newFile && (
-                        <TouchableOpacity
-                          // onPress={() => handleDeleteDocument(field)}
-                          onPress={() => {
-                            setDeleteField(field);
-                            setDeleteVisible(true);
-                          }}
-                          disabled={docUploadBusy || loading}
-
-                          className="ml-2"
-                        >
-                          <Ionicons name="trash-bin-outline" size={18} color="#ef4444" />
-                        </TouchableOpacity>
-                      )}
-                    </TouchableOpacity>
-
-                  );
-                })}
-
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => {
+              resetPasswordModalState();
+              setPasswordModalOpen(true);
+            }}
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#B9DDE0',
+              marginBottom: 16,
+              padding: 16,
+              elevation: 4,
+              shadowColor: '#123B5D',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.08,
+              shadowRadius: 10
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#E8F4F5', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center' }}>
+                  <MaterialCommunityIcons name="shield-lock-outline" size={24} color="#0F8B8D" />
+                </View>
+                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: '#102A43' }}>Account Security & Password</Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A', marginLeft: 8 }} />
+                  </View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#627D98', marginTop: 2 }} numberOfLines={1}>
+                    {storeData.email || 'Email missing'} • Password protected
+                  </Text>
+                </View>
               </View>
-            )}
-          </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#123B5D', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8 }}>Change</Text>
+                <Feather name="chevron-right" size={14} color="#4ADE80" style={{ marginLeft: 4 }} />
+              </View>
+            </View>
+
+            {/* Quick Status Pills */}
+            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E8F4F5' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="lock-check-outline" size={11} color="#16A34A" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  Password Set
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="email-check-outline" size={11} color="#0F8B8D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  Email OTP Auth
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="whatsapp" size={11} color="#25D366" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  WhatsApp OTP Active
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* ── Enterprise Store Documents & Verification Trigger Card ── */}
+        {storeData && (
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => setDocsModalOpen(true)}
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#B9DDE0',
+              marginBottom: 16,
+              padding: 16,
+              elevation: 4,
+              shadowColor: '#123B5D',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.08,
+              shadowRadius: 10
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#E8F4F5', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center' }}>
+                  <MaterialCommunityIcons name="file-document-multiple-outline" size={24} color="#0F8B8D" />
+                </View>
+                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: '#102A43' }}>Store Verification Documents</Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A', marginLeft: 8 }} />
+                  </View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#627D98', marginTop: 2 }} numberOfLines={1}>
+                    Licenses, Owner ID Proofs & Premises Photos
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#123B5D', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8 }}>Manage</Text>
+                <Feather name="chevron-right" size={14} color="#4ADE80" style={{ marginLeft: 4 }} />
+              </View>
+            </View>
+
+            {/* Quick Status Pills */}
+            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E8F4F5' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name={(storeData as any)?.store_license_document ? "file-check-outline" : "file-clock-outline"} size={11} color={(storeData as any)?.store_license_document ? "#16A34A" : "#D97706"} />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  License: {(storeData as any)?.store_license_document ? "Uploaded" : "Pending"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name={(storeData as any)?.owner_id_proof ? "card-account-details-outline" : "card-search-outline"} size={11} color={(storeData as any)?.owner_id_proof ? "#16A34A" : "#D97706"} />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  Owner ID: {(storeData as any)?.owner_id_proof ? "Uploaded" : "Pending"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name={(storeData as any)?.store_image ? "image-check" : "image-off-outline"} size={11} color={(storeData as any)?.store_image ? "#16A34A" : "#D97706"} />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  Store Photo: {(storeData as any)?.store_image ? "Uploaded" : "Pending"}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
         )}
 
         {storeData && (
@@ -1494,6 +1599,190 @@ export default function SellerSettingsScreen() {
         </View>
       </Modal>
 
+      {/* ── ENTERPRISE DELIVERY & PICKUP FULFILMENT MODAL SHEET ── */}
+      <Modal
+        visible={deliveryModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDeliveryModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', overflow: 'hidden', borderWidth: 1, borderColor: '#B9DDE0' }}>
+            {/* Modal Header */}
+            <LinearGradient colors={['#123B5D', '#184C75', '#0F8B8D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.14)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                    <MaterialCommunityIcons name="truck-delivery-outline" size={22} color="#4ADE80" />
+                  </View>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.5 }}>Delivery & Pickup Logistics</Text>
+                    <Text style={{ fontSize: 8.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(255, 255, 255, 0.75)' }}>Rates, Radius, ETA & Rider Management</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setDeliveryModalOpen(false)}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <AntDesign name="close" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+
+            {/* Modal Body ScrollView */}
+            {deliverySettings && (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+                {/* Toggles */}
+                {[
+                  ['pickup_enabled', 'Store Pickup', 'Customers can collect orders directly at your pharmacy counter'],
+                  ['home_delivery_enabled', 'Home Delivery', 'Offer fast doorstep delivery within your configured radius'],
+                ].map(([field, title, subtitle]) => (
+                  <View key={field} style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', backgroundColor: '#E8F4F5', padding: 14 }}>
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: '#102A43' }}>{title}</Text>
+                      <Text style={{ marginTop: 2, fontSize: 10, fontWeight: '600', color: '#627D98' }}>{subtitle}</Text>
+                    </View>
+                    <Switch
+                      value={Boolean(deliverySettings[field])}
+                      onValueChange={(value) => updateDeliveryField(field, value)}
+                      trackColor={{ false: '#B9DDE0', true: '#0F8B8D' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+                ))}
+
+                {/* 8 Rates Grid */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 6 }}>
+                  {[
+                    ['maximum_delivery_radius_km', 'Max Radius (km)', 'Doorstep delivery limit', '10'],
+                    ['free_delivery_distance_km', 'Free Distance (km)', '₹0 fee up to this distance', '2'],
+                    ['base_delivery_charge', 'Base Charge (₹)', 'Standard base delivery fee', '30'],
+                    ['per_km_charge', 'Per km Charge (₹)', 'Extra fee per km beyond free', '10'],
+                    ['minimum_delivery_charge', 'Min Charge (₹)', 'Lowest delivery fee charged', '30'],
+                    ['maximum_delivery_charge', 'Max Charge (₹)', 'Cap on maximum delivery fee', '150'],
+                    ['default_estimated_delivery_minutes', 'Base ETA (mins)', 'Store prep & dispatch time', '30'],
+                    ['delivery_time_per_km_minutes', 'Mins Per km', 'Rider travel time per km', '5'],
+                  ].map(([field, label, hint, defaultVal]) => (
+                    <View key={field} style={{ width: '48%', marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', backgroundColor: '#F4F8FA', paddingHorizontal: 12, paddingVertical: 10 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: '#102A43' }}>{label}</Text>
+                      <Text style={{ fontSize: 7.5, fontWeight: '700', color: '#627D98', marginTop: 1, height: 20 }} numberOfLines={2}>{hint}</Text>
+                      <TextInput
+                        value={String(
+                          deliverySettings[field] !== undefined &&
+                          deliverySettings[field] !== null &&
+                          deliverySettings[field] !== '' &&
+                          Number(deliverySettings[field]) > 0
+                            ? deliverySettings[field]
+                            : defaultVal
+                        )}
+                        onChangeText={(value) => updateDeliveryField(field, field === 'maximum_delivery_charge' && value.trim() === '' ? null : value)}
+                        placeholder={defaultVal}
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="decimal-pad"
+                        style={{ marginTop: 6, fontSize: 14, fontWeight: '900', color: '#123B5D', backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: '#B9DDE0', paddingHorizontal: 10, paddingVertical: 6 }}
+                      />
+                    </View>
+                  ))}
+                </View>
+
+                {/* Messages */}
+                <Text style={{ marginBottom: 6, marginTop: 6, fontSize: 8.5, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, color: '#627D98' }}>Customer Delivery Message</Text>
+                <TextInput
+                  value={deliverySettings.delivery_message_template || ''}
+                  onChangeText={(value) => updateDeliveryField('delivery_message_template', value)}
+                  multiline
+                  style={{ marginBottom: 14, minHeight: 60, borderRadius: 14, borderWidth: 1, borderColor: '#B9DDE0', backgroundColor: '#F4F8FA', padding: 12, fontSize: 12, fontWeight: '700', color: '#102A43' }}
+                />
+                <Text style={{ marginBottom: 6, fontSize: 8.5, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, color: '#627D98' }}>Default Unavailable Message</Text>
+                <TextInput
+                  value={deliverySettings.delivery_unavailable_message || ''}
+                  onChangeText={(value) => updateDeliveryField('delivery_unavailable_message', value)}
+                  multiline
+                  style={{ marginBottom: 16, minHeight: 60, borderRadius: 14, borderWidth: 1, borderColor: '#B9DDE0', backgroundColor: '#F4F8FA', padding: 12, fontSize: 12, fontWeight: '700', color: '#102A43' }}
+                />
+
+                {/* Delivery Team */}
+                <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, color: '#102A43' }}>Delivery Team & Riders</Text>
+                  <TouchableOpacity onPress={() => setDeliveryPersonOpen(true)} style={{ borderRadius: 10, backgroundColor: '#123B5D', paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#0F8B8D' }}>
+                    <Text style={{ fontSize: 8.5, fontWeight: '900', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: 0.8 }}>+ Add Rider</Text>
+                  </TouchableOpacity>
+                </View>
+                {deliveryPeople.length === 0 ? (
+                  <View style={{ borderRadius: 14, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', padding: 12 }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#92400E', lineHeight: 15 }}>No delivery person registered. Orders can still be quoted, but assign staff before dispatch.</Text>
+                  </View>
+                ) : deliveryPeople.map(person => (
+                  <View key={person.id} style={{ marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', backgroundColor: '#E8F4F5', padding: 12 }}>
+                    <View style={{ width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#B9DDE0' }}>
+                      <MaterialCommunityIcons name="moped" size={22} color="#0F8B8D" />
+                    </View>
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: '#102A43' }}>{person.name}</Text>
+                      <Text style={{ fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', color: '#627D98', marginTop: 1 }}>{person.vehicle_type} • {person.current_order_count}/{person.max_concurrent_orders} orders</Text>
+                      <Text selectable style={{ marginTop: 2, fontSize: 8.5, fontWeight: '900', color: '#123B5D' }}>PARTNER ID: {person.login_id}</Text>
+                    </View>
+                    <View style={{ marginLeft: 8, alignItems: 'flex-end' }}>
+                      <Switch value={Boolean(person.is_available)} onValueChange={() => toggleDeliveryPerson(person)} disabled={!person.is_active} trackColor={{ false: '#B9DDE0', true: '#0F8B8D' }} thumbColor="#FFFFFF" />
+                      <TouchableOpacity onPress={() => sharePartnerId(person)} style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#B9DDE0', paddingHorizontal: 8, paddingVertical: 3 }}>
+                        <MaterialCommunityIcons name="share-variant-outline" size={11} color="#123B5D" />
+                        <Text style={{ marginLeft: 4, fontSize: 7.5, fontWeight: '900', textTransform: 'uppercase', color: '#123B5D' }}>Share ID</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => { setPartnerPinTarget(person); setPartnerNewPin(''); }} style={{ marginTop: 3, flexDirection: 'row', alignItems: 'center', borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#B9DDE0', paddingHorizontal: 8, paddingVertical: 3 }}>
+                        <MaterialCommunityIcons name="key-variant" size={11} color="#0F8B8D" />
+                        <Text style={{ marginLeft: 4, fontSize: 7.5, fontWeight: '900', textTransform: 'uppercase', color: '#0F8B8D' }}>Set PIN</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => deactivateDeliveryPerson(person)} style={{ marginTop: 3, flexDirection: 'row', alignItems: 'center', borderRadius: 8, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 3 }}>
+                        <MaterialCommunityIcons name="pause-circle-outline" size={11} color="#B45309" />
+                        <Text style={{ marginLeft: 4, fontSize: 7.5, fontWeight: '900', textTransform: 'uppercase', color: '#B45309' }}>Deactivate</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => deleteDeliveryPerson(person)} style={{ marginTop: 3, flexDirection: 'row', alignItems: 'center', borderRadius: 8, backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#DC2626', paddingHorizontal: 8, paddingVertical: 3 }}>
+                        <MaterialCommunityIcons name="delete-outline" size={11} color="#DC2626" />
+                        <Text style={{ marginLeft: 4, fontSize: 7.5, fontWeight: '900', textTransform: 'uppercase', color: '#DC2626' }}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+
+                {/* Save CTA Bar */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={async () => {
+                    await saveDeliveryConfiguration();
+                    setDeliveryModalOpen(false);
+                  }}
+                  disabled={deliveryBusy}
+                  style={{
+                    marginTop: 16,
+                    backgroundColor: '#123B5D',
+                    borderRadius: 16,
+                    paddingVertical: 14,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: '#0F8B8D',
+                    elevation: 3
+                  }}
+                >
+                  {deliveryBusy ? (
+                    <ActivityIndicator color="#4ADE80" />
+                  ) : (
+                    <>
+                      <Feather name="check-circle" size={18} color="#4ADE80" />
+                      <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1 }}>
+                        Save Delivery Settings
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* ── preview modal ─────────────── */}
       <Modal
         visible={!!previewUrl}
@@ -1557,172 +1846,590 @@ export default function SellerSettingsScreen() {
 
         </View>
       </Modal>
-      {/* ── EDIT MODAL ─────────────────────── */}
+      {/* ── ENTERPRISE STORE IDENTITY & PROFILE MODAL SHEET ── */}
       <Modal
         visible={editOpen}
         transparent
-        animationType="fade"
-        onRequestClose={() => !editBusy && setEditOpen(false)}
+        animationType="slide"
+        onRequestClose={() => {
+          if (!editBusy) {
+            setEditOpen(false);
+            fetchProfile();
+          }
+        }}
       >
-        <View className="flex-1 bg-black/60 justify-center items-center px-5">
-          <View className="w-full max-w-md bg-white rounded-[2.25rem] shadow-2xl overflow-hidden border border-slate-200">
-            <LinearGradient
-              colors={['#0f172a', '#1e293b', '#064e3b']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              className="h-2"
-            />
-            <View className="p-5">
-              <View className="flex-row items-center mb-5">
-                <View className="w-16 h-16 rounded-[1.35rem] bg-emerald-50 border border-emerald-100 items-center justify-center shadow-lg shadow-slate-200">
-                  <MaterialCommunityIcons name="store-edit-outline" size={32} color="#059669" />
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', overflow: 'hidden', borderWidth: 1, borderColor: '#B9DDE0' }}>
+            {/* Modal Header */}
+            <LinearGradient colors={['#123B5D', '#184C75', '#0F8B8D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.14)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                    <MaterialCommunityIcons name="storefront-outline" size={22} color="#4ADE80" />
+                  </View>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.5 }}>Store Identity & Profile</Text>
+                    <Text style={{ fontSize: 8.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(255, 255, 255, 0.75)' }}>Official store details, contact & compliance licenses</Text>
+                  </View>
                 </View>
-                <View className="ml-4 flex-1">
-                  <Text className="text-xl font-black text-slate-950" numberOfLines={1}>Edit Store</Text>
-                  <Text className="text-[9px] font-black text-emerald-600 uppercase tracking-[2px] mt-0.5">Profile & Compliance</Text>
-                </View>
+
                 <TouchableOpacity
                   onPress={() => {
                     setEditOpen(false);
                     fetchProfile();
                   }}
                   disabled={editBusy}
-                  className={`w-9 h-9 rounded-full bg-slate-50 border border-slate-200 items-center justify-center ${editBusy ? 'opacity-50' : ''}`}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <MaterialCommunityIcons name="close" size={18} color="#64748b" />
+                  <AntDesign name="close" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
+            </LinearGradient>
 
-              <ScrollView showsVerticalScrollIndicator={false} className="max-h-[58vh]">
-                <StorePillInput
-                  label="Store Name"
-                  value={name}
-                  onChange={setName}
-                  editable={!editBusy}
-                  placeholder="Store Name"
-                  icon="storefront-outline"
-                />
+            {/* Modal ScrollView Body */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+              <StorePillInput
+                label="Store Name"
+                value={name}
+                onChange={setName}
+                editable={!editBusy}
+                placeholder="Store Name"
+                icon="storefront-outline"
+              />
 
-                <StorePillInput
-                  label="Owner Name"
-                  value={ownerName}
-                  onChange={setOwnerName}
-                  editable={!editBusy}
-                  placeholder="Owner Name"
-                  icon="account-tie-outline"
-                />
+              <StorePillInput
+                label="Owner Name"
+                value={ownerName}
+                onChange={setOwnerName}
+                editable={!editBusy}
+                placeholder="Owner Name"
+                icon="account-tie-outline"
+              />
 
-                <StorePillInput
-                  label="Mobile Number"
-                  value={mobile}
-                  onChange={setMobile}
-                  editable={!editBusy}
-                  placeholder="10-digit mobile"
-                  keyboardType="phone-pad"
-                  icon="phone-outline"
-                />
+              <StorePillInput
+                label="Mobile Number"
+                value={mobile}
+                onChange={setMobile}
+                editable={!editBusy}
+                placeholder="10-digit mobile"
+                keyboardType="phone-pad"
+                icon="phone-outline"
+              />
 
-                <StorePillInput
-                  label="Email Address"
-                  value={email}
-                  onChange={setEmail}
-                  editable={!editBusy}
-                  placeholder="Email"
-                  keyboardType="email-address"
-                  icon="email-outline"
-                />
+              <StorePillInput
+                label="Email Address"
+                value={email}
+                onChange={setEmail}
+                editable={!editBusy}
+                placeholder="Email"
+                keyboardType="email-address"
+                icon="email-outline"
+              />
 
-                <View className="mb-4">
-                  <Text className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-4">Store Address</Text>
-                  <View className="bg-slate-50 rounded-[1.5rem] border border-slate-200 relative overflow-hidden">
-                    <View className="absolute top-4 left-4 z-10">
-                      <MaterialCommunityIcons name="map-marker-outline" size={18} color="#059669" />
-                    </View>
-                    <TextInput
-                      value={address}
-                      onChangeText={setAddress}
-                      editable={!editBusy}
-                      placeholder="Complete store address"
-                      multiline
-                      className="p-4 pl-11 text-slate-900 font-bold min-h-[78px] text-sm"
-                      placeholderTextColor="#A1A1AA"
-                      textAlignVertical="top"
-                    />
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, color: '#627D98', marginBottom: 6, marginLeft: 4 }}>Store Address</Text>
+                <View style={{ backgroundColor: '#F4F8FA', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', position: 'relative', overflow: 'hidden' }}>
+                  <View style={{ position: 'absolute', top: 14, left: 14, zIndex: 10 }}>
+                    <MaterialCommunityIcons name="map-marker-outline" size={18} color="#0F8B8D" />
                   </View>
-                </View>
-
-                <StorePillInput
-                  label="Pincode"
-                  value={pincode}
-                  onChange={setPincode}
-                  editable={!editBusy}
-                  placeholder="Area pincode"
-                  keyboardType="numeric"
-                  icon="map-marker-radius-outline"
-                />
-
-                <StorePillInput
-                  label="GST Number"
-                  value={gstNumber}
-                  onChange={setGstNumber}
-                  editable={!editBusy}
-                  placeholder="GST Number"
-                  icon="file-document-outline"
-                />
-
-                <StorePillInput
-                  label="Drug License"
-                  value={drugLicense}
-                  onChange={setDrugLicense}
-                  editable={!editBusy}
-                  placeholder="Drug License Number"
-                  icon="clipboard-text-outline"
-                />
-
-                <View className="bg-slate-50 rounded-[1.5rem] border border-slate-200 p-4 mb-4 flex-row items-center justify-between">
-                  <View className="flex-row items-start flex-1 mr-4">
-                    <View className="w-10 h-10 rounded-xl bg-white border border-slate-200 items-center justify-center">
-                      <MaterialCommunityIcons name="flash-outline" size={18} color="#059669" />
-                    </View>
-                    <View className="ml-3 flex-1">
-                      <Text className="text-sm font-black text-slate-900">Auto Accept Prescriptions</Text>
-                      <Text className="text-[11px] text-slate-500 font-semibold leading-4 mt-0.5">Emergency mode prescriptions will automatically be routed to you.</Text>
-                    </View>
-                  </View>
-                  <Switch
-                    value={autoAccept}
-                    onValueChange={setAutoAccept}
-                    disabled={editBusy}
-                    trackColor={{ false: '#d1d5db', true: '#10b981' }}
-                    thumbColor={Platform.OS === 'ios' ? '#fff' : autoAccept ? '#fff' : '#f4f3f4'}
+                  <TextInput
+                    value={address}
+                    onChangeText={setAddress}
+                    editable={!editBusy}
+                    placeholder="Complete store address"
+                    multiline
+                    style={{ padding: 14, paddingLeft: 42, color: '#102A43', fontWeight: '700', minHeight: 78, fontSize: 13 }}
+                    placeholderTextColor="#94A3B8"
+                    textAlignVertical="top"
                   />
                 </View>
-              </ScrollView>
+              </View>
 
-              <View className="flex-row gap-3 mt-5">
-                <TouchableOpacity
-                  onPress={() => {
-                    setEditOpen(false);
-                    fetchProfile();
-                  }}
+              <StorePillInput
+                label="Pincode"
+                value={pincode}
+                onChange={setPincode}
+                editable={!editBusy}
+                placeholder="Area pincode"
+                keyboardType="numeric"
+                icon="map-marker-radius-outline"
+              />
+
+              <StorePillInput
+                label="GST Number"
+                value={gstNumber}
+                onChange={setGstNumber}
+                editable={!editBusy}
+                placeholder="GST Number"
+                icon="file-document-outline"
+              />
+
+              <StorePillInput
+                label="Drug License"
+                value={drugLicense}
+                onChange={setDrugLicense}
+                editable={!editBusy}
+                placeholder="Drug License Number"
+                icon="clipboard-text-outline"
+              />
+
+              <View style={{ backgroundColor: '#E8F4F5', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', padding: 14, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center' }}>
+                    <MaterialCommunityIcons name="flash-outline" size={20} color="#0F8B8D" />
+                  </View>
+                  <View style={{ marginLeft: 10, flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#102A43' }}>Auto Accept Prescriptions</Text>
+                    <Text style={{ fontSize: 9.5, fontWeight: '600', color: '#627D98', marginTop: 1 }}>Emergency mode prescriptions automatically route to your store.</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={autoAccept}
+                  onValueChange={setAutoAccept}
                   disabled={editBusy}
-                  className={`flex-1 py-3.5 bg-slate-50 rounded-full items-center border border-slate-200 ${editBusy ? 'opacity-50' : ''}`}
-                >
-                  <Text className="text-slate-600 font-black text-sm">Discard</Text>
-                </TouchableOpacity>
+                  trackColor={{ false: '#B9DDE0', true: '#0F8B8D' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+
+              {/* Save CTA Button */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={saveProfile}
+                disabled={!isFormValid || editBusy}
+                style={{
+                  backgroundColor: !isFormValid ? '#CBD5E1' : '#123B5D',
+                  borderRadius: 16,
+                  paddingVertical: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: !isFormValid ? '#CBD5E1' : '#0F8B8D',
+                  elevation: 3
+                }}
+              >
+                {editBusy ? (
+                  <ActivityIndicator color="#4ADE80" />
+                ) : (
+                  <>
+                    <Feather name="check-circle" size={18} color={!isFormValid ? '#94A3B8' : '#4ADE80'} />
+                    <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '900', color: !isFormValid ? '#64748B' : '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Save Store Profile
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── ENTERPRISE STORE VERIFICATION DOCUMENTS MODAL SHEET ── */}
+      <Modal
+        visible={docsModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!docUploadBusy) setDocsModalOpen(false);
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '88%', overflow: 'hidden', borderWidth: 1, borderColor: '#B9DDE0' }}>
+            {/* Modal Header */}
+            <LinearGradient colors={['#123B5D', '#184C75', '#0F8B8D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.14)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                    <MaterialCommunityIcons name="file-document-multiple-outline" size={22} color="#4ADE80" />
+                  </View>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.5 }}>Store Verification Documents</Text>
+                    <Text style={{ fontSize: 8.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(255, 255, 255, 0.75)' }}>Licenses, Owner ID Proofs & Premises Photos</Text>
+                  </View>
+                </View>
+
                 <TouchableOpacity
-                  onPress={saveProfile}
-                  disabled={!isFormValid || editBusy}
-                  className={`flex-[1.35] py-3.5 rounded-full items-center shadow-md ${!isFormValid || editBusy ? 'bg-slate-200' : 'bg-slate-900'}`}
+                  onPress={() => setDocsModalOpen(false)}
+                  disabled={docUploadBusy}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  {editBusy ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text className={`font-black text-sm ${!isFormValid ? 'text-slate-500' : 'text-white'}`}>Save Changes</Text>
-                  )}
+                  <AntDesign name="close" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
-            </View>
+            </LinearGradient>
+
+            {/* Modal Body ScrollView */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+              <View style={{ backgroundColor: '#E8F4F5', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', padding: 14, marginBottom: 16, flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name="information-outline" size={20} color="#0F8B8D" />
+                <Text style={{ marginLeft: 10, flex: 1, fontSize: 11, fontWeight: '600', color: '#102A43', lineHeight: 16 }}>
+                  Tap any document to view or upload a new file. Long-press an existing document to replace it.
+                </Text>
+              </View>
+
+              {[
+                { label: 'Store License Document', subLabel: 'Drug license or Trade registration certificate', field: 'store_license_document', icon: 'certificate-outline' },
+                { label: 'Owner ID Proof', subLabel: 'Aadhaar, PAN or Government photo identity', field: 'owner_id_proof', icon: 'card-account-details-outline' },
+                { label: 'Store Premises Photo', subLabel: 'Clear front view of pharmacy & storefront', field: 'store_image', icon: 'storefront-outline' },
+              ].map(({ label, subLabel, field, icon }, i) => {
+                const url = (storeData as any)?.[field];
+                const newFile = docUpdates[field];
+                const isImage = (url || newFile?.uri) ? /\.(png|jpe?g|jpg)$/i.test(url || newFile?.name) : false;
+
+                const rowPress = () => {
+                  if (url) setPreviewUrl(url);
+                  else pickFileForField(field);
+                };
+
+                const rowLongPress = () => {
+                  pickFileForField(field);
+                };
+
+                return (
+                  <View
+                    key={field}
+                    style={{
+                      backgroundColor: '#F4F8FA',
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: '#B9DDE0',
+                      padding: 16,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+                        <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: url || newFile ? '#E8F4F5' : '#FFFFFF', borderWidth: 1, borderColor: url || newFile ? '#B9DDE0' : '#CBD5E1', alignItems: 'center', justifyContent: 'center' }}>
+                          <MaterialCommunityIcons name={icon as any} size={22} color={url || newFile ? '#0F8B8D' : '#64748B'} />
+                        </View>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                          <Text style={{ fontSize: 13.5, fontWeight: '900', color: '#102A43' }}>{label}</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: '#627D98', marginTop: 2 }}>{subLabel}</Text>
+                          {newFile ? (
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: '#0F8B8D', marginTop: 4 }}>
+                              Selected: {newFile.name}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <TouchableOpacity
+                          onPress={rowPress}
+                          onLongPress={rowLongPress}
+                          disabled={docUploadBusy || loading}
+                          style={{
+                            backgroundColor: url ? '#123B5D' : '#0F8B8D',
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 7,
+                            flexDirection: 'row',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <MaterialCommunityIcons name={url ? "eye-outline" : "upload-outline"} size={14} color="#FFFFFF" />
+                          <Text style={{ marginLeft: 4, fontSize: 10, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase' }}>
+                            {url ? "View" : "Upload"}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {url && !newFile && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setDeleteField(field);
+                              setDeleteVisible(true);
+                            }}
+                            disabled={docUploadBusy || loading}
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 10,
+                              backgroundColor: '#FEF2F2',
+                              borderWidth: 1,
+                              borderColor: '#FCA5A5',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <Feather name="trash-2" size={14} color="#DC2626" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+
+              {/* Upload Pending Files Button */}
+              {Object.keys(docUpdates).length > 0 && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={saveDocumentUploads}
+                  disabled={docUploadBusy}
+                  style={{
+                    backgroundColor: '#123B5D',
+                    borderRadius: 16,
+                    paddingVertical: 14,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: '#0F8B8D',
+                    marginTop: 8,
+                    elevation: 3
+                  }}
+                >
+                  {docUploadBusy ? (
+                    <ActivityIndicator color="#4ADE80" />
+                  ) : (
+                    <>
+                      <Feather name="upload-cloud" size={18} color="#4ADE80" />
+                      <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1 }}>
+                        Upload Selected Documents
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── ENTERPRISE ACCOUNT SECURITY & CHANGE PASSWORD MODAL SHEET ── */}
+      <Modal
+        visible={passwordModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!passwordBusy) {
+            setPasswordModalOpen(false);
+            resetPasswordModalState();
+          }
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', overflow: 'hidden', borderWidth: 1, borderColor: '#B9DDE0' }}>
+            {/* Header */}
+            <LinearGradient colors={['#123B5D', '#184C75', '#0F8B8D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.14)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                    <MaterialCommunityIcons name="shield-lock-outline" size={22} color="#4ADE80" />
+                  </View>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.5 }}>Change Account Password</Text>
+                    <Text style={{ fontSize: 8.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(255, 255, 255, 0.75)' }}>
+                      {passwordStep === 'request' ? 'Step 1 of 3: Verification OTP' : passwordStep === 'verify' ? 'Step 2 of 3: Confirm OTP Code' : 'Step 3 of 3: Set New Password'}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setPasswordModalOpen(false);
+                    resetPasswordModalState();
+                  }}
+                  disabled={passwordBusy}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <AntDesign name="close" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+
+            {/* Scrollable Content */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+              {/* Status & Error Messages */}
+              {passwordError ? (
+                <View style={{ backgroundColor: '#FEE2E2', borderRadius: 14, borderWidth: 1, borderColor: '#FCA5A5', padding: 12, marginBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={18} color="#DC2626" />
+                  <Text style={{ marginLeft: 8, fontSize: 11.5, fontWeight: '700', color: '#B91C1C', flex: 1 }}>{passwordError}</Text>
+                </View>
+              ) : null}
+
+              {passwordSuccessMsg ? (
+                <View style={{ backgroundColor: '#DCFCE7', borderRadius: 14, borderWidth: 1, borderColor: '#86EFAC', padding: 12, marginBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="check-circle-outline" size={18} color="#16A34A" />
+                  <Text style={{ marginLeft: 8, fontSize: 11.5, fontWeight: '700', color: '#15803D', flex: 1 }}>{passwordSuccessMsg}</Text>
+                </View>
+              ) : null}
+
+              {/* STEP 1: REQUEST OTP */}
+              {passwordStep === 'request' && (
+                <View>
+                  <View style={{ backgroundColor: '#E8F4F5', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', padding: 16, marginBottom: 16 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, color: '#627D98', marginBottom: 8 }}>Target Store Account</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <MaterialCommunityIcons name="email-outline" size={16} color="#0F8B8D" />
+                      <Text style={{ marginLeft: 8, fontSize: 13, fontWeight: '900', color: '#102A43' }}>{storeData?.email || 'No email attached'}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="phone-outline" size={16} color="#123B5D" />
+                      <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '700', color: '#627D98' }}>{storeData?.mobile || 'No mobile attached'}</Text>
+                    </View>
+                    <Text style={{ marginTop: 10, fontSize: 10, fontWeight: '600', color: '#627D98', lineHeight: 14 }}>
+                      Safety Notice: Pressing the button below will dispatch a 6-digit Security OTP to your email (via Brevo / SMTP) and WhatsApp number.
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={handleRequestPasswordOtp}
+                    disabled={passwordBusy}
+                    style={{
+                      backgroundColor: '#123B5D',
+                      borderRadius: 16,
+                      paddingVertical: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: '#0F8B8D',
+                      elevation: 3
+                    }}
+                  >
+                    {passwordBusy ? (
+                      <ActivityIndicator color="#4ADE80" />
+                    ) : (
+                      <>
+                        <Feather name="send" size={16} color="#4ADE80" />
+                        <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1 }}>
+                          Send Verification OTP
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* STEP 2: VERIFY OTP */}
+              {passwordStep === 'verify' && (
+                <View>
+                  <Text style={{ fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, color: '#627D98', marginBottom: 6, marginLeft: 4 }}>Enter 6-Digit OTP</Text>
+                  <View style={{ backgroundColor: '#F4F8FA', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', paddingHorizontal: 16, paddingVertical: 8, marginBottom: 14 }}>
+                    <TextInput
+                      value={passwordOtp}
+                      onChangeText={setPasswordOtp}
+                      editable={!passwordBusy}
+                      placeholder="• • • • • •"
+                      keyboardType="numeric"
+                      maxLength={6}
+                      style={{ fontSize: 24, fontWeight: '900', color: '#102A43', textAlign: 'center', letterSpacing: 12 }}
+                      placeholderTextColor="#94A3B8"
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={handleVerifyPasswordOtp}
+                    disabled={passwordBusy}
+                    style={{
+                      backgroundColor: '#123B5D',
+                      borderRadius: 16,
+                      paddingVertical: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: '#0F8B8D',
+                      elevation: 3,
+                      marginBottom: 12
+                    }}
+                  >
+                    {passwordBusy ? (
+                      <ActivityIndicator color="#4ADE80" />
+                    ) : (
+                      <>
+                        <Feather name="check-circle" size={16} color="#4ADE80" />
+                        <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1 }}>
+                          Verify OTP Code
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleRequestPasswordOtp}
+                    disabled={passwordBusy}
+                    style={{ paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#0F8B8D', textDecorationLine: 'underline' }}>
+                      Didn't receive OTP? Resend OTP
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* STEP 3: SET NEW PASSWORD */}
+              {passwordStep === 'newPassword' && (
+                <View>
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, color: '#627D98', marginBottom: 6, marginLeft: 4 }}>New Password</Text>
+                    <View style={{ backgroundColor: '#F4F8FA', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
+                      <MaterialCommunityIcons name="lock-outline" size={18} color="#0F8B8D" />
+                      <TextInput
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                        editable={!passwordBusy}
+                        placeholder="At least 6 characters"
+                        secureTextEntry={!showPasswordText}
+                        style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 10, color: '#102A43', fontWeight: '700', fontSize: 13 }}
+                        placeholderTextColor="#94A3B8"
+                      />
+                      <TouchableOpacity onPress={() => setShowPasswordText(!showPasswordText)}>
+                        <Feather name={showPasswordText ? "eye-off" : "eye"} size={16} color="#627D98" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, color: '#627D98', marginBottom: 6, marginLeft: 4 }}>Confirm New Password</Text>
+                    <View style={{ backgroundColor: '#F4F8FA', borderRadius: 16, borderWidth: 1, borderColor: '#B9DDE0', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
+                      <MaterialCommunityIcons name="lock-check-outline" size={18} color="#0F8B8D" />
+                      <TextInput
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                        editable={!passwordBusy}
+                        placeholder="Re-enter new password"
+                        secureTextEntry={!showPasswordText}
+                        style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 10, color: '#102A43', fontWeight: '700', fontSize: 13 }}
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={handleConfirmPasswordReset}
+                    disabled={passwordBusy}
+                    style={{
+                      backgroundColor: '#123B5D',
+                      borderRadius: 16,
+                      paddingVertical: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: '#0F8B8D',
+                      elevation: 3
+                    }}
+                  >
+                    {passwordBusy ? (
+                      <ActivityIndicator color="#4ADE80" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="shield-check" size={18} color="#4ADE80" />
+                        <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1 }}>
+                          Update Store Password
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>

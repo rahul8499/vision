@@ -667,6 +667,14 @@ class SafetyReport(models.Model):
         ('suspicious_behavior', 'Suspicious behavior'),
         ('medicine_safety', 'Medicine safety concern'),
         ('abusive_behavior', 'Abusive behavior'),
+        ('fraudulent_order', 'Fraudulent / Fake Order'),
+        ('prescription_tampering', 'Prescription Tampering'),
+        ('payment_dispute', 'Payment / Delivery Abuse'),
+        ('fake_prescription', 'Fake Prescription'),
+        ('harassment', 'Harassment'),
+        ('cod_fraud', 'COD Fraud'),
+        ('fake_order', 'Fake Order'),
+        ('bulk_abuse', 'Bulk Abuse'),
         ('other', 'Other'),
     ]
     STATUS_CHOICES = [

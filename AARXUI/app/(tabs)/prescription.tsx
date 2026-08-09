@@ -21,6 +21,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -2818,80 +2819,82 @@ export default function Prescription() {
 
       {/* ===== Report Bottom Sheet ===== */}
       <Modal transparent visible={modalReportVisible} animationType="slide" onRequestClose={() => setReportModalVisible(false)}>
-        <View className="flex-1 justify-end bg-slate-950/40">
-          <TouchableOpacity activeOpacity={1} onPress={() => setReportModalVisible(false)} className="absolute inset-0" />
-          <View style={{ height: SCREEN_HEIGHT * 0.75 }} className="bg-white rounded-t-[2.25rem] w-full shadow-2xl overflow-hidden border border-gray-100">
-            <LinearGradient
-              colors={['#020617', '#0f172a', '#7f1d1d']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <View className="items-center pt-3 pb-1">
-                <View className="w-12 h-1.5 rounded-full bg-white/20" />
-              </View>
-              <View className="px-7 pb-6 pt-4 flex-row justify-between items-center">
-                <View>
-                  <Text className="text-xl font-black text-white tracking-tighter uppercase">Report Portal</Text>
-                  <Text className="text-[9px] font-bold text-red-400 uppercase tracking-[3px] mt-1">Direct store Escalation</Text>
+        <View style={{ flex: 1, backgroundColor: 'rgba(2, 6, 23, 0.55)', justifyContent: 'flex-end' }}>
+          <TouchableOpacity activeOpacity={1} onPress={() => setReportModalVisible(false)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+            <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 36, borderTopRightRadius: 36, width: '100%', maxHeight: '92%', overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', elevation: 20 }}>
+              <LinearGradient
+                colors={['#020617', '#0f172a', '#7f1d1d']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <View className="items-center pt-3 pb-1">
+                  <View className="w-12 h-1.5 rounded-full bg-white/20" />
                 </View>
-                <TouchableOpacity onPress={() => setReportModalVisible(false)} className="bg-white/10 p-2.5 rounded-xl"><MaterialCommunityIcons name="close" size={18} color="white" /></TouchableOpacity>
-              </View>
-            </LinearGradient>
-
-            <ScrollView className="flex-1" contentContainerStyle={{ padding: 28, paddingTop: 32, paddingBottom: 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              {storeReportCount > 0 && (
-                <View className="mb-5 p-5 bg-amber-50 rounded-[1.75rem] border border-amber-100">
-                  <View className="flex-row items-center justify-between mb-3">
-                    <Text className="text-amber-700 font-black text-[8px] uppercase tracking-[2px]">Pharmacy Reports</Text>
-                    <Text className="text-amber-700 font-black text-[10px]">{storeReportCount}</Text>
+                <View className="px-7 pb-6 pt-4 flex-row justify-between items-center">
+                  <View>
+                    <Text className="text-xl font-black text-white tracking-tighter uppercase">Report Portal</Text>
+                    <Text className="text-[9px] font-bold text-red-400 uppercase tracking-[3px] mt-1">Direct store Escalation</Text>
                   </View>
-                  <ScrollView style={{ maxHeight: 95 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                    {storeReports.map((note, index) => (
-                      <View key={`${note.created_at}-${index}`} className="mb-3 border-l-2 border-amber-500/30 pl-3">
-                        <Text className="text-amber-950 font-bold text-[12px] leading-4">{note.note}</Text>
-                        <Text className="text-amber-600/70 font-black text-[8px] uppercase tracking-widest mt-1">
-                          {note.store_name || 'Pharmacy'} • {note.created_at}
-                        </Text>
-                      </View>
-                    ))}
-                  </ScrollView>
+                  <TouchableOpacity onPress={() => setReportModalVisible(false)} className="bg-white/10 p-2.5 rounded-xl"><MaterialCommunityIcons name="close" size={18} color="white" /></TouchableOpacity>
                 </View>
-              )}
+              </LinearGradient>
 
-              {reportCount > 0 && (
-                <View className="mb-6 p-5 bg-slate-50 rounded-[1.75rem] border border-slate-100">
-                  <View className="flex-row items-center justify-between mb-3">
-                    <Text className="text-slate-500 font-black text-[8px] uppercase tracking-[2px]">Your Reports</Text>
-                    <Text className="text-red-500 font-black text-[10px]">{reportCount}</Text>
+              <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {storeReportCount > 0 && (
+                  <View className="mb-5 p-5 bg-amber-50 rounded-[1.75rem] border border-amber-100">
+                    <View className="flex-row items-center justify-between mb-3">
+                      <Text className="text-amber-700 font-black text-[8px] uppercase tracking-[2px]">Pharmacy Reports</Text>
+                      <Text className="text-amber-700 font-black text-[10px]">{storeReportCount}</Text>
+                    </View>
+                    <ScrollView style={{ maxHeight: 95 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                      {storeReports.map((note, index) => (
+                        <View key={`${note.created_at}-${index}`} className="mb-3 border-l-2 border-amber-500/30 pl-3">
+                          <Text className="text-amber-950 font-bold text-[12px] leading-4">{note.note}</Text>
+                          <Text className="text-amber-600/70 font-black text-[8px] uppercase tracking-widest mt-1">
+                            {note.store_name || 'Pharmacy'} • {note.created_at}
+                          </Text>
+                        </View>
+                      ))}
+                    </ScrollView>
                   </View>
-                  <ScrollView style={{ maxHeight: 80 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                    {userReports.map((note, index) => (
-                      <View key={`${note.created_at}-${index}`} className="mb-3 border-l-2 border-red-500/20 pl-3">
-                        <Text className="text-slate-900 font-bold text-[12px] leading-4">{note.note}</Text>
-                        <Text className="text-slate-400 font-bold text-[8px] uppercase tracking-widest mt-1">{note.created_at}</Text>
-                      </View>
-                    ))}
-                  </ScrollView>
+                )}
+
+                {reportCount > 0 && (
+                  <View className="mb-6 p-5 bg-slate-50 rounded-[1.75rem] border border-slate-100">
+                    <View className="flex-row items-center justify-between mb-3">
+                      <Text className="text-slate-500 font-black text-[8px] uppercase tracking-[2px]">Your Reports</Text>
+                      <Text className="text-red-500 font-black text-[10px]">{reportCount}</Text>
+                    </View>
+                    <ScrollView style={{ maxHeight: 80 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                      {userReports.map((note, index) => (
+                        <View key={`${note.created_at}-${index}`} className="mb-3 border-l-2 border-red-500/20 pl-3">
+                          <Text className="text-slate-900 font-bold text-[12px] leading-4">{note.note}</Text>
+                          <Text className="text-slate-400 font-bold text-[8px] uppercase tracking-widest mt-1">{note.created_at}</Text>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-[3px] mb-3 ml-1">Issue Category</Text>
+                <View className="flex-row flex-wrap gap-2 mb-6">
+                  {predefinedReasons.map((r) => (
+                    <TouchableOpacity key={r} onPress={() => setSelectedReason(r)} className={`px-4 py-2.5 rounded-xl border ${selectedReason === r ? 'bg-red-600 border-red-600 shadow-xl shadow-red-200' : 'bg-gray-50 border-gray-100 shadow-sm shadow-gray-50'}`}>
+                      <Text className={`font-bold text-[10px] uppercase tracking-wide ${selectedReason === r ? 'text-white' : 'text-gray-500'}`}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              )}
 
-              <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-[3px] mb-5 ml-1">Issue Category</Text>
-              <View className="flex-row flex-wrap gap-2.5 mb-8">
-                {predefinedReasons.map((r) => (
-                  <TouchableOpacity key={r} onPress={() => setSelectedReason(r)} className={`px-5 py-3 rounded-xl border ${selectedReason === r ? 'bg-red-600 border-red-600 shadow-xl shadow-red-200' : 'bg-gray-50 border-gray-100 shadow-sm shadow-gray-50'}`}>
-                    <Text className={`font-bold text-[10px] uppercase tracking-wide ${selectedReason === r ? 'text-white' : 'text-gray-400'}`}>{r}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                <View className="bg-gray-50/80 p-5 rounded-[1.5rem] border border-gray-100 mb-6">
+                  <Text className="text-[8px] font-bold text-gray-400 uppercase tracking-[2px] mb-2">Narrative Context</Text>
+                  <TextInput placeholder="Provide context..." placeholderTextColor="#cbd5e1" className="text-gray-950 font-bold text-[14px] min-h-[90px]" multiline value={noteText} onChangeText={setNoteText} textAlignVertical="top" />
+                </View>
 
-              <View className="bg-gray-50/80 p-6 rounded-[1.75rem] border border-gray-100 mb-8">
-                <Text className="text-[8px] font-bold text-gray-400 uppercase tracking-[2px] mb-3">Narrative Context</Text>
-                <TextInput placeholder="Provide context..." placeholderTextColor="#cbd5e1" className="text-gray-950 font-bold text-[14px] min-h-[100px]" multiline value={noteText} onChangeText={setNoteText} textAlignVertical="top" />
-              </View>
-
-              <TouchableOpacity onPress={submitContactNote} className="bg-red-600 py-5 rounded-[1.75rem] items-center shadow-2xl shadow-red-200"><Text className="text-white font-black uppercase text-xs tracking-[4px]">Submit Issue</Text></TouchableOpacity>
-            </ScrollView>
-          </View>
+                <TouchableOpacity onPress={submitContactNote} className="bg-red-600 py-4 rounded-[1.5rem] items-center shadow-xl shadow-red-200"><Text className="text-white font-black uppercase text-xs tracking-[3px]">Submit Issue</Text></TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 

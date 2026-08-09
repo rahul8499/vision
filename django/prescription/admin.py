@@ -272,8 +272,25 @@ class SafetyReportAdmin(admin.ModelAdmin):
     list_filter = ("reporter_type", "target_type", "category", "status", "created_at")
     search_fields = ("id", "description", "reporter_user__name", "reporter_store__name", "reported_user__name", "reported_store__name", "prescription__id", "response__id")
     readonly_fields = ("reporter_type", "reporter_user", "reporter_store", "target_type", "reported_user", "reported_store", "prescription", "response", "category", "description", "created_at", "updated_at")
+    fields = ("reporter_type", "reporter_user", "reporter_store", "target_type", "reported_user", "reported_store", "prescription", "response", "category", "description", "status", "resolution_note", "created_at", "updated_at")
     ordering = ("-created_at",)
     list_select_related = ("reporter_user", "reporter_store", "reported_user", "reported_store")
+    actions = ("mark_under_review", "mark_action_taken", "mark_closed")
+
+    @admin.action(description="Mark selected reports as Under Review")
+    def mark_under_review(self, request, queryset):
+        updated = queryset.update(status="under_review")
+        self.message_user(request, f"{updated} report(s) marked as Under Review.", messages.SUCCESS)
+
+    @admin.action(description="Mark selected reports as Action Taken")
+    def mark_action_taken(self, request, queryset):
+        updated = queryset.update(status="action_taken")
+        self.message_user(request, f"{updated} report(s) marked as Action Taken.", messages.SUCCESS)
+
+    @admin.action(description="Mark selected reports as Closed / Resolved")
+    def mark_closed(self, request, queryset):
+        updated = queryset.update(status="closed")
+        self.message_user(request, f"{updated} report(s) marked as Closed.", messages.SUCCESS)
 
     @admin.display(description="Reporter")
     def reporter_name(self, obj):

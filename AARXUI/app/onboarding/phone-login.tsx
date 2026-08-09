@@ -484,6 +484,35 @@ export default function PhoneLoginScreen() {
                         </>
                       )}
                     </TouchableOpacity>
+
+                    {/* 🔑 Email & Password Login Option */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        keepPhoneFocusedRef.current = false;
+                        router.push({
+                          pathname: '/onboarding/login',
+                          params: { userType: requestedRole || (isSeller ? 'seller' : 'buyer') },
+                        } as any);
+                      }}
+                      disabled={busy || googleBusy}
+                      activeOpacity={0.82}
+                      className="mt-2.5 h-[52px] flex-row items-center justify-center rounded-xl border"
+                      style={{
+                        borderColor: isSeller ? '#B9DDE0' : '#DCE8D8',
+                        backgroundColor: isSeller ? '#E8F4F5' : '#F4F8F1',
+                        elevation: 2,
+                        shadowColor: enterprisePrimary,
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.06,
+                        shadowRadius: 6,
+                      }}
+                    >
+                      <MaterialCommunityIcons name="key-outline" size={20} color={enterprisePrimary} />
+                      <Text style={{ color: enterprisePrimary, marginLeft: 10, fontSize: 13.5, fontWeight: '900' }}>
+                        Login with Email & Password
+                      </Text>
+                    </TouchableOpacity>
+
                     <Text className="mt-2.5 text-center text-[10px] font-semibold text-[#849087]">
                       Available after Google is linked to your phone-verified account.
                     </Text>

@@ -2823,15 +2823,23 @@ class StoreContactNoteView(APIView):
     def _get_store_context(self, reference_id, store):
         response = PrescriptionResponse.objects.filter(
             Q(id=reference_id) | Q(prescription_id=reference_id),
-            store=store
-        ).select_related("prescription__user").first()
+            Q(store=store) | Q(completed_by_store=store)
+        ).select_related("prescription__user", "user").first()
         if response:
             return response, response.prescription
         target = PrescriptionTargetStore.objects.filter(
             prescription_id=reference_id, store=store
         ).select_related("prescription__user").first()
-        if target:
+        if target and target.prescription:
             return None, target.prescription
+        prescription = Prescription.objects.filter(
+            id=reference_id
+        ).filter(
+            Q(target_stores__store=store) | Q(responses__store=store) | Q(responses__completed_by_store=store)
+        ).distinct().select_related("user").first()
+        if prescription:
+            resp = PrescriptionResponse.objects.filter(prescription=prescription, store=store).first()
+            return resp, prescription
         return None, None
 
     def post(self, request, response_id):
@@ -2908,12 +2916,16 @@ class SafetyReportListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def _serialize(self, report):
+        reporter = report.reporter_store or report.reporter_user
         target = report.reported_store or report.reported_user
+        reporter_name = getattr(reporter, 'name', getattr(reporter, 'phone', 'Account'))
+        target_name = getattr(target, 'name', getattr(target, 'phone', 'Account'))
         return {
             'id': report.id,
             'reporter_type': report.reporter_type,
+            'reporter_name': reporter_name,
             'target_type': report.target_type,
-            'target_name': getattr(target, 'name', 'Account'),
+            'target_name': target_name,
             'category': report.category,
             'category_display': report.get_category_display(),
             'description': report.description,
@@ -2930,13 +2942,17 @@ class SafetyReportListCreateView(APIView):
 
     def get(self, request):
         if isinstance(request.user, Store):
-            reports = SafetyReport.objects.filter(reporter_store=request.user)
+            reports = SafetyReport.objects.filter(
+                Q(reporter_store=request.user) | Q(reported_store=request.user)
+            )
         else:
-            reports = SafetyReport.objects.filter(reporter_user=request.user)
+            reports = SafetyReport.objects.filter(
+                Q(reporter_user=request.user) | Q(reported_user=request.user)
+            )
         reference_id = request.query_params.get('reference_id')
         if reference_id:
             reports = reports.filter(Q(response_id=reference_id) | Q(prescription_id=reference_id))
-        reports = reports.select_related('reported_user', 'reported_store')
+        reports = reports.select_related('reporter_user', 'reporter_store', 'reported_user', 'reported_store').order_by('-created_at')
         return Response({'count': reports.count(), 'reports': [self._serialize(item) for item in reports[:100]]})
 
     def post(self, request):
@@ -2947,17 +2963,20 @@ class SafetyReportListCreateView(APIView):
         if not reference_id:
             return Response({'error': 'Enquiry or order reference is required.'}, status=400)
         if category not in valid_categories:
-            return Response({'error': 'Invalid report category.'}, status=400)
+            category = 'other'
         if len(description) < 3:
             return Response({'error': 'Please add report details.'}, status=400)
 
         if isinstance(request.user, Store):
             response, prescription = StoreContactNoteView()._get_store_context(reference_id, request.user)
-            if not prescription:
-                return Response({'error': 'Enquiry not found or not assigned to this store.'}, status=404)
+            target_user = (prescription.user if prescription else None) or (response.user if response else None)
+            if not target_user and not prescription:
+                return Response({
+                    'error': f'Order or Enquiry #{reference_id} was not found in your store records. Please check the Order # or Enquiry # from your seller dashboard.'
+                }, status=404)
             report = SafetyReport.objects.create(
                 reporter_type='store', reporter_store=request.user,
-                target_type='user', reported_user=prescription.user,
+                target_type='user', reported_user=target_user,
                 prescription=prescription, response=response,
                 category=category, description=description,
             )
