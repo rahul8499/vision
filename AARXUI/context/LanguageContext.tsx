@@ -43,7 +43,7 @@ const resources = {
 } as const;
 
 if (!i18n.isInitialized) {
-  i18n.use(initReactI18next).init({ resources, lng: 'en', fallbackLng: 'en', supportedLngs: ['en', 'hi', 'mr'], interpolation: { escapeValue: false }, initAsync: false });
+  i18n.use(initReactI18next).init({ resources, lng: 'en', fallbackLng: 'en', supportedLngs: ['en', 'hi', 'mr'], interpolation: { escapeValue: false }, keySeparator: false, nsSeparator: false, initAsync: false });
 }
 
 axios.defaults.headers.common['Accept-Language'] = 'en';

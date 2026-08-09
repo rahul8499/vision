@@ -6281,6 +6281,8 @@ def _serialize_consultation(request, consultation):
         'id': consultation.id, 'order_id': consultation.order_id,
         'category': consultation.category, 'category_display': consultation.get_category_display(),
         'medicine_name': consultation.medicine_name, 'question': consultation.question,
+        'user_name': getattr(consultation.user, 'name', None) or 'Customer',
+        'user_mobile': getattr(consultation.user, 'mobile', None) or '',
         'status': consultation.status, 'status_display': consultation.get_status_display(),
         'callback_requested': consultation.callback_requested,
         'callback_phone': consultation.callback_phone if actor_type == 'store' else '',
@@ -6393,10 +6395,28 @@ class PharmacistConsultationDetailView(APIView):
             return Response({'error': 'Consultation not found.'}, status=404)
         if consultation.status == 'closed':
             return Response({'error': 'This consultation is closed.'}, status=400)
-        text = str(request.data.get('text', '')).strip()
-        if len(text) < 2:
-            return Response({'text': ['Write a message.']}, status=400)
-        kwargs = {'consultation': consultation, 'text': text}
+
+        text = str(request.data.get('text', '') or '').strip()
+        attachment = request.FILES.get('attachment')
+        attachment_key = request.data.get('attachment_key')
+        verified_attachment_key = None
+
+        if attachment_key:
+            from core.services.s3_service import validate_uploaded_object_key
+            try:
+                verified_attachment_key = validate_uploaded_object_key(attachment_key, 'pharmacist_consultations')
+            except Exception as exc:
+                return Response({'attachment_key': str(exc)}, status=400)
+
+        if not text and not attachment and not verified_attachment_key:
+            return Response({'text': ['Write a message or attach an image.']}, status=400)
+
+        kwargs = {'consultation': consultation, 'text': text or ''}
+        if attachment:
+            kwargs['attachment'] = attachment
+        elif verified_attachment_key:
+            kwargs['attachment'] = None
+
         if actor_type == 'store':
             if not actor.is_active or not actor.is_verified or not actor.is_pharmacist_verified:
                 return Response({'error': 'Only an admin-verified pharmacist can provide medicine guidance.'}, status=403)
@@ -6414,7 +6434,12 @@ class PharmacistConsultationDetailView(APIView):
         else:
             kwargs['sender_type'] = 'user'
             consultation.status = 'active' if consultation.store.pharmacist_available and consultation.store.is_pharmacist_verified else 'waiting'
-        PharmacistConsultationMessage.objects.create(**kwargs)
+
+        message = PharmacistConsultationMessage.objects.create(**kwargs)
+        if verified_attachment_key:
+            message.attachment.name = verified_attachment_key
+            message.save(update_fields=['attachment'])
+
         consultation.save(update_fields=['status', 'updated_at'])
         return Response(_serialize_consultation(request, consultation), status=201)
 

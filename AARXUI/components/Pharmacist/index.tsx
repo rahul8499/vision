@@ -3,19 +3,23 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
   ScrollView,
+  StyleSheet,
   Switch,
   TouchableOpacity,
   View
 } from 'react-native';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -338,13 +342,17 @@ export function UserPharmacist() {
 export function ConsultationDetail({ seller = false }: { seller?: boolean }) {
   const { id } = useLocalSearchParams<{ id: string }>();
   const focused = useIsFocused();
-  const scrollRef = useRef<ScrollView>(null);
+  const router = useRouter();
+  const flatRef = useRef<FlatList>(null);
   const [x, setX] = useState<Consultation | null>(null);
   const [text, setText] = useState('');
   const [phone, setPhone] = useState('');
   const [time, setTime] = useState('');
   const [busy, setBusy] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState<{ uri: string; name: string; type: string } | null>(null);
 
   const load = useCallback(
     () =>
@@ -357,20 +365,93 @@ export function ConsultationDetail({ seller = false }: { seller?: boolean }) {
   useEffect(() => {
     if (!focused) return;
     load();
-    const timer = setInterval(load, 3000);
+    const timer = setInterval(load, 1200);
     return () => clearInterval(timer);
   }, [focused, load]);
 
+  useEffect(() => {
+    if (x?.messages?.length) {
+      setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  }, [x?.messages?.length]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (inputFocused || keyboardVisible) {
+        Keyboard.dismiss();
+        setInputFocused(false);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [inputFocused, keyboardVisible]);
+
   if (!x) return <ActivityIndicator style={{ marginTop: 80 }} color={PALETTE.secondaryTeal} size="large" />;
 
+  const pickPhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setPendingPhoto({
+        uri: asset.uri,
+        name: asset.fileName || `consultation_${Date.now()}.jpg`,
+        type: asset.mimeType || 'image/jpeg',
+      });
+    }
+  };
+
   const send = async () => {
-    if (!text.trim()) return;
+    const msgText = text.trim();
+    const photo = pendingPhoto;
+    if (!msgText && !photo) return;
+
+    // 1. Clear input field and photo preview instantly
+    setText('');
+    setPendingPhoto(null);
+
+    // 2. Optimistically display message on screen immediately (0ms delay)
+    const tempId = Date.now();
+    const tempMsg: Consultation['messages'][number] = {
+      id: tempId,
+      sender_type: seller ? 'pharmacist' : 'user',
+      text: msgText || (photo ? '📷 Photo attached' : ''),
+      attachment: photo ? photo.uri : null,
+      pharmacist_name: seller ? (x?.pharmacist_name || 'Pharmacist') : '',
+      created_at: new Date().toISOString(),
+    };
+
+    setX((current) =>
+      current
+        ? {
+            ...current,
+            messages: [...current.messages, tempMsg],
+          }
+        : null
+    );
+
+    setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 50);
+
     try {
       setBusy(true);
-      setX(await sendConsultationMessage(x.id, text.trim()));
-      setText('');
+      const next = await sendConsultationMessage(x.id, msgText, photo);
+      setX(next);
     } catch (e) {
       Alert.alert('Could not send', e instanceof Error ? e.message : 'Try again.');
+      load();
     } finally {
       setBusy(false);
     }
@@ -388,109 +469,195 @@ export function ConsultationDetail({ seller = false }: { seller?: boolean }) {
     }
   };
 
+  const renderMessage = ({ item }: { item: Consultation['messages'][number] }) => {
+    const isMine = seller ? item.sender_type === 'pharmacist' : item.sender_type === 'user';
+    return (
+      <View style={[styles.messageRow, isMine ? styles.rowMine : styles.rowOther]}>
+        <View style={[styles.messageBubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+          <Text style={[styles.messageText, isMine ? styles.textMine : styles.textOther]}>{item.text}</Text>
+          {item.sender_type === 'pharmacist' ? (
+            <Text style={[styles.metaText, isMine ? styles.metaTextMine : styles.metaTextOther]}>
+              Verified pharmacist · {item.pharmacist_name}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: PALETTE.bgLight }}>
-        <Head title={seller ? x.medicine_name : `Ask ${x.pharmacy_name}`} sub={x.status_display} />
+    <KeyboardAvoidingView
+      style={styles.flexOne}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      enabled={Platform.OS === 'ios'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <View style={styles.container}>
+        <View style={styles.chatHeader}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
 
-        {seller && x.order_context ? (
-          <TouchableOpacity
-            onPress={() => setOrderOpen(true)}
-            activeOpacity={0.88}
-            style={{ marginHorizontal: 16, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: PALETTE.borderTeal, backgroundColor: PALETTE.cardTealLight, paddingVertical: 12 }}
-          >
-            <MaterialCommunityIcons name="file-document-outline" size={18} color={PALETTE.secondaryTeal} />
-            <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '900', color: PALETTE.primaryNavy }}>View Original Order, Prescription & Medicines</Text>
-          </TouchableOpacity>
-        ) : null}
+            <View style={styles.titleStack}>
+              <Text style={styles.titleText}>{seller ? (x.user_name || 'Customer') : (x.pharmacy_name || 'Pharmacy')}</Text>
+              <Text style={styles.subtitleText}>{seller ? x.medicine_name : (x.medicine_name || x.question)}</Text>
+            </View>
 
-        <OrderContextModal order={x.order_context} visible={orderOpen} onClose={() => setOrderOpen(false)} />
+            <View style={styles.headerRight}>
+              <View style={styles.liveRow}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>{x.pharmacist_available ? 'Live' : 'Ops'}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
 
-        <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 12 }}>
-          <View style={{ backgroundColor: PALETTE.cardTealLight, borderWidth: 1, borderColor: PALETTE.borderTeal, borderRadius: 16, padding: 14 }}>
-            <Text style={{ fontSize: 12, fontWeight: '900', color: PALETTE.primaryNavy }}>Clinical Guidance Boundary</Text>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: PALETTE.textMain, lineHeight: 16, marginTop: 3 }}>
+        <View style={styles.body}>
+          {seller && x.order_context ? (
+            <TouchableOpacity
+              onPress={() => setOrderOpen(true)}
+              activeOpacity={0.88}
+              style={styles.orderContextButton}
+            >
+              <MaterialCommunityIcons name="file-document-outline" size={18} color={PALETTE.secondaryTeal} />
+              <Text style={styles.orderContextText}>View Original Order, Prescription & Medicines</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <OrderContextModal order={x.order_context} visible={orderOpen} onClose={() => setOrderOpen(false)} />
+
+          <View style={styles.boundaryCard}>
+            <Text style={styles.boundaryTitle}>Clinical Guidance Boundary</Text>
+            <Text style={styles.boundaryBody}>
               The pharmacist can explain medicine use, timing, storage and precautions. They cannot diagnose or prescribe a new medicine.
             </Text>
           </View>
 
-          {x.messages.map((m) => {
-            const isMine = seller ? m.sender_type === 'pharmacist' : m.sender_type === 'user';
-            return (
-              <View
-                key={m.id}
-                style={{
-                  padding: 14,
-                  borderRadius: 18,
-                  marginTop: 10,
-                  maxWidth: '85%',
-                  alignSelf: isMine ? 'flex-end' : 'flex-start',
-                  backgroundColor: isMine ? PALETTE.primaryNavy : PALETTE.cardWhite,
-                  borderWidth: isMine ? 0 : 1,
-                  borderColor: PALETTE.borderTeal,
-                  elevation: 1,
-                }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: isMine ? '#FFFFFF' : PALETTE.textMain, lineHeight: 18 }}>{m.text}</Text>
-                {m.sender_type === 'pharmacist' ? (
-                  <Text style={{ fontSize: 9.5, fontWeight: '700', marginTop: 6, color: isMine ? 'rgba(255, 255, 255, 0.8)' : PALETTE.secondaryTeal }}>
-                    Verified pharmacist · {m.pharmacist_name}
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })}
+          <FlatList
+            ref={flatRef}
+            data={x.messages}
+            keyExtractor={(m) => String(m.id)}
+            renderItem={renderMessage}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={styles.flatContent}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: true })}
+          />
+
+          {pendingPhoto ? (
+            <View style={styles.photoPreview}>
+              <Image source={{ uri: pendingPhoto.uri }} style={styles.photoThumb} />
+              <TouchableOpacity onPress={() => setPendingPhoto(null)} style={styles.photoRemove}>
+                <Ionicons name="close-circle" size={20} color="#ef4444" />
+              </TouchableOpacity>
+              <Text style={styles.photoLabel}>Image ready to send</Text>
+            </View>
+          ) : null}
 
           {!seller && !x.pharmacist_available ? (
-            <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 18, padding: 14, marginTop: 16, marginBottom: 20 }}>
-              <Text style={{ fontSize: 13, fontWeight: '900', color: PALETTE.warningAmber }}>Pharmacist is currently offline</Text>
-              <TouchableOpacity onPress={() => Linking.openURL('tel:' + x.pharmacy_phone)} style={{ marginTop: 10, borderWidth: 1, borderColor: '#FDE68A', borderRadius: 12, paddingVertical: 10, alignItems: 'center', backgroundColor: '#FFFFFF' }}>
-                <Text style={{ fontSize: 12, fontWeight: '900', color: PALETTE.primaryNavy }}>Call Pharmacy</Text>
+            <View style={styles.offlineCard}>
+              <Text style={styles.offlineTitle}>{x.pharmacy_name || 'Pharmacist'} is currently offline</Text>
+              <TouchableOpacity onPress={() => Linking.openURL('tel:' + x.pharmacy_phone)} style={styles.callButton}>
+                <Text style={styles.callButtonText}>Call {x.pharmacy_name || 'Pharmacy'}</Text>
               </TouchableOpacity>
-              <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Callback phone number" placeholderTextColor={PALETTE.textSecondary} style={{ backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginTop: 10, fontSize: 13, color: PALETTE.textMain }} />
-              <TextInput value={time} onChangeText={setTime} placeholder="Preferred time (optional)" placeholderTextColor={PALETTE.textSecondary} style={{ backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginTop: 8, fontSize: 13, color: PALETTE.textMain }} />
-              <TouchableOpacity onPress={callback} style={{ backgroundColor: PALETTE.primaryNavy, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 10 }}>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: '#FFFFFF' }}>Request Callback</Text>
+              <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Callback phone number" placeholderTextColor={PALETTE.textSecondary} style={styles.phoneInput} />
+              <TextInput value={time} onChangeText={setTime} placeholder="Preferred time (optional)" placeholderTextColor={PALETTE.textSecondary} style={styles.phoneInput} />
+              <TouchableOpacity onPress={callback} style={styles.requestCallbackButton}>
+                <Text style={styles.requestCallbackText}>Request Callback</Text>
               </TouchableOpacity>
             </View>
           ) : null}
-        </ScrollView>
 
-        {x.status !== 'closed' && (seller ? x.pharmacist_verified && x.pharmacist_available : true) ? (
-          <View
-            style={{
-              paddingHorizontal: 14,
-              paddingTop: 12,
-              paddingBottom: Platform.OS === 'ios' ? 78 : 68,
-              backgroundColor: PALETTE.cardWhite,
-              borderTopWidth: 1,
-              borderTopColor: PALETTE.borderTeal,
-              flexDirection: 'row',
-              alignItems: 'center',
-              elevation: 8,
-              shadowColor: '#000000',
-              shadowOffset: { width: 0, height: -2 },
-              shadowOpacity: 0.06,
-              shadowRadius: 4,
-            }}
-          >
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              multiline
-              placeholder={seller ? 'Reply as verified pharmacist...' : 'Ask a follow-up question...'}
-              placeholderTextColor={PALETTE.textSecondary}
-              style={{ flex: 1, backgroundColor: PALETTE.bgLight, borderWidth: 1, borderColor: PALETTE.borderTeal, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, color: PALETTE.textMain, maxHeight: 100 }}
-            />
-            <TouchableOpacity disabled={busy} onPress={send} style={{ width: 44, height: 44, backgroundColor: PALETTE.secondaryTeal, borderRadius: 22, marginLeft: 10, alignItems: 'center', justifyContent: 'center' }}>
-              <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
+          {x.status !== 'closed' && (seller ? x.pharmacist_verified && x.pharmacist_available : true) ? (
+            <View style={styles.composer}>
+              <TouchableOpacity onPress={pickPhoto} disabled={busy} style={styles.iconButton}>
+                <Ionicons name="image-outline" size={22} color={PALETTE.secondaryTeal} />
+              </TouchableOpacity>
+              <TextInput
+                value={text}
+                onChangeText={setText}
+                multiline
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholder={seller ? 'Reply as verified pharmacist...' : 'Ask a follow-up question...'}
+                placeholderTextColor={PALETTE.textSecondary}
+                style={styles.input}
+              />
+              <TouchableOpacity disabled={busy} onPress={send} style={styles.sendButton}>
+                <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  flexOne: { flex: 1 },
+  container: { flex: 1, backgroundColor: PALETTE.bgLight },
+  chatHeader: { backgroundColor: '#123B5D', paddingTop: 46, paddingBottom: 14, paddingHorizontal: 12, borderBottomWidth: 1, borderColor: '#B9DDE0' },
+  headerRow: { flexDirection: 'row', alignItems: 'center' },
+  backButton: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  titleStack: { flex: 1, marginLeft: 10 },
+  titleText: { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
+  subtitleText: { marginTop: 2, fontSize: 10, fontWeight: '800', color: '#E8F4F5', textTransform: 'uppercase' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
+  liveRow: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', marginRight: 6, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, marginRight: 6, backgroundColor: '#4ADE80' },
+  liveText: { fontSize: 9, color: '#E8F4F5', fontWeight: '800' },
+  body: { flex: 1, backgroundColor: PALETTE.bgLight },
+  orderContextButton: { marginHorizontal: 16, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: PALETTE.borderTeal, backgroundColor: PALETTE.cardTealLight, paddingVertical: 12 },
+  orderContextText: { marginLeft: 8, fontSize: 12, fontWeight: '900', color: PALETTE.primaryNavy },
+  boundaryCard: { marginHorizontal: 16, marginTop: 12, backgroundColor: PALETTE.cardTealLight, borderWidth: 1, borderColor: PALETTE.borderTeal, borderRadius: 16, padding: 14 },
+  boundaryTitle: { fontSize: 12, fontWeight: '900', color: PALETTE.primaryNavy },
+  boundaryBody: { fontSize: 11, fontWeight: '600', color: PALETTE.textMain, lineHeight: 16, marginTop: 3 },
+  flatContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24, flexGrow: 1 },
+  photoPreview: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 8, borderTopWidth: 1, borderColor: PALETTE.borderTeal, marginHorizontal: 16 },
+  photoThumb: { width: 44, height: 44, borderRadius: 8 },
+  photoRemove: { marginHorizontal: 8 },
+  photoLabel: { fontSize: 12, color: PALETTE.textSecondary, fontWeight: '700' },
+  messageRow: { flexDirection: 'row', marginBottom: 8 },
+  rowMine: { justifyContent: 'flex-end' },
+  rowOther: { justifyContent: 'flex-start' },
+  messageBubble: { maxWidth: '85%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18 },
+  bubbleMine: { backgroundColor: PALETTE.primaryNavy, borderTopRightRadius: 6 },
+  bubbleOther: { backgroundColor: PALETTE.cardWhite, borderTopLeftRadius: 6, borderWidth: 1, borderColor: PALETTE.borderTeal },
+  messageText: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  textMine: { color: '#FFFFFF' },
+  textOther: { color: PALETTE.textMain },
+  metaText: { fontSize: 9.5, fontWeight: '700', marginTop: 6 },
+  metaTextMine: { color: 'rgba(255,255,255,0.8)' },
+  metaTextOther: { color: PALETTE.secondaryTeal },
+  offlineCard: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 18, padding: 14, marginHorizontal: 16, marginTop: 16, marginBottom: 20 },
+  offlineTitle: { fontSize: 13, fontWeight: '900', color: PALETTE.warningAmber },
+  callButton: { marginTop: 10, borderWidth: 1, borderColor: '#FDE68A', borderRadius: 12, paddingVertical: 10, alignItems: 'center', backgroundColor: '#FFFFFF' },
+  callButtonText: { fontSize: 12, fontWeight: '900', color: PALETTE.primaryNavy },
+  phoneInput: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginTop: 10, fontSize: 13, color: PALETTE.textMain },
+  requestCallbackButton: { backgroundColor: PALETTE.primaryNavy, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+  requestCallbackText: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
+  composer: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 78 : 68,
+    backgroundColor: PALETTE.cardWhite,
+    borderTopWidth: 1,
+    borderTopColor: PALETTE.borderTeal,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+  },
+  iconButton: { padding: 8, marginRight: 4 },
+  input: { flex: 1, backgroundColor: PALETTE.bgLight, borderWidth: 1, borderColor: PALETTE.borderTeal, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, color: PALETTE.textMain, maxHeight: 100 },
+  sendButton: { width: 44, height: 44, backgroundColor: PALETTE.secondaryTeal, borderRadius: 22, marginLeft: 10, alignItems: 'center', justifyContent: 'center' },
+});
 
 export function PharmacistInbox() {
   const r = useRouter();
@@ -516,7 +683,7 @@ export function PharmacistInbox() {
   useEffect(() => {
     if (!focus) return;
     load();
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, 2000);
     return () => clearInterval(timer);
   }, [focus, load]);
 
@@ -587,7 +754,8 @@ export function PharmacistInbox() {
               <Text style={{ fontSize: 10, fontWeight: '800', color: PALETTE.textSecondary }}>ORDER #{item.order_id}</Text>
             </View>
 
-            <Text style={{ fontSize: 15, fontWeight: '900', color: PALETTE.primaryNavy, marginTop: 8 }}>{item.medicine_name}</Text>
+            <Text style={{ fontSize: 12.5, fontWeight: '900', color: PALETTE.primaryNavy, marginTop: 8 }}>{item.user_name || 'Customer'}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '900', color: PALETTE.primaryNavy, marginTop: 4 }}>{item.medicine_name}</Text>
             <Text numberOfLines={2} style={{ fontSize: 11.5, fontWeight: '600', color: PALETTE.textSecondary, marginTop: 4, lineHeight: 16 }}>{item.question}</Text>
 
             {item.callback_requested ? (

@@ -260,7 +260,7 @@ export default function SellerSettingsScreen() {
       const fetched = settingsResponse.data || {};
       const numOr = (val: any, def: number) => {
         const n = Number(val);
-        return (!isNaN(n) && n > 0) ? n : def;
+        return (!isNaN(n) && n >= 0) ? n : def;
       };
       setDeliverySettings({
         ...DEFAULT_DELIVERY_SETTINGS,
@@ -525,48 +525,33 @@ export default function SellerSettingsScreen() {
         });
         return;
       }
-      console.log("file---", file)
+
       const fileObj = {
         uri: file.uri,
         name: file.name,
         type: file.mimeType || 'application/octet-stream',
       };
-      setDocUploadBusy(true); // ⏳ show loader
 
-      // ✅ Update docUpdates and call saveProfile inside callback
-      setDocUpdates(prev => {
-        const updated = { ...prev, [field]: fileObj };
-
-        console.log("✅ updated docUpdates--", updated);
-
-        // ✅ Use the updated object directly
-        setTimeout(() => {
-          saveProfile(updated).finally(() => setDocUploadBusy(false)); // ✅ hide loader
-        }, 100);
-
-        return updated;
+      setDocUploadBusy(true);
+      const updated = { ...docUpdates, [field]: fileObj };
+      setDocUpdates(updated);
+      await saveProfile(updated);
+      Toast.show({
+        type: 'success',
+        text1: 'Document Updated',
+        text2: `${file.name} saved to store profile.`,
+        position: 'bottom'
       });
-
-      // delay 100ms to ensure docUpdates is updated
-      // 👉 Option‑A: defer upload until “Save Profile”
-      // 👉 Option‑B: uncomment next 6 lines to upload immediately
-      /*
-      const fd = new FormData();
-      fd.append(field, { uri:file.uri, name:file.name, type:file.mimeType || 'application/octet-stream' } as any);
-      setLoading(true);
-      await axios.patch(`${BASE_URL}/api/store-me/`, fd, { headers:{ Authorization:`Bearer ${token}` }});
-      await fetchProfile();
-      Alert.alert('Uploaded', file.name);
-      */
     } catch (e) {
       console.log('picker error', e);
-      setDocUploadBusy(false);
       Toast.show({
         type: 'error',
         text1: 'Picker Error',
         text2: 'Could not pick the file.',
         position: 'bottom'
       });
+    } finally {
+      setDocUploadBusy(false);
     }
   };
 
@@ -671,10 +656,17 @@ export default function SellerSettingsScreen() {
     }
   };
 
-
-  // useEffect(() => {
-  //   saveProfile()
-  // }, [docUpdates]);
+  const saveDocumentUploads = async () => {
+    try {
+      setDocUploadBusy(true);
+      await saveProfile(docUpdates);
+      setDocsModalOpen(false);
+    } catch (err: any) {
+      console.error('Document upload error:', err);
+    } finally {
+      setDocUploadBusy(false);
+    }
+  };
 
   const confirmLogout = async () => {
     if (!token) return;
@@ -1117,7 +1109,8 @@ export default function SellerSettingsScreen() {
                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A', marginLeft: 8 }} />
                   </View>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: '#627D98', marginTop: 2 }} numberOfLines={1}>
-                    {storeData.email || 'Email missing'} • Password protected
+                    <Text>{storeData.email || 'Email missing'}</Text>
+                    <Text> • Password protected</Text>
                   </Text>
                 </View>
               </View>
@@ -1200,21 +1193,24 @@ export default function SellerSettingsScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
                 <MaterialCommunityIcons name={(storeData as any)?.store_license_document ? "file-check-outline" : "file-clock-outline"} size={11} color={(storeData as any)?.store_license_document ? "#16A34A" : "#D97706"} />
                 <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
-                  License: {(storeData as any)?.store_license_document ? "Uploaded" : "Pending"}
+                  <Text>License: </Text>
+                  <Text>{(storeData as any)?.store_license_document ? "Uploaded" : "Pending"}</Text>
                 </Text>
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
                 <MaterialCommunityIcons name={(storeData as any)?.owner_id_proof ? "card-account-details-outline" : "card-search-outline"} size={11} color={(storeData as any)?.owner_id_proof ? "#16A34A" : "#D97706"} />
                 <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
-                  Owner ID: {(storeData as any)?.owner_id_proof ? "Uploaded" : "Pending"}
+                  <Text>Owner ID: </Text>
+                  <Text>{(storeData as any)?.owner_id_proof ? "Uploaded" : "Pending"}</Text>
                 </Text>
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
-                <MaterialCommunityIcons name={(storeData as any)?.store_image ? "image-check" : "image-off-outline"} size={11} color={(storeData as any)?.store_image ? "#16A34A" : "#D97706"} />
+                <MaterialCommunityIcons name={(storeData as any)?.store_image ? "image-outline" : "image-off-outline"} size={11} color={(storeData as any)?.store_image ? "#16A34A" : "#D97706"} />
                 <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
-                  Store Photo: {(storeData as any)?.store_image ? "Uploaded" : "Pending"}
+                  <Text>Store Photo: </Text>
+                  <Text>{(storeData as any)?.store_image ? "Uploaded" : "Pending"}</Text>
                 </Text>
               </View>
             </View>
@@ -1670,9 +1666,9 @@ export default function SellerSettingsScreen() {
                       <TextInput
                         value={String(
                           deliverySettings[field] !== undefined &&
-                          deliverySettings[field] !== null &&
-                          deliverySettings[field] !== '' &&
-                          Number(deliverySettings[field]) > 0
+                            deliverySettings[field] !== null &&
+                            deliverySettings[field] !== '' &&
+                            Number(deliverySettings[field]) > 0
                             ? deliverySettings[field]
                             : defaultVal
                         )}
@@ -2108,7 +2104,8 @@ export default function SellerSettingsScreen() {
                           <Text style={{ fontSize: 10, fontWeight: '600', color: '#627D98', marginTop: 2 }}>{subLabel}</Text>
                           {newFile ? (
                             <Text style={{ fontSize: 10, fontWeight: '800', color: '#0F8B8D', marginTop: 4 }}>
-                              Selected: {newFile.name}
+                              <Text>Selected: </Text>
+                              <Text>{newFile.name}</Text>
                             </Text>
                           ) : null}
                         </View>

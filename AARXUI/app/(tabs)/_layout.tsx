@@ -124,7 +124,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -173,6 +173,12 @@ const ORDER_NOTIFICATION_TYPES = new Set([
 ]);
 
 export default function TabLayout() {
+  const segments = useSegments();
+  const isSupportDetailRoute = segments.includes('support') && segments.includes('[id]');
+  const isPlatformSupportDetailRoute = segments.includes('platform-support') && segments.includes('[id]');
+  const isConsultationDetailRoute = segments.includes('pharmacist') && (segments.includes('consultation') || segments.includes('[id]'));
+  const isDetailChatRoute = isSupportDetailRoute || isPlatformSupportDetailRoute || isConsultationDetailRoute;
+
   const [fontsLoaded] = useFonts({
     Roboto_400Regular,
     Roboto_500Medium,
@@ -394,42 +400,44 @@ export default function TabLayout() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      {/* Custom Header */}
-      <BuyerHeader
-        notifications={notifications}
-        notificationCount={notificationUnreadCount}
-        notificationLoading={notificationLoading}
-        onNotificationPress={handleUserNotificationPress}
-        showNotificationDot={chatUnreadCount > 0}
-      />
-      {/* <Text style={styles.headerText}>+ AarX</Text> */}
-      {/* </View> */}
+      {!isDetailChatRoute ? (
+        <BuyerHeader
+          notifications={notifications}
+          notificationCount={notificationUnreadCount}
+          notificationLoading={notificationLoading}
+          onNotificationPress={handleUserNotificationPress}
+          showNotificationDot={chatUnreadCount > 0}
+        />
+      ) : null}
 
       {/* Tabs Navigation */}
       <Tabs
         initialRouteName="index"
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarActiveTintColor: '#047857',
-          tabBarInactiveTintColor: '#607D8B',
-          tabBarStyle: styles.tabBarStyle,
-          tabBarLabelStyle: styles.tabBarLabelStyle,
-          tabBarIconStyle: styles.tabBarIconStyle,
-          animationEnabled: false, // Disable animation for instant tab switch
-          tabBarIcon: ({ color, size }) => {
-            let iconName: keyof typeof Ionicons.glyphMap = 'home-outline';
+        screenOptions={({ route }) => {
+          const shouldHideTabs = route.name === 'support/[id]' || route.name === 'platform-support/[id]' || route.name === 'pharmacist/consultation/[id]' || route.name === 'pharmacist/[id]';
+          return {
+            headerShown: false,
+            tabBarActiveTintColor: '#047857',
+            tabBarInactiveTintColor: '#607D8B',
+            tabBarStyle: shouldHideTabs || isDetailChatRoute ? { display: 'none' } : styles.tabBarStyle,
+            tabBarLabelStyle: styles.tabBarLabelStyle,
+            tabBarIconStyle: styles.tabBarIconStyle,
+            animationEnabled: false,
+            tabBarIcon: ({ color, size }) => {
+              let iconName: keyof typeof Ionicons.glyphMap = 'home-outline';
 
-            if (route.name === 'index') iconName = 'cloud-upload-outline';
-            else if (route.name === 'prescription') iconName = 'document-text-outline';
-            else if (route.name === 'history') iconName = 'cart-outline';
-            else if (route.name === 'orders') iconName = 'receipt-outline';
-            else if (route.name === 'inbox') iconName = 'chatbubble-ellipses-outline';
-            else if (route.name === 'support') iconName = 'help-circle-outline';
-            else if (route.name === 'settings') iconName = 'settings-outline';
+              if (route.name === 'index') iconName = 'cloud-upload-outline';
+              else if (route.name === 'prescription') iconName = 'document-text-outline';
+              else if (route.name === 'history') iconName = 'cart-outline';
+              else if (route.name === 'orders') iconName = 'receipt-outline';
+              else if (route.name === 'inbox') iconName = 'chatbubble-ellipses-outline';
+              else if (route.name === 'support') iconName = 'help-circle-outline';
+              else if (route.name === 'settings') iconName = 'settings-outline';
 
-            return <Ionicons name={iconName} size={size} color={color} />;
-          },
-        })}
+              return <Ionicons name={iconName} size={size} color={color} />;
+            },
+          };
+        }}
       >
         <Tabs.Screen name="index" options={{ title: t('nav.upload') }} />
         <Tabs.Screen name="prescription" options={{ title: t('nav.offers') }} />

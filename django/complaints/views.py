@@ -571,10 +571,10 @@ class PlatformSupportTicketListCreateView(APIView):
         errors = {}
         if category not in dict(PlatformSupportTicket.CATEGORY_CHOICES):
             errors['category'] = ['Select a valid issue type.']
-        if len(subject) < 4:
-            errors['subject'] = ['Subject must be at least 4 characters.']
-        if len(description) < 10:
-            errors['description'] = ['Please describe the issue in at least 10 characters.']
+        if len(subject) < 1:
+            errors['subject'] = ['Subject is required.']
+        if len(description) < 1:
+            errors['description'] = ['Please describe the issue.']
         if priority not in dict(PlatformSupportTicket.PRIORITY_CHOICES):
             errors['priority'] = ['Select a valid priority.']
         if errors:

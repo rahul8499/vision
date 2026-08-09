@@ -252,8 +252,8 @@ export function RaiseSupportTicket() {
   };
 
   const submit = async () => {
-    if (subject.trim().length < 4 || description.trim().length < 10) {
-      return Alert.alert('More details needed', 'Add a clear subject and description.');
+    if (!subject.trim() || !description.trim()) {
+      return Alert.alert('More details needed', 'Please provide a subject and description.');
     }
     try {
       setSaving(true);

@@ -2,7 +2,6 @@ import { LocalizedText as Text } from '@/components/Language/LocalizedPrimitives
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
@@ -11,20 +10,17 @@ import {
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import {
   getComplaintDetail,
-  rateComplaint,
   withdrawComplaint,
   type ComplaintDetail as DetailType,
+  type ComplaintMessage,
   type LocalAttachment,
 } from '@/utils/complaintsApi';
-import { SupportHeader } from './SupportHeader';
 import { StatusBadge } from './StatusBadge';
 import { ComplaintThread } from './ComplaintThread';
-import { SupportRatingCard } from '@/components/SupportRatingCard';
 
 const BASE_URL = (Constants.expoConfig?.extra?.BASE_URL as string) || '';
 
@@ -104,12 +100,41 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
   }, [isFocused, live, load]);
 
   const handleSend = async (text: string, attachment: LocalAttachment | null) => {
-    const { addComplaintMessage } = await import('@/utils/complaintsApi');
-    const msg = await addComplaintMessage(Number(id), { text, attachment });
+    // Optimistic instant local display (0ms delay)
+    const tempId = Date.now();
+    const tempMsg: ComplaintMessage = {
+      id: tempId,
+      sender_type: userType,
+      sender_name: userType === 'store' ? 'Pharmacy' : 'Customer',
+      visibility: userType === 'store' ? 'STORE_SUPPORT' : 'USER_SUPPORT',
+      text: text || null,
+      attachment_url: attachment ? attachment.uri : null,
+      is_read: true,
+      created_at: new Date().toISOString(),
+    };
+
     setDetail((prev) => {
-      if (!prev || prev.messages.some((message) => message.id === msg.id)) return prev;
-      return { ...prev, messages: [...prev.messages, msg], message_count: prev.message_count + 1 };
+      if (!prev) return null;
+      return {
+        ...prev,
+        messages: [...prev.messages, tempMsg],
+        message_count: prev.message_count + 1,
+      };
     });
+
+    try {
+      const { addComplaintMessage } = await import('@/utils/complaintsApi');
+      const msg = await addComplaintMessage(Number(id), { text, attachment });
+      setDetail((prev) => {
+        if (!prev) return prev;
+        const filtered = prev.messages.filter((m) => m.id !== tempId);
+        if (filtered.some((m) => m.id === msg.id)) return { ...prev, messages: filtered };
+        return { ...prev, messages: [...filtered, msg] };
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not send message.');
+      load();
+    }
   };
 
   const handleWithdraw = () => {
@@ -157,12 +182,22 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
 
   return (
     <View style={styles.container}>
-      <SupportHeader
-        title={`Complaint #${detail.id}`}
-        subtitle={`${detail.category_display}`}
-        onBack={() => router.back()}
-        right={
+      <View style={styles.chatHeader}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#ffffff" />
+          </TouchableOpacity>
+
+          <View style={styles.titleStack}>
+            <Text style={styles.titleText}>Complaint #{detail.id}</Text>
+            <Text style={styles.subtitleText}>{detail.category_display}</Text>
+          </View>
+
           <View style={styles.headerRight}>
+            <View style={styles.liveRow}>
+              <View style={[styles.liveDot, { backgroundColor: live ? '#10b981' : '#f59e0b' }]} />
+              <Text style={styles.liveText}>{live ? 'Live' : 'Sync'}</Text>
+            </View>
             <StatusBadge status={detail.status} display={detail.status_display} />
             {detail.can_withdraw ? (
               <TouchableOpacity style={styles.withdrawBtn} onPress={handleWithdraw} disabled={withdrawing}>
@@ -170,75 +205,17 @@ export function ComplaintDetailScreen({ userType, id }: { userType: 'user' | 'st
               </TouchableOpacity>
             ) : null}
           </View>
-        }
-      />
+        </View>
+      </View>
 
       <View style={styles.body}>
-        <ScrollView style={styles.scroll} contentContainerStyle={{ padding: 16 }}>
-          <View style={styles.metaRow}>
-            <View style={styles.metaChip}>
-              <Ionicons name={detail.respondent_type === 'store' ? 'storefront-outline' : 'person-outline'} size={14} color="#475569" />
-              <Text style={styles.metaText}>
-                {detail.complainant_type === userType ? 'Against' : 'By'}: {detail.respondent_name}
-              </Text>
-            </View>
-            {detail.order_id ? <Text style={styles.orderTag}>Order #{detail.order_id}</Text> : null}
-          </View>
-          <View style={styles.liveRow}><View style={[styles.liveDot, { backgroundColor: live ? '#10b981' : '#f59e0b' }]} /><Text style={styles.liveText}>{live ? 'Live updates connected' : 'Reconnecting — refreshing automatically'}</Text></View>
-
-          <Text style={styles.subject}>{detail.subject}</Text>
-          <Text style={styles.description}>{detail.description}</Text>
-
-          {detail.attachments.length > 0 ? (
-            <View style={styles.attachGrid}>
-              {detail.attachments.map((a) =>
-                a.url ? (
-                  <Image
-                    key={a.id}
-                    source={{ uri: a.url.startsWith('http') ? a.url : `${BASE_URL}${a.url}` }}
-                    style={styles.attachImg}
-                    contentFit="cover"
-                  />
-                ) : null
-              )}
-            </View>
-          ) : null}
-
-          {detail.resolution_notes ? (
-            <View style={styles.resolution}>
-              <Text style={styles.resolutionTitle}>Resolution</Text>
-              <Text style={styles.resolutionText}>{detail.resolution_notes}</Text>
-            </View>
-          ) : null}
-
-          {isClosed ? (
-            <View style={styles.closedNote}>
-              <Ionicons name="lock-closed-outline" size={14} color="#64748b" />
-              <Text style={styles.closedText}>This complaint is closed. No further replies.</Text>
-            </View>
-          ) : null}
-
-          {isClosed && detail.complainant_type === userType ? (
-            <SupportRatingCard
-              value={detail.support_rating}
-              onSubmit={async (rating, feedback) => {
-                const saved = await rateComplaint(detail.id, rating, feedback);
-                setDetail((current) => current ? { ...current, support_rating: saved } : current);
-                return saved;
-              }}
-            />
-          ) : null}
-        </ScrollView>
-
-        <View style={styles.threadWrap}>
-          <ComplaintThread
-            messages={detail.messages}
-            userType={userType}
-            BASE_URL={BASE_URL}
-            onSend={handleSend}
-            disabled={isClosed}
-          />
-        </View>
+        <ComplaintThread
+          messages={detail.messages}
+          userType={userType}
+          BASE_URL={BASE_URL}
+          onSend={handleSend}
+          disabled={isClosed}
+        />
       </View>
     </View>
   );
@@ -250,26 +227,17 @@ const styles = StyleSheet.create({
   notFound: { fontSize: 16, fontWeight: '800', color: '#475569', marginTop: 12 },
   backBtn2: { marginTop: 16, backgroundColor: '#059669', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
   backBtn2Text: { color: '#fff', fontWeight: '800' },
-  headerRight: { flexDirection: 'row', alignItems: 'center' },
-  withdrawBtn: { marginLeft: 8, backgroundColor: '#fef2f2', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: '#fecaca' },
-  withdrawText: { color: '#dc2626', fontWeight: '800', fontSize: 12 },
-  body: { flex: 1, flexDirection: 'column' },
-  scroll: { flex: 1 },
-  threadWrap: { flex: 1, borderTopWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f1f5f9' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  metaChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
-  metaText: { fontSize: 12, color: '#475569', fontWeight: '700', marginLeft: 4 },
-  orderTag: { fontSize: 12, color: '#0e7490', fontWeight: '800' },
-  subject: { fontSize: 18, fontWeight: '900', color: '#0f172a', marginBottom: 8 },
-  description: { fontSize: 14, color: '#334155', lineHeight: 21, fontWeight: '500' },
-  attachGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12 },
-  attachImg: { width: 90, height: 90, borderRadius: 10, marginRight: 8, marginBottom: 8 },
-  resolution: { marginTop: 14, backgroundColor: '#ecfdf5', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0' },
-  resolutionTitle: { fontSize: 12, fontWeight: '900', color: '#15803d', textTransform: 'uppercase', marginBottom: 4 },
-  resolutionText: { fontSize: 14, color: '#064e3b', fontWeight: '600' },
-  closedNote: { flexDirection: 'row', alignItems: 'center', marginTop: 14, backgroundColor: '#f1f5f9', padding: 10, borderRadius: 10 },
-  closedText: { marginLeft: 6, fontSize: 12, color: '#64748b', fontWeight: '700' },
-  liveRow: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', marginBottom: 10, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
+  chatHeader: { backgroundColor: '#123B5D', paddingTop: 50, paddingBottom: 14, paddingHorizontal: 12, borderBottomWidth: 1, borderColor: '#B9DDE0' },
+  headerRow: { flexDirection: 'row', alignItems: 'center' },
+  backButton: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  titleStack: { flex: 1, marginLeft: 10 },
+  titleText: { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
+  subtitleText: { marginTop: 2, fontSize: 10, fontWeight: '800', color: '#E8F4F5', textTransform: 'uppercase' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
+  withdrawBtn: { marginLeft: 8, backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: '#B9DDE0' },
+  withdrawText: { color: '#DC2626', fontWeight: '800', fontSize: 12 },
+  body: { flex: 1, flexDirection: 'column', backgroundColor: '#F4F8FA' },
+  liveRow: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', marginRight: 6, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 },
   liveDot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
-  liveText: { fontSize: 10, color: '#475569', fontWeight: '700' },
+  liveText: { fontSize: 9, color: '#E8F4F5', fontWeight: '800' },
 });

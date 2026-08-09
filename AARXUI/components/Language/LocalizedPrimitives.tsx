@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import autoTranslations from '@/locales/autoTranslations.json';
+
 function normalize(value: string) {
   return value.trim().replace(/\s+/g, ' ');
 }
@@ -22,10 +24,14 @@ export function translateStatic(value: string | undefined | null): string | unde
   if (value == null || typeof value !== 'string') return value ?? undefined;
   const key = normalize(value);
   if (!key || !/[A-Za-z]/.test(key)) return value;
+
+  const language = (i18n.resolvedLanguage || i18n.language || 'en') as 'en' | 'hi' | 'mr';
+  const direct = (autoTranslations as any)?.[language]?.[key];
+  if (direct) return direct;
+
   const translated = i18n.t(key, { ns: 'auto', defaultValue: key });
   if (translated !== key) return translated;
 
-  const language = i18n.resolvedLanguage || i18n.language || 'en';
   const words = language === 'hi' ? {
     order: 'ऑर्डर', prescription: 'प्रिस्क्रिप्शन', request: 'अनुरोध', minutes: 'मिनट',
     hours: 'घंटे', days: 'दिन', items: 'आइटम', medicines: 'दवाएँ', confidence: 'विश्वसनीयता', away: 'दूर',

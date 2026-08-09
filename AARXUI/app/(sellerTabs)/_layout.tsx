@@ -109,7 +109,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -152,6 +152,12 @@ const SELLER_NOTIFICATION_TYPES = new Set([
 ]);
 
 export default function TabLayout() {
+  const segments = useSegments();
+  const isSupportDetailRoute = segments.includes('support') && segments.includes('[id]');
+  const isPlatformSupportDetailRoute = segments.includes('platform-support') && segments.includes('[id]');
+  const isConsultationDetailRoute = segments.includes('pharmacist') && (segments.includes('consultation') || segments.includes('[id]'));
+  const isDetailChatRoute = isSupportDetailRoute || isPlatformSupportDetailRoute || isConsultationDetailRoute;
+
   const [fontsLoaded] = useFonts({
     Roboto_400Regular,
     Roboto_500Medium,
@@ -378,28 +384,32 @@ export default function TabLayout() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <SellerHeader
-        notifications={notifications}
-        notificationCount={notificationUnreadCount}
-        notificationLoading={notificationLoading}
-        onNotificationPress={handleSellerNotificationPress}
-        showNotificationDot={chatUnreadCount > 0}
-      />
+      {!isDetailChatRoute ? (
+        <SellerHeader
+          notifications={notifications}
+          notificationCount={notificationUnreadCount}
+          notificationLoading={notificationLoading}
+          onNotificationPress={handleSellerNotificationPress}
+          showNotificationDot={chatUnreadCount > 0}
+        />
+      ) : null}
 
       <Tabs
         initialRouteName="home"
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarActiveTintColor: "#0F8B8D",
-          tabBarInactiveTintColor: "#627D98",
-          tabBarStyle: styles.tabBarStyle,
-          tabBarItemStyle: styles.tabBarItemStyle,
-          tabBarLabelStyle: styles.tabBarLabelStyle,
-          tabBarIconStyle: styles.tabBarIconStyle,
-          tabBarHideOnKeyboard: true,
-          tabBarAllowFontScaling: false,
-          animationEnabled: false,
-          tabBarIcon: ({ color, focused }) => {
+        screenOptions={({ route }) => {
+          const shouldHideTabs = route.name === 'support/[id]' || route.name === 'platform-support/[id]' || route.name === 'pharmacist/consultation/[id]' || route.name === 'pharmacist/[id]';
+          return {
+            headerShown: false,
+            tabBarActiveTintColor: "#0F8B8D",
+            tabBarInactiveTintColor: "#627D98",
+            tabBarStyle: shouldHideTabs || isDetailChatRoute ? { display: 'none' } : styles.tabBarStyle,
+            tabBarItemStyle: styles.tabBarItemStyle,
+            tabBarLabelStyle: styles.tabBarLabelStyle,
+            tabBarIconStyle: styles.tabBarIconStyle,
+            tabBarHideOnKeyboard: true,
+            tabBarAllowFontScaling: false,
+            animationEnabled: false,
+            tabBarIcon: ({ color, focused }) => {
             let iconName: keyof typeof Ionicons.glyphMap = focused ? "home" : "home-outline";
 
             if (route.name === "home") iconName = focused ? "storefront" : "storefront-outline";
@@ -410,16 +420,17 @@ export default function TabLayout() {
             else if (route.name === "support") iconName = focused ? "help-circle" : "help-circle-outline";
             else if (route.name === "settings") iconName = focused ? "settings" : "settings-outline";
 
-            return (
-              <View style={styles.tabIconSlot}>
-                <View style={[styles.tabIconShell, focused && styles.tabIconShellActive]}>
-                  <Ionicons name={iconName} size={focused ? 21 : 20} color={focused ? "#ffffff" : color} />
+              return (
+                <View style={styles.tabIconSlot}>
+                  <View style={[styles.tabIconShell, focused && styles.tabIconShellActive]}>
+                    <Ionicons name={iconName} size={focused ? 21 : 20} color={focused ? "#ffffff" : color} />
+                  </View>
+                  <View style={[styles.tabActiveLine, { opacity: focused ? 1 : 0 }]} />
                 </View>
-                <View style={[styles.tabActiveLine, { opacity: focused ? 1 : 0 }]} />
-              </View>
-            );
-          },
-        })}
+              );
+            },
+          };
+        }}
       >
         <Tabs.Screen name="home" options={{ title: t('nav.home') }} />
         <Tabs.Screen name="index" options={{ title: t('nav.enquiry') }} />

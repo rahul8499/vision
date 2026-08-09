@@ -163,14 +163,6 @@ const MessageBubble = memo(({
                     <Text style={{ fontSize: 11, color: CHAT_THEME.secondaryText, marginRight: 4, fontWeight: '600' }}>
                         {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
-                    {isMyMessage && (
-                        <Ionicons
-                            name={item.is_read ? "checkmark-done" : "checkmark"}
-                            size={16}
-                            color={item.is_read ? CHAT_THEME.secondaryTeal : CHAT_THEME.secondaryText}
-                            style={{ marginLeft: 2 }}
-                        />
-                    )}
                 </View>
             </TouchableOpacity>
         </View>
@@ -1041,15 +1033,13 @@ export default function ChatRoomScreen() {
                                 <FlatList
                                     ref={flatListRef}
                                     data={messages}
-                                    inverted={true}
                                     keyExtractor={(item) => item.id.toString()}
                                     renderItem={renderMessage}
                                     contentContainerStyle={{
                                         paddingHorizontal: 8,
                                         paddingTop: prescriptionContext ? 100 : 16,
                                         paddingBottom: 16,
-                                        flexGrow: 1,
-                                        justifyContent: 'flex-end'
+                                        flexGrow: 1
                                     }}
                                     showsVerticalScrollIndicator={false}
                                     onEndReached={loadMoreMessages}

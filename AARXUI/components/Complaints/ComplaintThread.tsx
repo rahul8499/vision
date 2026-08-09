@@ -8,7 +8,9 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert
+  Alert,
+  BackHandler,
+  Keyboard
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -31,11 +33,36 @@ export function ComplaintThread({
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<LocalAttachment | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const flatRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (messages.length) flatRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, [messages.length]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (inputFocused || keyboardVisible) {
+        Keyboard.dismiss();
+        setInputFocused(false);
+        return true;
+      }
+      return false;
+    });
+
+    return () => sub.remove();
+  }, [inputFocused, keyboardVisible]);
 
   const pickPhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -102,7 +129,8 @@ export function ComplaintThread({
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      enabled={Platform.OS === 'ios'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <FlatList
@@ -110,9 +138,11 @@ export function ComplaintThread({
         data={messages}
         keyExtractor={(i) => i.id.toString()}
         renderItem={renderItem}
-        inverted
-        contentContainerStyle={{ padding: 12, flexGrow: 1, justifyContent: 'flex-end' }}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={{ padding: 12, paddingBottom: 24, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: true })}
       />
 
       {pendingPhoto ? (
@@ -125,7 +155,7 @@ export function ComplaintThread({
         </View>
       ) : null}
 
-      <View style={[styles.composer, disabled && { opacity: 0.6 }]}>
+      <View style={[styles.composer, disabled && { opacity: 0.6 }, { marginTop: -6 }]}>
         <TouchableOpacity onPress={pickPhoto} disabled={disabled} style={styles.iconBtn}>
           <Ionicons name="image-outline" size={22} color="#0e7490" />
         </TouchableOpacity>
@@ -136,6 +166,8 @@ export function ComplaintThread({
           onChangeText={setText}
           editable={!disabled}
           multiline
+          onFocus={() => setInputFocused(true)}
+          onBlur={() => setInputFocused(false)}
         />
         <TouchableOpacity onPress={handleSend} disabled={disabled || sending} style={styles.sendBtn}>
           {sending ? <ActivityIndicator color="#fff" /> : <Ionicons name="send" size={18} color="#fff" />}
@@ -150,19 +182,19 @@ const styles = StyleSheet.create({
   rowMine: { justifyContent: 'flex-end' },
   rowOther: { justifyContent: 'flex-start' },
   bubble: { maxWidth: '82%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18 },
-  bubbleMine: { backgroundColor: '#ecfdf5', borderTopRightRadius: 6, borderWidth: 1, borderColor: '#bbf7d0' },
-  bubbleOther: { backgroundColor: '#ffffff', borderTopLeftRadius: 6, borderWidth: 1, borderColor: '#e2e8f0' },
+  bubbleMine: { backgroundColor: '#E8F4F5', borderTopRightRadius: 6, borderWidth: 1, borderColor: '#B9DDE0' },
+  bubbleOther: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 6, borderWidth: 1, borderColor: '#B9DDE0' },
   bubbleText: { fontSize: 15, lineHeight: 20, fontWeight: '500' },
-  textMine: { color: '#064e3b' },
-  textOther: { color: '#0f172a' },
+  textMine: { color: '#102A43' },
+  textOther: { color: '#102A43' },
   time: { fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
-  timeMine: { color: '#059669' },
-  timeOther: { color: '#94a3b8' },
+  timeMine: { color: '#0F8B8D' },
+  timeOther: { color: '#627D98' },
   image: { width: 200, height: 200, borderRadius: 12, marginBottom: 4 },
   platformWrap: { alignItems: 'center', marginVertical: 6 },
   platformText: {
-    backgroundColor: '#f1f5f9',
-    color: '#475569',
+    backgroundColor: '#F4F8FA',
+    color: '#627D98',
     fontSize: 12,
     fontWeight: '700',
     paddingHorizontal: 12,
@@ -175,35 +207,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? 78 : 68,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#B9DDE0',
   },
   iconBtn: { padding: 8 },
   input: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F4F8FA',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
     marginRight: 8,
     maxHeight: 120,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#B9DDE0',
     fontSize: 15,
+    color: '#102A43',
   },
   sendBtn: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#059669',
+    backgroundColor: '#0F8B8D',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  photoPreview: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 8, borderTopWidth: 1, borderColor: '#e2e8f0' },
+  photoPreview: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 8, borderTopWidth: 1, borderColor: '#B9DDE0' },
   photoThumb: { width: 44, height: 44, borderRadius: 8 },
   photoRemove: { marginHorizontal: 8 },
-  photoLabel: { fontSize: 12, color: '#475569', fontWeight: '700' },
+  photoLabel: { fontSize: 12, color: '#627D98', fontWeight: '700' },
 });
