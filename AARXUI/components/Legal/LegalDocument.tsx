@@ -102,7 +102,7 @@ function documents(role: Role): Record<DocumentKey, LegalDocument> {
       ...(role === 'store' ? [{ title: 'Seller-specific information', paragraphs: ['For seller accounts, we also process pharmacy name, address, licences, registration and tax details, pharmacist and delivery-person details, bank/billing records, service area, catalogue/quotation activity and compliance history. Relevant verification information may be reviewed by authorised AARX personnel and service providers.'] }] : []),
       ...commonPrivacy,
     ]},
-    terms: { title: 'Terms & Conditions', eyebrow: role === 'store' ? 'Seller platform agreement' : 'Customer platform terms', summary: 'Rules for safely and fairly using AARX medicine enquiry, ordering and support services.', icon: 'file-sign', sections: [
+    terms: { title: 'Seller Terms & Conditions', eyebrow: role === 'store' ? 'Seller platform agreement' : 'Customer platform terms', summary: 'Rules for safely and fairly using AARX medicine enquiry, ordering and support services.', icon: 'file-sign', sections: [
       { title: 'Acceptance and updates', paragraphs: [`By creating an account or using AARX, you agree to these terms and the policies linked in Settings. Effective ${EFFECTIVE_DATE}. Material changes may be communicated in the app; continued use after they take effect means you accept the updated terms.`] },
       ...(role === 'store' ? storeTerms : userTerms),
       { title: 'Availability, intellectual property and changes', paragraphs: ['The service may be updated, interrupted or changed for maintenance, safety, law or business reasons. AARX branding, software and original content are protected; no licence is granted except the limited right to use the app for its intended purpose.'] },
@@ -121,7 +121,7 @@ function documents(role: Role): Record<DocumentKey, LegalDocument> {
       { title: 'Delays and failed delivery', paragraphs: ['The pharmacy or delivery person may contact you about an address, verification or timing issue. A failed attempt may require rescheduling, pickup or cancellation depending on medicine safety, payment status and the order stage. If status says delivered but you did not receive the order, contact the pharmacy and raise Help & Complaints immediately.'] },
       { title: 'Restricted handling', paragraphs: ['Some prescription, controlled, refrigerated, fragile or high-risk products may require store pickup, special packaging or may be unavailable for delivery. Follow storage instructions immediately after handover and do not use medicine that appears damaged, tampered with or improperly stored.'] },
     ]},
-    'medicine-safety': { title: 'Medicine & Safety Disclaimer', eyebrow: 'Important health information', summary: 'Understand the limits of the platform, AI scan and pharmacist messaging before relying on them.', icon: 'medical-bag', sections: safetySections },
+    'medicine-safety': { title: 'Medical Safety & Disclaimer Policy', eyebrow: 'Important health information', summary: 'Understand the limits of the platform, AI scan and pharmacist messaging before relying on them.', icon: 'medical-bag', sections: safetySections },
     about: { title: 'About AARX', eyebrow: role === 'store' ? 'Pharmacy operations platform' : 'Medicine access platform', summary: role === 'store' ? 'Tools for pharmacies to manage enquiries, fulfilment, delivery and customer support.' : 'A technology platform connecting customers with independent nearby pharmacies.', icon: 'information-outline', sections: [
       { title: 'What AARX does', paragraphs: [role === 'store' ? 'AARX helps verified pharmacy teams receive prescription enquiries, send transparent quotations, manage orders and delivery, respond to replacements, offer medicine-use consultations and handle support cases.' : 'AARX helps customers upload a prescription or medicine enquiry, compare pharmacy responses, arrange home delivery or walk-in pickup, track fulfilment, request eligible replacements and ask the dispensing pharmacy medicine-use questions.'] },
       { title: 'Our approach', bullets: ['Safety-conscious medicine access', 'Clear order and delivery status', 'Accountable pharmacy-customer communication', 'Privacy, evidence-based complaints and traceable support'] },
@@ -144,58 +144,113 @@ export function LegalDocumentScreen({ role }: { role: Role }) {
   };
 
   return (
-    <View className="flex-1 bg-slate-50">
-      <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
-        <LinearGradient colors={['#020617', '#0f172a', '#064e3b']} className="px-5 pt-6 pb-8">
-          <TouchableOpacity onPress={() => router.back()} className="h-11 w-11 rounded-2xl bg-white/10 items-center justify-center">
-            <MaterialCommunityIcons name="arrow-left" size={23} color="white" />
+    <View style={{ flex: 1, backgroundColor: '#F4F8FA' }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
+        {/* Enterprise Navy/Teal Header Banner */}
+        <LinearGradient
+          colors={['#123B5D', '#184C75', '#0F8B8D']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 28 }}
+        >
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={22} color="#FFFFFF" />
           </TouchableOpacity>
-          <View className="h-14 w-14 rounded-2xl bg-emerald-400/15 items-center justify-center mt-6">
-            <MaterialCommunityIcons name={doc.icon as any} size={29} color="#6ee7b7" />
+
+          <View style={{ width: 50, height: 50, borderRadius: 16, backgroundColor: 'rgba(255, 255, 255, 0.14)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center', marginTop: 20 }}>
+            <MaterialCommunityIcons name={doc.icon as any} size={28} color="#4ADE80" />
           </View>
-          <Text className="text-emerald-300 text-[10px] font-black tracking-[3px] uppercase mt-5">{doc.eyebrow}</Text>
-          <Text className="text-white text-3xl font-black leading-9 mt-2">{doc.title}</Text>
-          <Text className="text-slate-300 text-xs leading-5 mt-3">{doc.summary}</Text>
-          {key !== 'about' && <Text className="text-slate-400 text-[10px] mt-4">Effective: {EFFECTIVE_DATE} · Version 1.0</Text>}
+
+          <Text style={{ color: '#4ADE80', fontSize: 10, fontWeight: '900', letterSpacing: 2, textTransform: 'uppercase', marginTop: 14 }}>
+            {doc.eyebrow}
+          </Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 24, fontWeight: '900', marginTop: 4, letterSpacing: 0.3 }}>
+            {doc.title}
+          </Text>
+          <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 12, fontWeight: '600', lineHeight: 18, marginTop: 8 }}>
+            {doc.summary}
+          </Text>
+          {key !== 'about' && (
+            <Text style={{ color: 'rgba(255, 255, 255, 0.65)', fontSize: 10, fontWeight: '700', marginTop: 12 }}>
+              Effective: {EFFECTIVE_DATE} • Version 1.0
+            </Text>
+          )}
         </LinearGradient>
 
-        <View className="px-4 -mt-3">
+        {/* Policy Content Sections */}
+        <View style={{ paddingHorizontal: 16, marginTop: -14 }}>
           {doc.sections.map((section, index) => (
-            <View key={`${section.title}-${index}`} className="bg-white border border-slate-200 rounded-3xl p-5 mb-4">
-              <View className="flex-row items-start">
-                <View className="h-7 w-7 rounded-xl bg-emerald-50 items-center justify-center mr-3">
-                  <Text className="text-emerald-700 text-[11px] font-black">{index + 1}</Text>
+            <View
+              key={`${section.title}-${index}`}
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: '#B9DDE0',
+                padding: 18,
+                marginBottom: 14,
+                elevation: 3,
+                shadowColor: '#123B5D',
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.06,
+                shadowRadius: 8
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: '#E8F4F5', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                  <Text style={{ color: '#0F8B8D', fontSize: 12, fontWeight: '900' }}>{index + 1}</Text>
                 </View>
-                <Text className="text-slate-950 text-[16px] leading-6 font-black flex-1">{section.title}</Text>
+                <Text style={{ color: '#102A43', fontSize: 15, fontWeight: '900', flex: 1 }}>{section.title}</Text>
               </View>
+
               {section.paragraphs?.map((paragraph, i) => (
-                <Text key={i} className="text-slate-600 text-[12px] leading-6 mt-3">{paragraph}</Text>
+                <Text key={i} style={{ color: '#627D98', fontSize: 12, fontWeight: '600', lineHeight: 20, marginTop: 10 }}>{paragraph}</Text>
               ))}
+
               {section.bullets?.map((bullet, i) => (
-                <View key={i} className="flex-row items-start mt-3">
-                  <View className="h-1.5 w-1.5 rounded-full bg-emerald-500 mt-2 mr-3" />
-                  <Text className="text-slate-600 text-[12px] leading-5 flex-1">{bullet}</Text>
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 10 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A', marginTop: 7, marginRight: 10 }} />
+                  <Text style={{ color: '#627D98', fontSize: 12, fontWeight: '600', lineHeight: 19, flex: 1 }}>{bullet}</Text>
                 </View>
               ))}
             </View>
           ))}
 
           {key !== 'about' && (
-            <View className="bg-amber-50 border border-amber-200 rounded-3xl p-5 mb-4 flex-row items-start">
-              <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#b45309" />
-              <Text className="text-amber-900 text-[11px] leading-5 flex-1 ml-3">If a screen-specific order term conflicts with this general policy, the term shown and accepted for that transaction applies, subject to mandatory law.</Text>
+            <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', borderRadius: 18, padding: 14, marginBottom: 14, flexDirection: 'row', alignItems: 'flex-start' }}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#D97706" />
+              <Text style={{ color: '#92400E', fontSize: 11, fontWeight: '600', lineHeight: 16, flex: 1, marginLeft: 10 }}>
+                If a screen-specific order term conflicts with this general policy, the term shown and accepted for that transaction applies, subject to mandatory law.
+              </Text>
             </View>
           )}
 
-          <TouchableOpacity onPress={contact} className="bg-slate-950 rounded-3xl p-5 flex-row items-center">
-            <View className="h-11 w-11 rounded-2xl bg-emerald-500/20 items-center justify-center">
-              <MaterialCommunityIcons name="email-outline" size={22} color="#6ee7b7" />
+          {/* Contact Support Card */}
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={contact}
+            style={{
+              backgroundColor: '#123B5D',
+              borderRadius: 20,
+              padding: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: '#0F8B8D',
+              elevation: 4
+            }}
+          >
+            <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)', alignItems: 'center', justifyContent: 'center' }}>
+              <MaterialCommunityIcons name="email-outline" size={22} color="#4ADE80" />
             </View>
-            <View className="flex-1 ml-4">
-              <Text className="text-white font-black">Questions about this page?</Text>
-              <Text className="text-slate-400 text-[11px] mt-1">Contact {SUPPORT_EMAIL}</Text>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900' }}>Questions about this page?</Text>
+              <Text style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: 11, fontWeight: '600', marginTop: 2 }}>Contact {SUPPORT_EMAIL}</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={22} color="#94a3b8" />
+            <MaterialCommunityIcons name="chevron-right" size={22} color="#4ADE80" />
           </TouchableOpacity>
         </View>
       </ScrollView>
