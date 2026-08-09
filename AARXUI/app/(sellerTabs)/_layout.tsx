@@ -410,15 +410,15 @@ export default function TabLayout() {
             tabBarAllowFontScaling: false,
             animationEnabled: false,
             tabBarIcon: ({ color, focused }) => {
-            let iconName: keyof typeof Ionicons.glyphMap = focused ? "home" : "home-outline";
+              let iconName: keyof typeof Ionicons.glyphMap = focused ? "home" : "home-outline";
 
-            if (route.name === "home") iconName = focused ? "storefront" : "storefront-outline";
-            else if (route.name === "index") iconName = focused ? "document-text" : "document-text-outline";
-            else if (route.name === "active-orders") iconName = focused ? "bag-handle" : "bag-handle-outline";
-            else if (route.name === "history") iconName = focused ? "receipt" : "receipt-outline";
-            else if (route.name === "inbox") iconName = focused ? "chatbubbles" : "chatbubbles-outline";
-            else if (route.name === "support") iconName = focused ? "help-circle" : "help-circle-outline";
-            else if (route.name === "settings") iconName = focused ? "settings" : "settings-outline";
+              if (route.name === "home") iconName = focused ? "storefront" : "storefront-outline";
+              else if (route.name === "index") iconName = focused ? "document-text" : "document-text-outline";
+              else if (route.name === "active-orders") iconName = focused ? "bag-handle" : "bag-handle-outline";
+              else if (route.name === "history") iconName = focused ? "receipt" : "receipt-outline";
+              else if (route.name === "inbox") iconName = focused ? "chatbubbles" : "chatbubbles-outline";
+              else if (route.name === "support") iconName = focused ? "help-circle" : "help-circle-outline";
+              else if (route.name === "settings") iconName = focused ? "settings" : "settings-outline";
 
               return (
                 <View style={styles.tabIconSlot}>

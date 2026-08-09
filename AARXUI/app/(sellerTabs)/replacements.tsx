@@ -126,13 +126,12 @@ function ReplacementActionModal({
                         key={person.id}
                         disabled={!available}
                         onPress={() => setSelectedPersonId(person.id)}
-                        className={`mb-2.5 flex-row items-center rounded-2xl border p-3.5 ${
-                          selected
+                        className={`mb-2.5 flex-row items-center rounded-2xl border p-3.5 ${selected
                             ? 'border-[#0F8B8D] bg-[#E8F4F5]'
                             : available
-                            ? 'border-[#B9DDE0] bg-white'
-                            : 'border-slate-100 bg-slate-50 opacity-50'
-                        }`}
+                              ? 'border-[#B9DDE0] bg-white'
+                              : 'border-slate-100 bg-slate-50 opacity-50'
+                          }`}
                       >
                         <MaterialCommunityIcons
                           name={selected ? 'radiobox-marked' : 'radiobox-blank'}
@@ -580,20 +579,18 @@ export default function StoreReplacements() {
                 key={tab.key}
                 activeOpacity={0.84}
                 onPress={() => setActiveFilter(tab.key as any)}
-                className={`flex-row items-center rounded-full px-3.5 py-1.5 border ${
-                  active
+                className={`flex-row items-center rounded-full px-3.5 py-1.5 border ${active
                     ? 'bg-[#123B5D] border-[#123B5D]'
                     : 'bg-[#F4F8FA] border-[#B9DDE0]'
-                }`}
+                  }`}
               >
                 <Text className={`text-[11px] font-black tracking-tight ${active ? 'text-white' : 'text-[#627D98]'}`}>
                   {tab.label}
                 </Text>
                 {tab.count > 0 && (
                   <View
-                    className={`ml-1.5 rounded-full px-1.5 py-0.2 min-w-[18px] items-center justify-center ${
-                      active ? 'bg-[#0F8B8D]' : 'bg-[#B9DDE0]'
-                    }`}
+                    className={`ml-1.5 rounded-full px-1.5 py-0.2 min-w-[18px] items-center justify-center ${active ? 'bg-[#0F8B8D]' : 'bg-[#B9DDE0]'
+                      }`}
                   >
                     <Text className={`text-[9px] font-black ${active ? 'text-white' : 'text-[#102A43]'}`}>
                       {tab.count}

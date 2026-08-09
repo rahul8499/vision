@@ -114,16 +114,18 @@ export default function SellerHomeScreen() {
     complaints: 0,
     consultations: 0,
     support: 0,
+    replacements: 0,
   });
 
   const fetchServiceCounts = useCallback(async () => {
     if (!BASE_URL || !token) return;
     try {
-      const [reportsRes, complaintsRes, consultsRes, supportRes] = await Promise.allSettled([
+      const [reportsRes, complaintsRes, consultsRes, supportRes, replacementsRes] = await Promise.allSettled([
         axios.get(`${BASE_URL}/api/safety-reports/`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`${BASE_URL}/api/complaints/counts/`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`${BASE_URL}/api/pharmacist/store/inbox/`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`${BASE_URL}/api/complaints/platform-support/`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/store/replacements/`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
       let reports = 0;
@@ -150,7 +152,13 @@ export default function SellerHomeScreen() {
         support = Array.isArray(data) ? data.filter((s: any) => s.status !== 'CLOSED' && s.status !== 'RESOLVED').length : 0;
       }
 
-      setServiceCounts({ reports, complaints, consultations, support });
+      let replacements = 0;
+      if (replacementsRes.status === 'fulfilled') {
+        const data = replacementsRes.value.data;
+        replacements = Array.isArray(data) ? data.filter((r: any) => r.status === 'requested').length : 0;
+      }
+
+      setServiceCounts({ reports, complaints, consultations, support, replacements });
     } catch (err) {
       console.log('Error fetching service counts:', err);
     }
@@ -413,13 +421,28 @@ export default function SellerHomeScreen() {
               onPress={() => router.push('/(sellerTabs)/replacements')}
               className="mt-4 flex-row items-center justify-between rounded-[1rem] border border-orange-100 bg-orange-50 p-4 shadow-sm shadow-slate-200/50"
             >
-              <View className="flex-row items-center">
+              <View className="flex-row items-center flex-1">
                 <View className="h-10 w-10 items-center justify-center rounded-full bg-white">
                   <MaterialCommunityIcons name="package-variant-closed" size={20} color="#ea580c" />
                 </View>
-                <View className="ml-3">
-                  <Text className="text-sm font-black text-slate-900">Replacements</Text>
-                  <Text className="mt-0.5 text-xs font-medium text-slate-500">Manage replacement requests</Text>
+                <View className="ml-3 flex-1">
+                  <View className="flex-row items-center">
+                    <Text className="text-sm font-black text-slate-900">Replacements</Text>
+                    {serviceCounts.replacements > 0 ? (
+                      <View className="ml-2.5 bg-[#EA580C] rounded-full px-2 py-0.5 min-w-[20px] items-center justify-center">
+                        <Text className="text-white text-[10px] font-black">{serviceCounts.replacements}</Text>
+                      </View>
+                    ) : (
+                      <View className="ml-2.5 bg-[#EDF8F0] border border-[#BBF7D0] rounded-full px-2 py-0.5">
+                        <Text className="text-[#16A34A] text-[9px] font-black">0 Pending</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="mt-0.5 text-xs font-medium text-slate-500" numberOfLines={1}>
+                    {serviceCounts.replacements > 0
+                      ? `${serviceCounts.replacements} pending replacement request${serviceCounts.replacements > 1 ? 's' : ''}`
+                      : 'Manage customer replacement requests'}
+                  </Text>
                 </View>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={24} color="#ea580c" />
