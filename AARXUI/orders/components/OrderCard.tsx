@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { handleDownloadInvoice } from '../../app/(sellerTabs)/history';
 import { getOrderId, getPrimaryAction } from '../helpers/orderWorkflow';
 import type { PriorityInfo, SellerOrder, SlaInfo, StageResolution } from '../types';
 import NextActionButton from './NextActionButton';
@@ -36,7 +37,7 @@ const buildMediaUrl = (baseUrl: string | undefined, mediaPath?: string | null) =
 };
 
 const formatCurrency = (value?: number | string | null) => {
-  if (value === null || value === undefined || value === '') return 'Amount pending';
+  if (value === null || value === undefined || value === '') return 'Calculated';
   const amount = Number(value);
   if (Number.isNaN(amount)) return String(value);
   return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -337,8 +338,20 @@ export default function OrderCard({ order, baseUrl, stageInfo, priority, sla, pr
           </TouchableOpacity>
         </View>
 
-        {/* 6️⃣ Quick Toolbar (Call, Chat, Details, Cancel / Report) */}
+        {/* 6️⃣ Quick Toolbar (Invoice (Completed only), Call, Chat, Cancel / Report) */}
         <View className="mt-2 flex-row gap-1.5">
+          {(stageInfo.stage === 'COMPLETED' || order.user_status === 'completed') && (
+            <TouchableOpacity
+              onPress={() => handleDownloadInvoice(order)}
+              className="flex-1 flex-row items-center justify-center rounded-xl border py-2 px-1.5 bg-emerald-50 border-emerald-200 active:opacity-80 shadow-xs"
+            >
+              <MaterialCommunityIcons name="file-pdf-box" size={14} color="#059669" />
+              <Text className="ml-1 text-[9.5px] font-black uppercase tracking-wider text-emerald-700" numberOfLines={1}>
+                Invoice
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {onCancel && stageInfo.stage !== 'COMPLETED' && stageInfo.stage !== 'CANCELLED' && order.user_status !== 'locked' ? (
             <QuickActionBtn icon="close-circle-outline" label={t('Cancel')} onPress={() => onCancel(order)} danger />
           ) : null}

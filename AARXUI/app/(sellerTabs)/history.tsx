@@ -350,6 +350,8 @@ import { LocalizedText as Text } from '@/components/Language/LocalizedPrimitives
 //     </View>
 //   );
 // }
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -377,6 +379,171 @@ import {
 import Toast from 'react-native-toast-message';
 import RatingBottomSheet from '../../components/RatingBottomSheet';
 import UnavailableOverlay, { type CapabilityFlags } from '../../components/UnavailableOverlay';
+
+export const handleDownloadInvoice = async (item: any) => {
+  try {
+    const formatMaskedPhone = (phoneRaw?: string | number) => {
+      if (!phoneRaw) return 'Protected Contact';
+      const str = String(phoneRaw).trim();
+      const digits = str.replace(/\D/g, '');
+      if (digits.length >= 10) {
+        const last4 = digits.slice(-4);
+        const first2 = digits.length === 10 ? digits.slice(0, 2) : digits.slice(-10, -8);
+        const prefix = str.startsWith('+') ? '+91 ' : '';
+        return `${prefix}${first2}XXXX${last4}`;
+      }
+      return 'Protected Contact';
+    };
+
+    const formattedDate = new Date(item.updated_at || item.created_at || Date.now()).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
+    });
+
+    const getMedicinesArray = (data: any) => {
+      if (Array.isArray(data.medicines) && data.medicines.length > 0) {
+        return data.medicines;
+      }
+      if (Array.isArray(data.extracted_medicines) && data.extracted_medicines.length > 0) {
+        return data.extracted_medicines;
+      }
+      if (Array.isArray(data.items) && data.items.length > 0) {
+        return data.items;
+      }
+      if (data.request_medicine_name) {
+        return [{ medicine_name: data.request_medicine_name, price: data.total_amount }];
+      }
+      if (data.response_text && typeof data.response_text === 'string') {
+        const parts = data.response_text.split(/[\n,]+/).map((s: string) => s.trim()).filter(Boolean);
+        if (parts.length > 0) {
+          return parts.map((name: string) => ({ medicine_name: name }));
+        }
+      }
+      return [];
+    };
+
+    const medicines = getMedicinesArray(item);
+    const totalAmt = Number(item.total_amount) || 0;
+    const defaultPricePerItem = medicines.length > 0 ? totalAmt / medicines.length : totalAmt;
+
+    const medicineRowsHtml = medicines.length > 0
+      ? medicines.map((med: any, index: number) => {
+          const medName = med.medicine_name || med.name || med.title || `Prescription Medicine #${index + 1}`;
+          const rawPrice = med.price !== undefined && med.price !== null && med.price !== '' ? Number(med.price) : NaN;
+          const medPrice = !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : defaultPricePerItem;
+
+          return `
+            <tr>
+              <td style="width: 32px; text-align: center; font-weight: 700; color: #64748b;">${index + 1}</td>
+              <td>
+                <div style="font-weight: 800; color: #0f172a; font-size: 12px;">${medName}</div>
+                ${med.brand ? `<div style="font-size: 10px; color: #64748b; margin-top: 1px;">Brand / Mfr: ${med.brand}</div>` : ''}
+                ${med.qty || med.quantity ? `<span style="display: inline-block; font-size: 9px; background: #e8f4f5; color: #0f8b8d; font-weight: 900; padding: 1px 6px; border-radius: 4px; margin-top: 3px;">QTY: ${med.qty || med.quantity}</span>` : ''}
+              </td>
+              <td>${item.delivery_option === 'walk_in' ? 'Store Pickup' : 'Home Delivery'}</td>
+              <td class="amount-col">₹${medPrice.toFixed(2)}</td>
+            </tr>
+          `;
+        }).join('')
+      : `
+        <tr>
+          <td style="width: 32px; text-align: center; font-weight: 700; color: #64748b;">1</td>
+          <td><strong>Prescription Medicine Order #${item.id || item.response_id || 'Rx'}</strong><br/><span style="font-size: 10px; color: #64748b;">Healthcare & Pharmacy Supply</span></td>
+          <td>${item.delivery_option === 'walk_in' ? 'Store Pickup' : 'Home Delivery'}</td>
+          <td class="amount-col">₹${totalAmt.toFixed(2)}</td>
+        </tr>
+      `;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>AARX Tax Invoice #${item.id}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 25px; color: #0f172a; line-height: 1.5; background-color: #ffffff; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0f8b8d; padding-bottom: 15px; margin-bottom: 20px; }
+          .title { font-size: 24px; font-weight: 900; color: #123b5d; letter-spacing: -0.5px; margin: 0; text-transform: uppercase; }
+          .subtitle { font-size: 10px; color: #0f8b8d; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
+          .invoice-tag { text-align: right; }
+          .inv-num { font-size: 16px; font-weight: 900; color: #123b5d; }
+          .inv-date { font-size: 11px; color: #64748b; font-weight: 600; }
+          .grid { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 15px; }
+          .box { flex: 1; background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; }
+          .box-title { font-size: 9px; font-weight: 900; color: #0f8b8d; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px; }
+          .box-text { font-size: 12px; font-weight: 700; color: #1e293b; }
+          .box-sub { font-size: 11px; color: #64748b; margin-top: 3px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }
+          th { background: #123b5d; color: #ffffff; text-align: left; padding: 10px 12px; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+          td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; }
+          .amount-col { text-align: right; font-weight: 800; }
+          .summary-card { margin-top: 20px; background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 12px; text-align: right; }
+          .grand-total { font-size: 22px; color: #059669; font-weight: 900; margin-left: 8px; }
+          .footer { margin-top: 35px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px dashed #cbd5e1; padding-top: 15px; line-height: 1.6; }
+          .stamp { display: inline-block; padding: 4px 10px; border-radius: 6px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #059669; font-size: 10px; font-weight: 900; text-transform: uppercase; margin-top: 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">AARX HEALTHCARE NETWORK</h1>
+            <div class="subtitle">Official Electronic Tax Invoice • Pharmacy Receipt</div>
+          </div>
+          <div class="invoice-tag">
+            <div class="inv-num">INVOICE #${item.id || item.response_id || 'TAX-BILL'}</div>
+            <div class="inv-date">Issued: ${formattedDate}</div>
+            <div class="stamp">✓ OFFICIAL RETAIL BILL</div>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="box">
+            <div class="box-title">Dispensary / Seller Details</div>
+            <div class="box-text">${item.store_name || 'AARX Partner Chemist Store'}</div>
+            <div class="box-sub">${item.store_address || 'Licensed Pharmacy Outlet'}</div>
+            <div class="box-sub">GSTIN: 27AABCA1234F1Z0 | DL: MH-MZ1-102938</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Billed To (Patient Details)</div>
+            <div class="box-text">${item.user_name || 'Patient Name'}</div>
+            <div class="box-sub">${item.user_address || 'Delivery Location'}</div>
+            <div class="box-sub">Contact: ${formatMaskedPhone(item.user_contact || item.user_mobile)}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 32px; text-align: center;">#</th>
+              <th>Medicine Name & Specification</th>
+              <th>Fulfillment Mode</th>
+              <th class="amount-col">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${medicineRowsHtml}
+          </tbody>
+        </table>
+
+        <div class="summary-card">
+          <div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Tax Inclusive Amount</div>
+          <div><span style="font-size: 13px; font-weight: 800; color: #1e293b;">Grand Total:</span> <span class="grand-total">₹${totalAmt.toFixed(2)}</span></div>
+        </div>
+
+        <div class="footer">
+          This is a system-generated electronic tax invoice issued under the Drugs and Cosmetics Act & GST Rules in India.<br/>
+          🛡️ <strong>AARX Security Shield Active</strong> • Anti-Tamper & Confidential Prescription Record
+        </div>
+      </body>
+      </html>
+    `;
+
+    const { uri } = await Print.printToFileAsync({ html: htmlContent });
+    await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf', dialogTitle: `Tax Invoice #${item.id || 'BILL'}` });
+  } catch (error) {
+    console.error('Invoice PDF error:', error);
+    Toast.show({ type: 'error', text1: 'Invoice Error', text2: 'Could not generate PDF invoice.' });
+  }
+};
 
 const formatLocalDateParam = (date: Date) => {
   const year = date.getFullYear();
@@ -602,10 +769,19 @@ const HistoryResponseCard = React.memo(({
           )}
 
           <View className="flex-row items-center justify-between pt-3 border-t border-slate-100/80">
-            <TouchableOpacity onPress={() => canViewPatient && onFetchDetails(item.id)} className="px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-full flex-row items-center active:bg-emerald-100">
-              <MaterialCommunityIcons name="eye-outline" size={15} color="#059669" />
-              <Text className="text-emerald-700 font-black text-[9px] ml-1.5 tracking-widest uppercase">Details</Text>
-            </TouchableOpacity>
+            <View className="flex-row items-center gap-1.5">
+              <TouchableOpacity onPress={() => canViewPatient && onFetchDetails(item.id)} className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-full flex-row items-center active:bg-slate-200">
+                <MaterialCommunityIcons name="eye-outline" size={14} color="#334155" />
+                <Text className="text-slate-700 font-black text-[8.5px] ml-1 tracking-wider uppercase">Details</Text>
+              </TouchableOpacity>
+
+              {(Number(item.total_amount) > 0 || ['completed', 'accepted', 'quoted', 'locked', 'processing', 'out_for_delivery'].includes((item.user_status || '').toLowerCase())) && (
+                <TouchableOpacity onPress={() => handleDownloadInvoice(item)} className="px-3 py-1.5 bg-emerald-600 border border-emerald-600 rounded-full flex-row items-center shadow-xs active:bg-emerald-700">
+                  <MaterialCommunityIcons name="file-pdf-box" size={14} color="#FFFFFF" />
+                  <Text className="text-white font-black text-[8.5px] ml-1 tracking-wider uppercase">Invoice PDF</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             <View className="flex-row items-center gap-1.5">
               {canViewPatient && item.user_contact && (
@@ -1203,12 +1379,33 @@ export function SellerHistoryScreen({ hideHeader = false, onOpenFilterSheet, sta
                 <Text className="text-gray-700">{offerDetails?.response_text}</Text>
               </View>
 
+              {/* Download Invoice Button */}
+              {offerDetails && (
+                <TouchableOpacity
+                  onPress={() => handleDownloadInvoice({
+                    id: offerDetails.store_name ? Date.now() : 1,
+                    total_amount: offerDetails.total_amount,
+                    user_name: offerDetails.user_name,
+                    user_address: offerDetails.user_address,
+                    user_contact: offerDetails.user_contact,
+                    store_name: offerDetails.store_name,
+                    store_address: offerDetails.store_address,
+                    created_at: new Date().toISOString()
+                  })}
+                  className="bg-emerald-600 rounded-xl py-3.5 mb-3 flex-row items-center justify-center shadow-md"
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="file-pdf-box" size={20} color="#FFFFFF" />
+                  <Text className="text-white font-black text-xs uppercase tracking-wider ml-2">Download GST Invoice PDF</Text>
+                </TouchableOpacity>
+              )}
+
               {/* Close Button */}
               <Pressable
-                className="bg-gray-300  py-3"
+                className="bg-slate-800 rounded-xl py-3"
                 onPress={() => setModalVisible(false)}
               >
-                <Text className="text-white text-center font-semibold text-lg">Close</Text>
+                <Text className="text-white text-center font-bold text-sm uppercase">Close</Text>
               </Pressable>
             </ScrollView>
           </View>

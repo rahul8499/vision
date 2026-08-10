@@ -29,7 +29,7 @@ import {
 import Toast from 'react-native-toast-message';
 import RatingBottomSheet from '../../components/RatingBottomSheet';
 import UnavailableOverlay, { CapabilityFlags, shouldShowOverlay } from '../../components/UnavailableOverlay';
-import { SellerHistoryScreen } from './history';
+import { SellerHistoryScreen, handleDownloadInvoice } from './history';
 import RemoteImageWithStatus from '../../components/RemoteImageWithStatus';
 import { Camera, Logger, MapView, UserLocation } from 'mappls-map-react-native';
 
@@ -1014,12 +1014,21 @@ const PrescriptionCard = React.memo(({
         <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 20 }}>
 
           {item.user_status === 'completed' ? (
-            <View className="border rounded-[1.15rem] p-3 mb-4 flex-row items-center" style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}>
-              <MaterialCommunityIcons name="lock-check" size={16} color={SELLER_CARD_COLORS.successGreen} />
-              <View className="ml-2 flex-1">
-                <Text className="text-[9px] font-black uppercase tracking-[1.5px]" style={{ color: SELLER_CARD_COLORS.successGreen }}>Delivered Successfully</Text>
-                <Text className="text-[8px] font-bold mt-0.5" style={{ color: SELLER_CARD_COLORS.secondaryText }}>Details hidden for privacy</Text>
+            <View className="border rounded-[1.15rem] p-3 mb-4 flex-row items-center justify-between" style={{ backgroundColor: SELLER_CARD_COLORS.lightTealCard, borderColor: SELLER_CARD_COLORS.borderTeal }}>
+              <View className="flex-row items-center flex-1 mr-2">
+                <MaterialCommunityIcons name="lock-check" size={20} color={SELLER_CARD_COLORS.successGreen} />
+                <View className="ml-2.5 flex-1">
+                  <Text className="text-[10px] font-black uppercase tracking-[1.5px]" style={{ color: SELLER_CARD_COLORS.successGreen }}>Delivered Successfully</Text>
+                  <Text className="text-[11px] font-black mt-0.5" style={{ color: SELLER_CARD_COLORS.primaryNavy }}>Total: ₹{item.total_amount ? Number(item.total_amount).toFixed(2) : '0.00'}</Text>
+                </View>
               </View>
+              <TouchableOpacity
+                onPress={() => handleDownloadInvoice(item)}
+                className="px-3.5 py-2 bg-emerald-600 rounded-xl flex-row items-center shadow-xs active:bg-emerald-700"
+              >
+                <MaterialCommunityIcons name="file-pdf-box" size={16} color="#FFFFFF" />
+                <Text className="text-white font-black text-[9px] ml-1.5 tracking-wider uppercase">Invoice PDF</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity
@@ -1206,6 +1215,16 @@ const PrescriptionCard = React.memo(({
                   </TouchableOpacity>
 
                   <View className="flex-row items-center gap-2">
+                    {item.user_status === 'completed' && (
+                      <TouchableOpacity
+                        onPress={() => handleDownloadInvoice(item)}
+                        className="px-3 py-2 justify-center items-center rounded-xl bg-emerald-600 active:opacity-80 flex-row shadow-xs"
+                      >
+                        <MaterialCommunityIcons name="file-pdf-box" size={15} color="#FFFFFF" />
+                        <Text className="text-white font-black text-[8.5px] ml-1 uppercase tracking-wider">Invoice</Text>
+                      </TouchableOpacity>
+                    )}
+
                     <TouchableOpacity
                       onPress={() => onStartChat(item)}
                       className="w-[36px] h-[36px] justify-center items-center rounded-xl border active:opacity-80"
@@ -2025,6 +2044,7 @@ export default function Prescription() {
     fetchDeliveryPreview(item.id);
   };
   const [showItemsModal, setShowItemsModal] = useState(false);
+  const [showQuotePreviewModal, setShowQuotePreviewModal] = useState(false);
   const [quoteSubmitting, setQuoteSubmitting] = useState(false);
   const [deliveryPreview, setDeliveryPreview] = useState<DeliveryOffer | null>(null);
   const [deliveryPreviewLoading, setDeliveryPreviewLoading] = useState(false);
@@ -3197,7 +3217,7 @@ export default function Prescription() {
                       });
                       return;
                     }
-                    handleSubmit();
+                    setShowQuotePreviewModal(true);
                   }}
                   className="flex-1 h-11 rounded-xl items-center justify-center shadow-md flex-row"
                   style={{ backgroundColor: quoteSubmitting ? '#627D98' : '#123B5D' }}
@@ -3207,13 +3227,181 @@ export default function Prescription() {
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
                     <>
-                      <MaterialCommunityIcons name="send-check-outline" size={16} color="#FFFFFF" />
-                      <Text className="text-white font-black text-[10px] uppercase tracking-[1.4px] ml-1.5">Send Quote Now</Text>
+                      <MaterialCommunityIcons name="eye-check-outline" size={16} color="#FFFFFF" />
+                      <Text className="text-white font-black text-[10px] uppercase tracking-[1.4px] ml-1.5">Preview & Send Quote</Text>
                     </>
                   )}
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
+          </View>
+        </Modal>
+
+        {/* 🔍 Full Pre-Submission Quote Inspection & Verification Modal */}
+        <Modal visible={showQuotePreviewModal} transparent animationType="slide" onRequestClose={() => setShowQuotePreviewModal(false)}>
+          <View className="flex-1 bg-slate-950/75 justify-end">
+            <BlurView intensity={35} tint="dark" className="absolute inset-0" />
+            <View className="bg-white rounded-t-[2.25rem] shadow-2xl overflow-hidden border-t border-slate-200" style={{ maxHeight: SCREEN_HEIGHT * 0.85 }}>
+              {/* Header Banner: AARX Corporate Navy/Teal */}
+              <View style={{ backgroundColor: '#123B5D', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14 }}>
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-2">
+                    <MaterialCommunityIcons name="file-document-check-outline" size={24} color="#0F8B8D" />
+                    <View>
+                      <Text className="text-white text-[17px] font-black uppercase tracking-tight">Quote Verification</Text>
+                      <Text className="text-[9px] font-black uppercase tracking-[1.5px]" style={{ color: '#B9DDE0' }}>Pre-Submission Inspection</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={() => setShowQuotePreviewModal(false)} className="h-8 w-8 rounded-full items-center justify-center bg-white/10 border border-white/20">
+                    <MaterialCommunityIcons name="close" size={18} color="white" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <ScrollView className="px-4 pt-4" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 110, gap: 12 }}>
+                {/* 1. Patient & Request Context Card */}
+                <View style={{ borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#F8FAFC', padding: 12 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+                    👤 PATIENT & DESTINATION
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#E8F4F5', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center' }}>
+                      <MaterialCommunityIcons name="account" size={20} color="#0F8B8D" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '900', color: '#102A43' }}>{currentItem?.user_name || 'Patient'}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#627D98', marginTop: 1 }} numberOfLines={2}>
+                        {currentItem?.user_address || 'Pickup / Address details'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* 2. Grand Total Hero Card */}
+                <View style={{ borderRadius: 16, backgroundColor: '#123B5D', borderWidth: 1, borderColor: '#0F8B8D', padding: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyBetween: 'space-between', justifyContent: 'space-between' }}>
+                    <View>
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: '#B9DDE0', textTransform: 'uppercase', letterSpacing: 1.5 }}>
+                        GRAND TOTAL PAYABLE
+                      </Text>
+                      <Text style={{ fontSize: 26, fontWeight: '900', color: '#FFFFFF', marginTop: 2 }}>
+                        ₹{Number(totalPrice || 0).toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(15, 139, 141, 0.4)', borderWidth: 1, borderColor: '#0F8B8D' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase' }}>
+                        {quotationScenario ? quotationScenario.replace('_', ' ').toUpperCase() : 'STANDARD QUOTE'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* 3. Itemized Medicines Table */}
+                <View style={{ borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1 }}>
+                      💊 CONFIGURED MEDICINES ({medicines.filter(m => m.selected).length})
+                    </Text>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#0F8B8D' }}>
+                      ITEMIZED BREAKDOWN
+                    </Text>
+                  </View>
+
+                  <View style={{ gap: 6 }}>
+                    {medicines.filter(m => m.selected).map((med, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#f1f5f9' }}>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '900', color: '#102A43' }}>{med.medicine_name || 'Medicine Name'}</Text>
+                          {med.medicine_brand ? (
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#0F8B8D', marginTop: 1 }}>{med.medicine_brand} ({med.medicine_type})</Text>
+                          ) : null}
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ fontSize: 12, fontWeight: '900', color: med.is_available ? '#059669' : '#DC2626' }}>
+                            {med.is_available ? (med.price ? `₹${med.price}` : '✓ Stock Confirmed') : 'Out of Stock'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                {/* 4. Fulfillment & Logistics Summary */}
+                <View style={{ borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#F8FAFC', padding: 12 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                    🚚 FULFILLMENT & LOGISTICS
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#102A43' }}>Fulfillment Mode:</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '900', color: quoteHomeDelivery ? '#059669' : '#123B5D' }}>
+                      {quoteHomeDelivery ? '🏠 Home Delivery' : '🏪 Store Pickup / Walk-in'}
+                    </Text>
+                  </View>
+
+                  {quoteHomeDelivery ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderColor: '#e2e8f0' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#627D98' }}>Delivery Charge & ETA:</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: '#102A43' }}>
+                        ₹{quoteDeliveryCharge || '0'} • {quoteDeliveryEta ? `${quoteDeliveryEta} mins` : 'Standard'}
+                      </Text>
+                    </View>
+                  ) : quoteDeliveryReason ? (
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#627D98', marginTop: 4 }}>
+                      Pickup Reason: {quoteDeliveryReason}
+                    </Text>
+                  ) : null}
+                </View>
+
+                {/* 5. Seller Note for Customer */}
+                {note ? (
+                  <View style={{ borderRadius: 14, borderWidth: 1, borderColor: '#B9DDE0', backgroundColor: '#E8F4F5', padding: 12 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#0F8B8D', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                      📝 SELLER NOTE TO CUSTOMER
+                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#102A43', lineHeight: 16 }}>
+                      {note}
+                    </Text>
+                  </View>
+                ) : null}
+              </ScrollView>
+
+              {/* Sticky Bottom Action Buttons */}
+              <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, backgroundColor: '#ffffff', borderTopWidth: 1, borderColor: '#e2e8f0', flexDirection: 'row', gap: 10 }}>
+                {/* Button 1: Edit Quote */}
+                <TouchableOpacity
+                  onPress={() => setShowQuotePreviewModal(false)}
+                  style={{ width: 100, height: 46, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <MaterialCommunityIcons name="pencil-outline" size={16} color="#334155" />
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: '#334155', textTransform: 'uppercase' }}>Edit</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Button 2: Confirm & Transmit Quote */}
+                <TouchableOpacity
+                  disabled={quoteSubmitting}
+                  onPress={() => {
+                    setShowQuotePreviewModal(false);
+                    handleSubmit();
+                  }}
+                  style={{ flex: 1, height: 46, borderRadius: 12, backgroundColor: quoteSubmitting ? '#627D98' : '#0F8B8D', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
+                  activeOpacity={0.85}
+                >
+                  {quoteSubmitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="send-check-outline" size={18} color="#FFFFFF" />
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1.2, marginLeft: 6 }}>
+                        Confirm & Transmit Quote
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </Modal>
 
