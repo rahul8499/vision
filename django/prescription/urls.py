@@ -31,6 +31,8 @@ from .views import (
     DeliveryJobDecisionView, DeliveryJobProblemView, DeliveryIssueListView, DeliveryIssueResolveView,
     DeliveryJobReturnView, StoreDeliveryReturnListView, StoreDeliveryReturnDecisionView
 )
+from .reports import StoreBusinessReportDataView, StoreBusinessReportPDFView
+
 urlpatterns = [
     path('delivery/login/', DeliveryPersonLoginView.as_view(), name='delivery-login'),
     path('delivery/me/', DeliveryPersonMeView.as_view(), name='delivery-me'),
@@ -121,6 +123,8 @@ urlpatterns = [
 
     path('response/<int:response_id>/',  GetResponseByIdViewForUserPrescription.as_view(), name='get_response_by_id'),
     path('store/dashboard-summary/', StoreDashboardSummaryView.as_view(), name='store_dashboard_summary'),
+    path('store/report/data/', StoreBusinessReportDataView.as_view(), name='store_report_data'),
+    path('store/report/pdf/', StoreBusinessReportPDFView.as_view(), name='store_report_pdf'),
     path('store/my-responses/', StoreSubmittedResponsesView.as_view(), name='store_submitted_responses'),
     path('store/my-responses/<int:id>/', StoreSubmittedResponseDetailView.as_view(), name='store_response_detail'),
 
