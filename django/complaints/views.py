@@ -242,17 +242,33 @@ class ComplaintCountsView(APIView):
     def get(self, request):
         actor_type, actor = get_actor(request)
         if actor_type == 'user':
-            filed = Complaint.objects.filter(complainant_user=actor).count()
+            filed = Complaint.objects.filter(complainant_user=actor)
             against = Complaint.objects.filter(respondent_user=actor)
         else:
-            filed = Complaint.objects.filter(complainant_store=actor).count()
+            filed = Complaint.objects.filter(complainant_store=actor)
             against = Complaint.objects.filter(respondent_store=actor)
+
+        start_date_str = request.query_params.get("start_date")
+        end_date_str = request.query_params.get("end_date")
+
+        if start_date_str and end_date_str:
+            from django.utils.dateparse import parse_date
+            from prescription.views import get_local_day_bounds
+            try:
+                start_date = parse_date(start_date_str)
+                end_date = parse_date(end_date_str)
+                if start_date and end_date:
+                    start_datetime, end_datetime = get_local_day_bounds(start_date, end_date)
+                    filed = filed.filter(created_at__gte=start_datetime, created_at__lt=end_datetime)
+                    against = against.filter(created_at__gte=start_datetime, created_at__lt=end_datetime)
+            except Exception:
+                pass
 
         open_statuses = ['open', 'under_review', 'awaiting_info']
         open_against = against.filter(status__in=open_statuses).count()
 
         return Response({
-            "filed": filed,
+            "filed": filed.count(),
             "against": against.count(),
             "open_against": open_against,
         }, status=200)
@@ -556,7 +572,24 @@ class PlatformSupportTicketListCreateView(APIView):
         if not actor:
             return Response({'error': 'Unauthorized.'}, status=401)
         key = 'requester_user' if actor_type == 'user' else 'requester_store'
-        tickets = PlatformSupportTicket.objects.filter(**{key: actor}).prefetch_related('messages')
+        tickets = PlatformSupportTicket.objects.filter(**{key: actor})
+
+        start_date_str = request.query_params.get("start_date")
+        end_date_str = request.query_params.get("end_date")
+
+        if start_date_str and end_date_str:
+            from django.utils.dateparse import parse_date
+            from prescription.views import get_local_day_bounds
+            try:
+                start_date = parse_date(start_date_str)
+                end_date = parse_date(end_date_str)
+                if start_date and end_date:
+                    start_datetime, end_datetime = get_local_day_bounds(start_date, end_date)
+                    tickets = tickets.filter(created_at__gte=start_datetime, created_at__lt=end_datetime)
+            except Exception:
+                pass
+
+        tickets = tickets.prefetch_related('messages')
         return Response([_serialize_support_ticket(request, ticket) for ticket in tickets])
 
     @transaction.atomic

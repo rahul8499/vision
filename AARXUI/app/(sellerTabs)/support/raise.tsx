@@ -33,10 +33,18 @@ export default function RaiseScreen() {
     router.replace({ pathname: '/support/[id]', params: { id: String(d.id) } } as any);
   };
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(sellerTabs)/settings');
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-      <SupportHeader title="Raise a Complaint" onBack={() => router.back()} />
-      <RaiseComplaintForm userType={userType} prefill={prefill} onSubmitted={onSubmitted} onCancel={() => router.back()} />
+      <SupportHeader title="Raise a Complaint" onBack={handleBack} />
+      <RaiseComplaintForm userType={userType} prefill={prefill} onSubmitted={onSubmitted} onCancel={handleBack} />
     </View>
   );
 }

@@ -11,6 +11,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
   Image,
   Linking,
   Modal,
@@ -27,6 +28,7 @@ import * as Progress from 'react-native-progress';
 import * as SecureStore from 'expo-secure-store';
 import { getGoogleIdToken } from '@/utils/googleIdentity';
 import { LanguagePickerModal } from '@/components/Language/LanguagePickerModal';
+import SellerBusinessReportModal from '@/components/SellerBusinessReportModal';
 import { useAppLanguage } from '@/context/LanguageContext';
 
 import { AntDesign, Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -42,8 +44,23 @@ export default function SellerSettingsScreen() {
   const isFocused = useIsFocused();
   const { t, languageLabel } = useAppLanguage();
   const [languageVisible, setLanguageVisible] = useState(false);
-  const params = useLocalSearchParams<{ edit?: string }>();
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const params = useLocalSearchParams<{ edit?: string; fromDrawer?: string }>();
   const [docUpdates, setDocUpdates] = useState<{ [k: string]: any }>({});
+
+  const handleBack = () => {
+    const isFromDrawer = params?.fromDrawer === 'true';
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(sellerTabs)/home');
+    }
+    if (isFromDrawer) {
+      setTimeout(() => {
+        DeviceEventEmitter.emit('open-seller-drawer');
+      }, 150);
+    }
+  };
 
   /* ─── state ─────────────────────────────────────────────────────── */
   const {
@@ -819,6 +836,23 @@ export default function SellerSettingsScreen() {
             <View style={{ minHeight: 120, justifyContent: 'center' }}>
               <View style={{ zIndex: 10, maxWidth: '56%' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={handleBack}
+                    activeOpacity={0.76}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 10,
+                      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(255, 255, 255, 0.2)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 8,
+                    }}
+                  >
+                    <MaterialCommunityIcons name="arrow-left" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
                   <Text style={{ fontSize: 24, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1.5, lineHeight: 30 }} numberOfLines={1}>
                     SETTINGS
                   </Text>
@@ -1076,6 +1110,73 @@ export default function SellerSettingsScreen() {
           </TouchableOpacity>
         )}
 
+        {/* ── Enterprise Business PDF Report Trigger Card ── */}
+        {storeData && (
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => setReportModalVisible(true)}
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#B9DDE0',
+              marginBottom: 16,
+              padding: 16,
+              elevation: 4,
+              shadowColor: '#123B5D',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.08,
+              shadowRadius: 10
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#E8F4F5', borderWidth: 1, borderColor: '#B9DDE0', alignItems: 'center', justifyContent: 'center' }}>
+                  <MaterialCommunityIcons name="file-pdf-box" size={24} color="#0F8B8D" />
+                </View>
+                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: '#102A43' }}>Business PDF Report</Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#0F8B8D', marginLeft: 8 }} />
+                  </View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#627D98', marginTop: 2 }} numberOfLines={1}>
+                    Official store analytics, revenue & compliance PDF
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#123B5D', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8 }}>Generate</Text>
+                <Feather name="chevron-right" size={14} color="#4ADE80" style={{ marginLeft: 4 }} />
+              </View>
+            </View>
+
+            {/* Quick Status Pills */}
+            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E8F4F5' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="finance" size={11} color="#0F8B8D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  Financial Breakdown
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="calendar-range" size={11} color="#123B5D" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  Custom Range Export
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F4F5', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5, borderWidth: 1, borderColor: '#B9DDE0' }}>
+                <MaterialCommunityIcons name="shield-check-outline" size={11} color="#16A34A" />
+                <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#102A43', marginLeft: 4 }}>
+                  Verified Compliance
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* ── Enterprise Account Security & Password Trigger Card ── */}
         {storeData && (
           <TouchableOpacity
@@ -1226,35 +1327,35 @@ export default function SellerSettingsScreen() {
                   icon="credit-card-outline"
                   title="Billing & Subscriptions"
                   subtitle="Manage your seller plans"
-                  onPress={() => router.push('/(sellerTabs)/billing')}
+                  onPress={() => router.push({ pathname: '/(sellerTabs)/billing', params: { fromSettings: 'true' } } as any)}
                   isLast={false}
                 />
                 <SettingsRow
                   icon="shield-alert-outline"
                   title="Reports & Safety"
                   subtitle="Track pharmacy moderation reports"
-                  onPress={() => router.push("/(sellerTabs)/reports")}
+                  onPress={() => router.push({ pathname: '/(sellerTabs)/reports', params: { fromSettings: 'true' } } as any)}
                   isLast={false}
                 />
                 <SettingsRow
                   icon="hand-heart-outline"
                   title="Help & Complaints"
                   subtitle="Raise a case against a patient or track disputes"
-                  onPress={() => router.push("/(sellerTabs)/support")}
+                  onPress={() => router.push({ pathname: '/(sellerTabs)/support', params: { fromSettings: 'true' } } as any)}
                   isLast={false}
                 />
                 <SettingsRow
                   icon="account-question-outline"
                   title="Pharmacist Consultations"
                   subtitle="Availability, customer questions and callbacks"
-                  onPress={() => router.push('/(sellerTabs)/pharmacist')}
+                  onPress={() => router.push({ pathname: '/(sellerTabs)/pharmacist', params: { fromSettings: 'true' } } as any)}
                   isLast={false}
                 />
                 <SettingsRow
                   icon="headphones"
                   title="Seller Help & Support"
                   subtitle="FAQs, call, email or contact AARX"
-                  onPress={() => router.push('/(sellerTabs)/help-center')}
+                  onPress={() => router.push({ pathname: '/(sellerTabs)/help-center', params: { fromSettings: 'true' } } as any)}
                   isLast={false}
                 />
                 <SettingsRow
@@ -2495,6 +2596,13 @@ export default function SellerSettingsScreen() {
         </View>
       </Modal>
 
+      {/* ── Business PDF Report Modal ── */}
+      <SellerBusinessReportModal
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        token={token}
+        baseUrl={BASE_URL}
+      />
     </View>
   );
 }

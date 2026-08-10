@@ -96,7 +96,10 @@ export default function PremiumSideDrawer({ visible, onClose }: PremiumSideDrawe
 
   const navigate = (path: string) => {
     handleClose();
-    setTimeout(() => router.push(path as any), 200);
+    setTimeout(() => {
+      const cleanPath = path.split('?')[0];
+      router.push({ pathname: cleanPath, params: { fromDrawer: 'true' } } as any);
+    }, 200);
   };
 
   const [logoutVisible, setLogoutVisible] = useState(false);

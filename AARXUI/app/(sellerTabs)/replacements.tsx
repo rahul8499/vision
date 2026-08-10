@@ -3,10 +3,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   FlatList,
   Modal,
   RefreshControl,
@@ -221,7 +222,36 @@ function ReplacementActionModal({
 
 export default function StoreReplacements() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ fromDrawer?: string; fromSettings?: string }>();
   const { token } = useSelector((state: RootState) => state.user);
+
+  const handleBack = () => {
+    const isFromDrawer = params?.fromDrawer === 'true';
+    const isFromSettings = params?.fromSettings === 'true';
+
+    if (isFromSettings) {
+      router.push('/(sellerTabs)/settings');
+      return;
+    }
+
+    if (isFromDrawer) {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(sellerTabs)/home');
+      }
+      setTimeout(() => {
+        DeviceEventEmitter.emit('open-seller-drawer');
+      }, 150);
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(sellerTabs)/settings');
+    }
+  };
   const [items, setItems] = useState<any[]>([]);
   const [deliveryPeople, setDeliveryPeople] = useState<DeliveryPerson[]>([]);
   const [selectedDeliveryPersonId, setSelectedDeliveryPersonId] = useState<number | null>(null);
@@ -543,7 +573,7 @@ export default function StoreReplacements() {
         >
           <View className="flex-row items-center flex-1">
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={handleBack}
               className="mr-3 h-10 w-10 items-center justify-center rounded-xl bg-white/15"
             >
               <MaterialCommunityIcons name="arrow-left" size={22} color="white" />

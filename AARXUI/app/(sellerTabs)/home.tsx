@@ -1,4 +1,4 @@
-import { LocalizedText as Text } from '@/components/Language/LocalizedPrimitives';
+import { LocalizedText as Text, LocalizedTextInput as TextInput } from '@/components/Language/LocalizedPrimitives';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   RefreshControl,
   ScrollView,
   Switch,
@@ -21,6 +22,7 @@ import { useSellerDashboardSummary } from '../../orders/hooks/useSellerDashboard
 import type { OrderStage, SellerDashboardSummary } from '../../orders/types';
 import { AppDispatch, RootState } from '../../redux/store';
 import { fetchUserProfile } from '../../redux/userSlice';
+import SellerBusinessReportModal from '@/components/SellerBusinessReportModal';
 
 const formatCurrency = (value?: number | string | null) => {
   const amount = Number(value || 0);
@@ -74,6 +76,7 @@ const DATE_FILTERS = [
   { key: 'today', label: 'Today' },
   { key: '7days', label: '7 Days' },
   { key: '30days', label: '30 Days' },
+  { key: 'custom', label: 'Custom' },
 ];
 
 const MiniTrend = ({ color, variant = 'rise' }: { color: string; variant?: 'rise' | 'dip' | 'flat' | 'wave' }) => {
@@ -98,9 +101,13 @@ export default function SellerHomeScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const { user, token } = useSelector((state: RootState) => state.user);
 
+  const todayStr = getLocalDayStr(new Date());
   const [dateFilter, setDateFilter] = useState('today');
-  const [startDate, setStartDate] = useState<string | undefined>(undefined);
-  const [endDate, setEndDate] = useState<string | undefined>(undefined);
+  const [startDate, setStartDate] = useState<string | undefined>(todayStr);
+  const [endDate, setEndDate] = useState<string | undefined>(todayStr);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [datePickerModalVisible, setDatePickerModalVisible] = useState(false);
+  const [isRefreshingManual, setIsRefreshingManual] = useState(false);
 
   const dashboard = useSellerDashboardSummary({ baseUrl: BASE_URL, token, startDate, endDate });
   const summary = dashboard.summary;
@@ -108,7 +115,64 @@ export default function SellerHomeScreen() {
   const [storeToggleLoading, setStoreToggleLoading] = useState(false);
   const [isStoreActive, setIsStoreActive] = useState(true);
 
-  // Live Counts for Quick Access Services
+  const handleManualRefresh = async () => {
+    try {
+      setIsRefreshingManual(true);
+      await Promise.all([
+        dashboard.fetchSummary(true, true),
+        fetchServiceCounts(startDate, endDate),
+        dispatch(fetchUserProfile()),
+      ]);
+      Toast.show({
+        type: 'success',
+        text1: 'Dashboard Refreshed 🔄',
+        text2: 'Latest live data synced successfully.',
+        position: 'bottom',
+      });
+    } catch (err) {
+      console.log('Manual refresh failed:', err);
+    } finally {
+      setIsRefreshingManual(false);
+    }
+  };
+
+  const handleFilterSelect = useCallback((key: string) => {
+    if (key === 'custom') {
+      setDatePickerModalVisible(true);
+      return;
+    }
+
+    const today = new Date();
+    let start = new Date();
+    if (key === '7days') start.setDate(today.getDate() - 7);
+    else if (key === '30days') start.setDate(today.getDate() - 30);
+    else if (key === 'today') start = today;
+
+    const sStr = getLocalDayStr(start);
+    const eStr = getLocalDayStr(today);
+
+    setDateFilter(key);
+    setStartDate(sStr);
+    setEndDate(eStr);
+
+    // Instant live refresh with explicit override dates
+    dashboard.fetchSummary(true, true, sStr, eStr);
+    fetchServiceCounts(sStr, eStr);
+  }, [dashboard, fetchServiceCounts]);
+
+const isWithinDateRange = (itemDateStr?: string, startStr?: string, endStr?: string) => {
+  if (!startStr || !endStr) return true;
+  if (!itemDateStr) return true;
+  const itemTime = new Date(itemDateStr).getTime();
+  if (isNaN(itemTime)) return true;
+
+  const startTime = new Date(`${startStr}T00:00:00`).getTime();
+  const endTime = new Date(`${endStr}T23:59:59`).getTime();
+
+  return itemTime >= startTime && itemTime <= endTime;
+};
+
+// Live Counts for Quick Access Services
   const [serviceCounts, setServiceCounts] = useState({
     reports: 0,
     complaints: 0,
@@ -117,52 +181,67 @@ export default function SellerHomeScreen() {
     replacements: 0,
   });
 
-  const fetchServiceCounts = useCallback(async () => {
+  const fetchServiceCounts = useCallback(async (overrideStart?: string, overrideEnd?: string) => {
     if (!BASE_URL || !token) return;
     try {
+      const s = overrideStart !== undefined ? overrideStart : startDate;
+      const e = overrideEnd !== undefined ? overrideEnd : endDate;
+      const queryParams = (s && e) ? `?start_date=${s}&end_date=${e}` : '';
       const [reportsRes, complaintsRes, consultsRes, supportRes, replacementsRes] = await Promise.allSettled([
-        axios.get(`${BASE_URL}/api/safety-reports/`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BASE_URL}/api/complaints/counts/`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BASE_URL}/api/pharmacist/store/inbox/`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BASE_URL}/api/complaints/platform-support/`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BASE_URL}/api/store/replacements/`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/safety-reports/${queryParams}`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/complaints/counts/${queryParams}`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/pharmacist/store/inbox/${queryParams}`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/complaints/platform-support/${queryParams}`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/api/store/replacements/${queryParams}`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
       let reports = 0;
       if (reportsRes.status === 'fulfilled') {
         const data = reportsRes.value.data;
-        reports = Array.isArray(data) ? data.filter((r: any) => r.status !== 'RESOLVED' && r.status !== 'DISMISSED').length : 0;
+        reports = Array.isArray(data)
+          ? data.filter((r: any) => r.status !== 'RESOLVED' && r.status !== 'DISMISSED' && isWithinDateRange(r.created_at || r.timestamp, s, e)).length
+          : 0;
       }
 
       let complaints = 0;
       if (complaintsRes.status === 'fulfilled') {
         const data = complaintsRes.value.data;
-        complaints = Number(data.open_against || data.open_filed || 0);
+        if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+          complaints = Number(data.open_against || data.open_filed || 0);
+        } else if (Array.isArray(data)) {
+          complaints = data.filter((c: any) => c.status !== 'RESOLVED' && isWithinDateRange(c.created_at || c.timestamp, s, e)).length;
+        }
       }
 
       let consultations = 0;
       if (consultsRes.status === 'fulfilled') {
         const data = consultsRes.value.data;
-        consultations = Array.isArray(data) ? data.filter((c: any) => c.status !== 'closed' && c.status !== 'RESOLVED').length : 0;
+        consultations = Array.isArray(data)
+          ? data.filter((c: any) => c.status !== 'closed' && c.status !== 'RESOLVED' && isWithinDateRange(c.created_at || c.timestamp, s, e)).length
+          : 0;
       }
 
       let support = 0;
       if (supportRes.status === 'fulfilled') {
         const data = supportRes.value.data;
-        support = Array.isArray(data) ? data.filter((s: any) => s.status !== 'CLOSED' && s.status !== 'RESOLVED').length : 0;
+        support = Array.isArray(data)
+          ? data.filter((sItem: any) => sItem.status !== 'CLOSED' && sItem.status !== 'RESOLVED' && isWithinDateRange(sItem.created_at || sItem.timestamp, s, e)).length
+          : 0;
       }
 
       let replacements = 0;
       if (replacementsRes.status === 'fulfilled') {
         const data = replacementsRes.value.data;
-        replacements = Array.isArray(data) ? data.filter((r: any) => r.status === 'requested').length : 0;
+        replacements = Array.isArray(data)
+          ? data.filter((rep: any) => rep.status !== 'APPROVED' && rep.status !== 'REJECTED' && isWithinDateRange(rep.created_at || rep.requested_at, s, e)).length
+          : 0;
       }
 
       setServiceCounts({ reports, complaints, consultations, support, replacements });
     } catch (err) {
       console.log('Error fetching service counts:', err);
     }
-  }, [BASE_URL, token]);
+  }, [BASE_URL, token, startDate, endDate]);
 
   useFocusEffect(
     useCallback(() => {
@@ -236,7 +315,25 @@ export default function SellerHomeScreen() {
   ];
 
   const selectedFilter = DATE_FILTERS.find((f) => f.key === dateFilter)?.label || 'Today';
-  const attentionItems = summary?.attention ?? [];
+  const rawAttentionItems = summary?.attention ?? [];
+  const attentionItems = rawAttentionItems.filter((item: any) => {
+    const itemDate = item.created_at || item.created || item.timestamp || item.date;
+    if (itemDate) {
+      return isWithinDateRange(itemDate, startDate, endDate);
+    }
+    if (typeof item.minutes === 'number') {
+      const now = new Date();
+      if (dateFilter === 'today') {
+        const minutesElapsedToday = now.getHours() * 60 + now.getMinutes() + 5;
+        return item.minutes <= minutesElapsedToday;
+      } else if (dateFilter === '7days') {
+        return item.minutes <= 7 * 24 * 60;
+      } else if (dateFilter === '30days') {
+        return item.minutes <= 30 * 24 * 60;
+      }
+    }
+    return true;
+  });
   const attentionCount = attentionItems.length;
 
   const openAttention = () => {
@@ -272,20 +369,35 @@ export default function SellerHomeScreen() {
                 <View className="z-10 w-[54%] min-w-0">
                   <View className="flex-row items-center">
 
-                    <View className="min-w-0 flex-1">
-                      <Text
-                        className="text-[12px] font-black uppercase tracking-[1.6px] text-cyan-100 leading-4"
-                        numberOfLines={1}
-                      >
-                        Dashboard
-                      </Text>
+                    <View className="min-w-0 flex-1 flex-row items-center justify-between">
+                      <View>
+                        <Text
+                          className="text-[12px] font-black uppercase tracking-[1.6px] text-cyan-100 leading-4"
+                          numberOfLines={1}
+                        >
+                          Dashboard
+                        </Text>
+                        <Text
+                          className="text-[12px] font-black uppercase tracking-[1.2px] text-white leading-4"
+                          numberOfLines={1}
+                        >
+                          {isStoreActive ? 'Overview' : 'Offline'}
+                        </Text>
+                      </View>
 
-                      <Text
-                        className="text-[12px] font-black uppercase tracking-[1.2px] text-white leading-4"
-                        numberOfLines={1}
+                      {/* Header Manual Refresh Button */}
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={handleManualRefresh}
+                        disabled={isRefreshingManual}
+                        className="h-8 w-8 items-center justify-center rounded-full bg-white/20 border border-white/30"
                       >
-                        {isStoreActive ? 'Overview' : 'Offline'}
-                      </Text>
+                        {isRefreshingManual ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <MaterialCommunityIcons name="refresh" size={18} color="#FFFFFF" />
+                        )}
+                      </TouchableOpacity>
                     </View>
                   </View>
 
@@ -326,7 +438,7 @@ export default function SellerHomeScreen() {
                   <TouchableOpacity
                     key={f.key}
                     activeOpacity={0.86}
-                    onPress={() => setDateFilter(f.key)}
+                    onPress={() => handleFilterSelect(f.key)}
                     className={`h-8 flex-1 items-center justify-center rounded-xl ${active ? 'bg-[#123B5D]' : 'bg-transparent'}`}
                   >
                     <Text
@@ -339,6 +451,25 @@ export default function SellerHomeScreen() {
                 );
               })}
             </View>
+
+            {dateFilter === 'custom' && startDate && endDate && (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setDatePickerModalVisible(true)}
+                className="mt-1.5 flex-row items-center justify-between rounded-xl border border-teal-200 bg-[#E8F4F5] px-3 py-1.5"
+              >
+                <View className="flex-row items-center">
+                  <MaterialCommunityIcons name="calendar-range" size={14} color="#0F8B8D" />
+                  <Text className="ml-2 text-[10px] font-black text-[#123B5D]">
+                    {startDate} to {endDate}
+                  </Text>
+                </View>
+                <View className="flex-row items-center">
+                  <Text className="mr-1 text-[9px] font-bold text-[#0F8B8D]">Change</Text>
+                  <MaterialCommunityIcons name="pencil-outline" size={12} color="#0F8B8D" />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -354,10 +485,18 @@ export default function SellerHomeScreen() {
                 <View className="mr-2 h-1.5 w-1.5 rounded-full bg-[#0d8a63]" />
                 <Text className="text-[11px] font-black uppercase tracking-[2.2px] text-slate-600">{selectedFilter} Overview</Text>
               </View>
-              <View className="flex-row items-center rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1">
-                <MaterialCommunityIcons name="chart-timeline-variant-shimmer" size={12} color="#0d8a63" />
-                <Text className="ml-1 text-[8px] font-black uppercase tracking-[0.7px] text-emerald-700">Live summary</Text>
-              </View>
+
+              {/* ── DOWNLOAD PDF REPORT BUTTON ── */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setReportModalVisible(true)}
+                className="flex-row items-center rounded-full border border-teal-200 bg-[#E8F4F5] px-3 py-1 shadow-sm"
+              >
+                <MaterialCommunityIcons name="file-pdf-box" size={16} color="#0F8B8D" />
+                <Text className="ml-1.5 text-[9px] font-black uppercase tracking-[0.8px] text-[#0F8B8D]">
+                  Download PDF Report
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <View className="flex-row flex-wrap justify-between gap-y-2.5 rounded-[1.4rem] border border-slate-100 bg-white p-2 shadow-sm shadow-slate-200/80">
@@ -562,22 +701,41 @@ export default function SellerHomeScreen() {
               </View>
             </View>
 
-            <View className="mt-6 rounded-[1rem] border border-slate-100 bg-white p-4 shadow-sm shadow-slate-200">
-              <TouchableOpacity activeOpacity={0.85} disabled={!attentionCount} onPress={openAttention} className="flex-row items-center">
-                <View className={`h-12 w-12 items-center justify-center rounded-full ${attentionCount ? 'bg-[#fff4cf]' : 'bg-emerald-50'}`}>
-                  <MaterialCommunityIcons name={attentionCount ? 'alert-circle' : 'check-circle-outline'} size={22} color={attentionCount ? '#e0a10c' : '#10996d'} />
+            {/* ── WORK PULSE & OPERATIONAL HEALTH MODULE ── */}
+            <View className="mt-6 rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200">
+              <View className="flex-row items-center justify-between pb-3 border-b border-slate-100">
+                <View className="flex-row items-center">
+                  <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#E8F4F5] mr-3">
+                    <MaterialCommunityIcons name="pulse" size={20} color="#0F8B8D" />
+                  </View>
+                  <View>
+                    <View className="flex-row items-center">
+                      <Text className="text-sm font-black text-[#123B5D]">Work Pulse</Text>
+                      <View className="ml-2 flex-row items-center rounded-full bg-teal-50 border border-teal-200 px-2 py-0.5">
+                        <View className="h-1.5 w-1.5 rounded-full bg-[#0F8B8D] mr-1.5" />
+                        <Text className="text-[8px] font-black uppercase text-[#0F8B8D]">Live Feed</Text>
+                      </View>
+                    </View>
+                    <Text className="text-[10px] font-semibold text-slate-500 mt-0.5">
+                      Operational workload & urgent order queue ({selectedFilter})
+                    </Text>
+                  </View>
                 </View>
-                <View className="ml-4 flex-1">
-                  <Text className="text-sm font-black text-slate-950">Attention Required</Text>
-                  <Text className="mt-1 text-xs font-medium text-slate-500" numberOfLines={1}>
-                    {attentionCount ? `${attentionCount} urgent ${attentionCount === 1 ? 'order needs' : 'orders need'} action` : 'No urgent work right now'}
-                  </Text>
-                </View>
-                {!!attentionCount && <MaterialCommunityIcons name="chevron-right" size={28} color="#0c8d66" />}
-              </TouchableOpacity>
+
+                {!!attentionCount && (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={openAttention}
+                    className="flex-row items-center rounded-full bg-[#FFF4CF] border border-[#FDE68A] px-2.5 py-1"
+                  >
+                    <Text className="text-[10px] font-black text-[#B45309]">{attentionCount} Urgent</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={14} color="#B45309" />
+                  </TouchableOpacity>
+                )}
+              </View>
 
               {attentionCount ? (
-                <View className="mt-4 gap-y-3">
+                <View className="mt-3 gap-y-2.5">
                   {attentionItems.map((item) => {
                     const tone = getAttentionTone(item.stage);
                     return (
@@ -585,7 +743,7 @@ export default function SellerHomeScreen() {
                         key={`${item.response_id}-${item.reason}`}
                         activeOpacity={0.84}
                         onPress={() => openOrders(normalizeAttentionStage(item.stage), item.response_id)}
-                        className="flex-row items-center rounded-[0.95rem] border p-3"
+                        className="flex-row items-center rounded-[0.95rem] border p-3 shadow-xs"
                         style={{ backgroundColor: tone.bg, borderColor: tone.border }}
                       >
                         {item.image ? (
@@ -596,29 +754,204 @@ export default function SellerHomeScreen() {
                           </View>
                         )}
                         <View className="ml-3 flex-1">
-                          <View className="flex-row items-center">
-                            <Text className="flex-1 text-sm font-black text-slate-950" numberOfLines={1}>{item.patient}</Text>
-                            <Text className="ml-2 rounded-full bg-white/70 px-2 py-0.5 text-[8px] font-black uppercase" style={{ color: tone.color }}>
+                          <View className="flex-row items-center justify-between">
+                            <Text className="text-xs font-black text-slate-900 flex-1" numberOfLines={1}>{item.patient}</Text>
+                            <Text className="ml-2 rounded-full bg-white/80 px-2 py-0.5 text-[8px] font-black uppercase" style={{ color: tone.color }}>
                               {item.stage || 'Active'}
                             </Text>
                           </View>
-                          <Text className="mt-1 text-[10px] font-bold" style={{ color: tone.color }} numberOfLines={1}>{item.reason} • {item.minutes} min</Text>
+                          <Text className="mt-0.5 text-[10px] font-bold" style={{ color: tone.color }} numberOfLines={1}>
+                            {item.reason} • {item.minutes} min elapsed
+                          </Text>
                         </View>
-                        <MaterialCommunityIcons name="arrow-right" size={18} color={tone.color} />
+                        <MaterialCommunityIcons name="arrow-right" size={18} color={tone.color} style={{ marginLeft: 6 }} />
                       </TouchableOpacity>
                     );
                   })}
                 </View>
               ) : (
-                <View className="mt-4 flex-row items-center rounded-[0.95rem] bg-emerald-50 px-3 py-3">
-                  <MaterialCommunityIcons name="check-circle-outline" size={20} color="#10996d" />
-                  <Text className="ml-2 text-xs font-black text-emerald-800">No urgent work right now</Text>
+                <View className="mt-3 flex-row items-center justify-between rounded-[0.95rem] bg-emerald-50 border border-emerald-100 px-3.5 py-3">
+                  <View className="flex-row items-center flex-1">
+                    <MaterialCommunityIcons name="shield-check-outline" size={22} color="#16A34A" />
+                    <View className="ml-2.5">
+                      <Text className="text-xs font-black text-emerald-900">Work Pulse Operational & Clear</Text>
+                      <Text className="text-[10px] font-semibold text-emerald-700">No urgent pending actions for {selectedFilter}</Text>
+                    </View>
+                  </View>
+                  <View className="bg-emerald-100 rounded-full px-2.5 py-1">
+                    <Text className="text-[9px] font-black uppercase text-emerald-800">100% SLA</Text>
+                  </View>
                 </View>
               )}
             </View>
           </View>
         )}
       </ScrollView>
+
+      {/* ── CUSTOM DATE RANGE SELECTION BOTTOM SHEET MODAL ── */}
+      <Modal
+        visible={datePickerModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setDatePickerModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.65)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '85%' }}>
+            {/* Handle bar */}
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', alignSelf: 'center', marginBottom: 16 }} />
+
+            {/* Sheet Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#EEF3F7', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                  <MaterialCommunityIcons name="calendar-month-outline" size={22} color="#123B5D" />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#123B5D' }}>
+                    Select Custom Date Range
+                  </Text>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B' }}>
+                    Filter analytics by custom start & end date
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setDatePickerModalVisible(false)}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <MaterialCommunityIcons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 16 }}>
+              {/* Quick Date Presets */}
+              <Text style={{ fontSize: 10, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                Quick Shortcuts
+              </Text>
+
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+                {[
+                  { label: 'Last 7 Days', days: 7 },
+                  { label: 'Last 15 Days', days: 15 },
+                  { label: 'Last 30 Days', days: 30 },
+                  { label: 'This Month', type: 'this_month' },
+                ].map((presetItem) => (
+                  <TouchableOpacity
+                    key={presetItem.label}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      const today = new Date();
+                      let start = new Date();
+                      if (presetItem.type === 'this_month') {
+                        start = new Date(today.getFullYear(), today.getMonth(), 1);
+                      } else if (presetItem.days) {
+                        start.setDate(today.getDate() - presetItem.days);
+                      }
+                      setStartDate(getLocalDayStr(start));
+                      setEndDate(getLocalDayStr(today));
+                    }}
+                    style={{
+                      backgroundColor: '#F8FAFC',
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      borderRadius: 20,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#123B5D' }}>
+                      {presetItem.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Date Inputs */}
+              <Text style={{ fontSize: 10, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                Manual Range (YYYY-MM-DD)
+              </Text>
+
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 6 }}>
+                    Start Date
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <MaterialCommunityIcons name="calendar-start" size={18} color="#0F8B8D" style={{ marginRight: 8 }} />
+                    <TextInput
+                      style={{ flex: 1, fontSize: 13, fontWeight: '700', color: '#0F172A' }}
+                      value={startDate || ''}
+                      onChangeText={setStartDate}
+                      placeholder="YYYY-MM-DD"
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 6 }}>
+                    End Date
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <MaterialCommunityIcons name="calendar-end" size={18} color="#0F8B8D" style={{ marginRight: 8 }} />
+                    <TextInput
+                      style={{ flex: 1, fontSize: 13, fontWeight: '700', color: '#0F172A' }}
+                      value={endDate || ''}
+                      onChangeText={setEndDate}
+                      placeholder="YYYY-MM-DD"
+                    />
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Apply Button */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => {
+                setDateFilter('custom');
+                dashboard.fetchSummary(true, true, startDate, endDate);
+                fetchServiceCounts(startDate, endDate);
+                setDatePickerModalVisible(false);
+              }}
+              style={{
+                borderRadius: 99,
+                overflow: 'hidden',
+                marginTop: 8,
+                elevation: 4,
+                shadowColor: '#123B5D',
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.2,
+                shadowRadius: 6
+              }}
+            >
+              <LinearGradient
+                colors={['#0F8B8D', '#123B5D']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{ paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
+              >
+                <MaterialCommunityIcons name="check-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 13, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Apply Custom Date Filter
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── REAL-FEEL PREMIUM SELLER BUSINESS PDF REPORT MODAL ── */}
+      <SellerBusinessReportModal
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        token={token}
+        baseUrl={BASE_URL}
+        initialStartDate={startDate}
+        initialEndDate={endDate}
+        initialPreset={dateFilter}
+      />
+
       <Toast />
     </View>
   );

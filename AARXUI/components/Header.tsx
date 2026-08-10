@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  DeviceEventEmitter,
   Easing,
   Image,
   Modal,
@@ -57,6 +58,13 @@ function Header({
     : (isSeller ? 8 : 14);
   const unreadCount = Math.max(0, Number(notificationCount) || 0);
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('open-seller-drawer', () => {
+      setDrawerVisible(true);
+    });
+    return () => sub.remove();
+  }, []);
 
   const handleMenuPress = () => {
     if (onMenuPress) {

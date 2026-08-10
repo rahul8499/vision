@@ -3,11 +3,12 @@ import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
   ImageBackground,
   Modal,
   Platform,
@@ -42,6 +43,35 @@ const THEME = {
 
 export default function BillingScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ fromDrawer?: string; fromSettings?: string }>();
+
+  const handleBack = () => {
+    const isFromDrawer = params?.fromDrawer === 'true';
+    const isFromSettings = params?.fromSettings === 'true';
+
+    if (isFromSettings) {
+      router.push('/(sellerTabs)/settings');
+      return;
+    }
+
+    if (isFromDrawer) {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(sellerTabs)/home');
+      }
+      setTimeout(() => {
+        DeviceEventEmitter.emit('open-seller-drawer');
+      }, 150);
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(sellerTabs)/settings');
+    }
+  };
   const dispatch = useDispatch<any>();
   const { token, user: storeData } = useSelector((state: RootState) => state.user);
 
@@ -281,7 +311,11 @@ export default function BillingScreen() {
           >
             {/* Top Nav Bar with Back Arrow and Top-Right Refresh Button */}
             <View style={styles.topNavRow}>
-              <TouchableOpacity onPress={() => router.back()} activeOpacity={0.76} style={styles.navIconButton}>
+              <TouchableOpacity
+                onPress={handleBack}
+                activeOpacity={0.76}
+                style={styles.navIconButton}
+              >
                 <MaterialCommunityIcons name="arrow-left" size={20} color={THEME.whiteCard} />
               </TouchableOpacity>
 

@@ -17,24 +17,27 @@ export const useSellerDashboardSummary = ({ baseUrl, token, startDate, endDate }
   const [refreshing, setRefreshing] = useState(false);
   const seenEventIds = useRef<Set<string>>(new Set());
 
-  const fetchSummary = useCallback(async (showLoading = true, isManual = false) => {
+  const fetchSummary = useCallback(async (showLoading = true, isManual = false, overrideStart?: string, overrideEnd?: string) => {
     if (!baseUrl || !token) {
       setLoading(false);
       return;
     }
 
+    const s = overrideStart !== undefined ? overrideStart : startDate;
+    const e = overrideEnd !== undefined ? overrideEnd : endDate;
+
     try {
       if (showLoading) setLoading(true);
       let url = `${baseUrl}/api/store/dashboard-summary/`;
-      if (startDate && endDate) {
-        url += `?start_date=${startDate}&end_date=${endDate}`;
+      if (s && e) {
+        url += `?start_date=${s}&end_date=${e}`;
       }
       const res = await axios.get<SellerDashboardSummary>(url, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       });
       setSummary(res.data);
     } catch (error: any) {
-      console.warn('Dashboard summary sync error:', error?.response?.status, error?.message);
+      console.warn('Dashboard sync error:', error?.response?.status, error?.message);
       if (isManual) {
         Toast.show({
           type: 'error',

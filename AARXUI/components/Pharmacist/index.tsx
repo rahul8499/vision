@@ -53,7 +53,13 @@ const PALETTE = {
 
 function Head({ title, sub, onBack }: { title: string; sub?: string; onBack?: () => void }) {
   const r = useRouter();
-  const handleBack = onBack || (() => r.back());
+  const handleBack = onBack || (() => {
+    if (r.canGoBack()) {
+      r.back();
+    } else {
+      r.push('/(sellerTabs)/settings');
+    }
+  });
   return (
     <View style={{ backgroundColor: PALETTE.bgLight, paddingTop: 10, paddingBottom: 6 }}>
       <View
@@ -495,7 +501,16 @@ export function ConsultationDetail({ seller = false }: { seller?: boolean }) {
       <View style={styles.container}>
         <View style={styles.chatHeader}>
           <View style={styles.headerRow}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <TouchableOpacity
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.push('/(sellerTabs)/settings');
+                }
+              }}
+              style={styles.backButton}
+            >
               <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
             </TouchableOpacity>
 

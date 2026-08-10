@@ -1986,7 +1986,7 @@ class StoreDashboardSummaryView(APIView):
 
 
         base_qs = PrescriptionResponse.objects.filter(store=store)
-        active_qs = base_qs.exclude(user_status__in=['completed', 'cancelled', 'expired', 'dismissed', 'rejected'])
+        active_qs = base_qs.filter(accepted_at__gte=start_datetime, accepted_at__lt=end_datetime).exclude(user_status__in=['completed', 'cancelled', 'expired', 'dismissed', 'rejected'])
 
         otp_q = Q(delivery_otp__isnull=False, delivery_otp__is_used=False, delivery_otp__created_at__gt=now - timedelta(minutes=10), delivery_otp__attempts__lt=5)
         delivery_q = Q(user_status='out_for_delivery') | (Q(is_locked=True) & Q(delivery_option='online'))

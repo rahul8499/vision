@@ -5,10 +5,11 @@ import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   Image,
   Linking,
   Modal,
@@ -44,8 +45,37 @@ const THEME = {
 
 export default function StoreDocumentsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ fromDrawer?: string; fromSettings?: string }>();
   const dispatch = useDispatch<AppDispatch>();
   const { user: storeData, token } = useSelector((state: RootState) => state.user);
+
+  const handleBack = () => {
+    const isFromDrawer = params?.fromDrawer === 'true';
+    const isFromSettings = params?.fromSettings === 'true';
+
+    if (isFromSettings) {
+      router.push('/(sellerTabs)/settings');
+      return;
+    }
+
+    if (isFromDrawer) {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(sellerTabs)/home');
+      }
+      setTimeout(() => {
+        DeviceEventEmitter.emit('open-seller-drawer');
+      }, 150);
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(sellerTabs)/settings');
+    }
+  };
 
   const [loading, setLoading] = useState(false);
   const [docUploadBusy, setDocUploadBusy] = useState(false);
@@ -276,7 +306,7 @@ export default function StoreDocumentsScreen() {
             {/* Top Navigation Row */}
             <View style={styles.topNavRow}>
               <TouchableOpacity
-                onPress={() => router.back()}
+                onPress={handleBack}
                 activeOpacity={0.76}
                 style={styles.navIconButton}
               >

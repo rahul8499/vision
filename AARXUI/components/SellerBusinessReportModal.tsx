@@ -25,6 +25,9 @@ interface SellerBusinessReportModalProps {
   onClose: () => void;
   token: string | null;
   baseUrl: string;
+  initialStartDate?: string;
+  initialEndDate?: string;
+  initialPreset?: string;
 }
 
 type PresetType = 'today' | '7days' | '30days' | 'this_month' | 'custom';
@@ -34,6 +37,9 @@ export default function SellerBusinessReportModal({
   onClose,
   token,
   baseUrl,
+  initialStartDate,
+  initialEndDate,
+  initialPreset,
 }: SellerBusinessReportModalProps) {
   const { t } = useAppLanguage();
 
@@ -77,6 +83,21 @@ export default function SellerBusinessReportModal({
   const [loadingData, setLoadingData] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // Sync with initial props when modal becomes visible
+  useEffect(() => {
+    if (visible) {
+      if (initialStartDate && initialEndDate) {
+        setStartDate(initialStartDate);
+        setEndDate(initialEndDate);
+        if (initialPreset && ['today', '7days', '30days', 'this_month', 'custom'].includes(initialPreset)) {
+          setPreset(initialPreset as PresetType);
+        } else {
+          setPreset('custom');
+        }
+      }
+    }
+  }, [visible, initialStartDate, initialEndDate, initialPreset]);
 
   // Fetch report data whenever modal becomes visible or dates change
   useEffect(() => {

@@ -8,6 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   Modal,
   Platform,
   SafeAreaView,
@@ -195,7 +196,35 @@ function EditInput({
 
 export default function SellerProfileScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ edit?: string }>();
+  const params = useLocalSearchParams<{ edit?: string; fromDrawer?: string; fromSettings?: string }>();
+
+  const handleBack = () => {
+    const isFromDrawer = params?.fromDrawer === 'true';
+    const isFromSettings = params?.fromSettings === 'true';
+
+    if (isFromSettings) {
+      router.push('/(sellerTabs)/settings');
+      return;
+    }
+
+    if (isFromDrawer) {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(sellerTabs)/home');
+      }
+      setTimeout(() => {
+        DeviceEventEmitter.emit('open-seller-drawer');
+      }, 150);
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(sellerTabs)/settings');
+    }
+  };
   const dispatch = useDispatch<AppDispatch>();
   const { user: storeData, token } = useSelector((state: RootState) => state.user);
 
@@ -305,7 +334,11 @@ export default function SellerProfileScreen() {
 
             {/* Top Nav Bar */}
             <View style={styles.topNavRow}>
-              <TouchableOpacity onPress={() => router.back()} activeOpacity={0.76} style={styles.navIconButton}>
+              <TouchableOpacity
+                onPress={handleBack}
+                activeOpacity={0.76}
+                style={styles.navIconButton}
+              >
                 <MaterialCommunityIcons name="arrow-left" size={20} color={THEME.whiteCard} />
               </TouchableOpacity>
 
