@@ -92,13 +92,14 @@ import { Provider } from 'react-redux';
 import { store } from '../redux/store';
 import { LanguageProvider } from '@/context/LanguageContext';
 
+import { SecurityGuard } from '@/components/SecurityGuard';
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Roboto_400Regular,
     Roboto_500Medium,
   });
   const colorScheme = useColorScheme();
-
 
   if (!fontsLoaded) {
     return (
@@ -127,14 +128,16 @@ export default function RootLayout() {
       <PaperProvider>
         <Provider store={store}>
           <LanguageProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(sellerTabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="delivery" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
+            <SecurityGuard>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="(sellerTabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="delivery" options={{ headerShown: false }} />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+            </SecurityGuard>
           </LanguageProvider>
         </Provider>
 
