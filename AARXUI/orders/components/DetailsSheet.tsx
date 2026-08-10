@@ -175,11 +175,10 @@ export default function DetailsSheet({ order, priority, visible, onClose }: Prop
                   </Text>
                 </View>
                 {(order.medicines || []).length > 0 ? (order.medicines || []).map((medicine, idx) => {
-                  const medPrice = medicine.price !== undefined && medicine.price !== null && medicine.price !== ''
-                    ? `₹${Number(medicine.price).toFixed(2)}`
-                    : (order.total_amount && (order.medicines || []).length > 0
-                        ? `₹${(Number(order.total_amount) / (order.medicines || []).length).toFixed(2)}`
-                        : 'Included');
+                  const rawMedPrice = Number(medicine.price);
+                  const medPrice = (!isNaN(rawMedPrice) && rawMedPrice > 0)
+                    ? `₹${rawMedPrice.toFixed(2)}`
+                    : 'Included';
 
                   return (
                     <View key={`${medicine.medicine_name || 'medicine'}-${idx}`} className={`flex-row items-center justify-between px-3.5 py-3 ${idx < (order.medicines || []).length - 1 ? 'border-b border-slate-100' : ''}`}>

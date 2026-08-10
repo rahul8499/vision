@@ -382,6 +382,38 @@ import UnavailableOverlay, { type CapabilityFlags } from '../../components/Unava
 
 export const handleDownloadInvoice = async (item: any) => {
   try {
+    const token = await SecureStore.getItemAsync('authToken');
+    const BASE_URL = Constants.expoConfig?.extra?.BASE_URL || '';
+
+    // 🚀 Primary: Attempt fetching server-generated PDF from Django backend API
+    if (token && BASE_URL && item?.id) {
+      const pdfEndpoint = `${BASE_URL.replace(/\/+$/, '')}/store/order/${item.id}/invoice-pdf/`;
+      try {
+        const response = await axios.get(pdfEndpoint, {
+          headers: { Authorization: `Token ${token}` },
+          responseType: 'arraybuffer',
+          timeout: 4000
+        });
+
+        if (response.status === 200 && response.data) {
+          // Convert arraybuffer to base64 for Expo Sharing / Print
+          const base64Pdf = Platform.OS === 'web'
+            ? btoa(String.fromCharCode(...new Uint8Array(response.data)))
+            : Buffer.from(response.data).toString('base64');
+
+          const uri = `data:application/pdf;base64,${base64Pdf}`;
+          await Sharing.shareAsync(uri, {
+            UTI: '.pdf',
+            mimeType: 'application/pdf',
+            dialogTitle: `Tax Invoice #${item.id}`
+          });
+          return;
+        }
+      } catch (backendErr) {
+        console.log('Backend server PDF fallback to Expo Print engine:', backendErr);
+      }
+    }
+
     const formatMaskedPhone = (phoneRaw?: string | number) => {
       if (!phoneRaw) return 'Protected Contact';
       const str = String(phoneRaw).trim();
@@ -423,13 +455,12 @@ export const handleDownloadInvoice = async (item: any) => {
 
     const medicines = getMedicinesArray(item);
     const totalAmt = Number(item.total_amount) || 0;
-    const defaultPricePerItem = medicines.length > 0 ? totalAmt / medicines.length : totalAmt;
 
     const medicineRowsHtml = medicines.length > 0
       ? medicines.map((med: any, index: number) => {
           const medName = med.medicine_name || med.name || med.title || `Prescription Medicine #${index + 1}`;
           const rawPrice = med.price !== undefined && med.price !== null && med.price !== '' ? Number(med.price) : NaN;
-          const medPrice = !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : defaultPricePerItem;
+          const priceDisplay = !isNaN(rawPrice) && rawPrice > 0 ? `₹${rawPrice.toFixed(2)}` : 'Included';
 
           return `
             <tr>
@@ -440,7 +471,7 @@ export const handleDownloadInvoice = async (item: any) => {
                 ${med.qty || med.quantity ? `<span style="display: inline-block; font-size: 9px; background: #e8f4f5; color: #0f8b8d; font-weight: 900; padding: 1px 6px; border-radius: 4px; margin-top: 3px;">QTY: ${med.qty || med.quantity}</span>` : ''}
               </td>
               <td>${item.delivery_option === 'walk_in' ? 'Store Pickup' : 'Home Delivery'}</td>
-              <td class="amount-col">₹${medPrice.toFixed(2)}</td>
+              <td class="amount-col">${priceDisplay}</td>
             </tr>
           `;
         }).join('')
